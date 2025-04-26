@@ -25,8 +25,10 @@ class TranslaGeniusServiceProvider extends ServiceProvider
      */
     public function register()
     {
-        // Include the package's helper functions.
-        require_once __DIR__ . '/helpers.php';
+        $this->mergeConfigFrom(
+            __DIR__ . '/../config/translaGenius.php',
+            'translaGenius'
+        );
     }
 
     /**
@@ -41,7 +43,7 @@ class TranslaGeniusServiceProvider extends ServiceProvider
     {
         // Publish the configuration file to the application's configuration directory.
         $this->publishes([
-            __DIR__ . '/config/translaGenius.php' => config_path('translaGenius.php'),
-        ], 'config');
+            __DIR__ . '/../config/translaGenius.php' => config_path('translaGenius.php'),
+        ], 'translagenius-config');
     }
 }

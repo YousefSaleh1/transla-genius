@@ -1,70 +1,73 @@
 {
-    "name": "coding-partners/transla-genius",
-    "description": "A Laravel package for automatic translations.",
-    "keywords": [
-        "laravel",
-        "translation",
-        "multilingual",
-        "localization",
-        "i18n",
-        "openai",
-        "gpt",
-        "ai-translation",
-        "automation",
-        "eloquent",
-        "json-translations",
-        "openrouter",
-        "middleware",
-        "queue",
-        "jobs",
-        "spatie-translatable",
-        "auto-translation",
-        "translation-manager"
-    ],
-    "type": "library",
-    "require": {
-        "php": ">=8.2",
-        "illuminate/support": "^12.0",
-        "spatie/laravel-translatable": "^6.0"
+  "name": "coding-partners/transla-genius",
+  "description": "A Laravel package for automatic translations.",
+  "keywords": [
+    "laravel",
+    "translation",
+    "multilingual",
+    "localization",
+    "i18n",
+    "openai",
+    "gpt",
+    "ai-translation",
+    "automation",
+    "eloquent",
+    "json-translations",
+    "openrouter",
+    "middleware",
+    "queue",
+    "jobs",
+    "spatie-translatable",
+    "auto-translation",
+    "translation-manager"
+  ],
+  "type": "library",
+  "require": {
+    "php": ">=8.2",
+    "illuminate/support": "^12.0",
+    "spatie/laravel-translatable": "^6.0"
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^11.5",
+    "pestphp/pest": "3.x-dev",
+    "orchestra/testbench": "10.x-dev",
+    "psy/psysh": "^0.12.0@dev"
+  },
+  "license": "MIT",
+  "autoload": {
+    "psr-4": {
+      "CodingPartners\\TranslaGenius\\": "src/"
     },
-    "require-dev": {
-        "phpunit/phpunit": "^11.5",
-        "pestphp/pest": "3.x-dev",
-        "orchestra/testbench": "10.x-dev",
-        "psy/psysh": "^0.12.0@dev"
-    },
-    "license": "MIT",
-    "autoload": {
-        "psr-4": {
-            "CodingPartners\\TranslaGenius\\": "src/"
-        }
-    },
-    "autoload-dev": {
-        "psr-4": {
-            "CodingPartners\\TranslaGenius\\Tests\\": "tests/"
-        }
-    },
-    "authors": [
-        {
-            "name": "YousefSaleh1",
-            "email": "yousefsaleh.888.it@gmail.com"
-        }
-    ],
-    "extra": {
-        "laravel": {
-            "providers": [
-                "CodingPartners\\TranslaGenius\\TranslaGeniusServiceProvider"
-            ]
-        }
-    },
-    "minimum-stability": "dev",
-    "config": {
-        "allow-plugins": {
-            "pestphp/pest-plugin": true
-        }
-    },
-    "scripts": {
-        "test": "vendor/bin/phpunit",
-        "test-coverage": "vendor/bin/phpunit --coverage-html coverage"
+    "files": [
+      "src/helpers.php"
+    ]
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "CodingPartners\\TranslaGenius\\Tests\\": "tests/"
     }
+  },
+  "authors": [
+    {
+      "name": "YousefSaleh1",
+      "email": "yousefsaleh.888.it@gmail.com"
+    }
+  ],
+  "extra": {
+    "laravel": {
+      "providers": [
+        "CodingPartners\\TranslaGenius\\TranslaGeniusServiceProvider"
+      ]
+    }
+  },
+  "minimum-stability": "dev",
+  "config": {
+    "allow-plugins": {
+      "pestphp/pest-plugin": true
+    }
+  },
+  "scripts": {
+    "test": "vendor/bin/phpunit",
+    "test-coverage": "vendor/bin/phpunit --coverage-html coverage"
+  }
 }

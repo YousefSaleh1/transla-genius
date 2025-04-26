@@ -7,50 +7,39 @@ return [
     | Supported Languages
     |--------------------------------------------------------------------------
     |
-    | List of supported languages for translation (ISO 639-1 codes).
-    | The first language will be considered as default.
+    | Languages supported for automatic translation.
+    | The first language listed will be considered the default.
     |
     */
     'supported_languages' => ['en', 'ar'],
 
     /*
     |--------------------------------------------------------------------------
-    | OpenAI API Key
+    | Translation API Configuration
     |--------------------------------------------------------------------------
     |
-    | This key is used to authenticate requests to the OpenAI translation API.
+    | API credentials and endpoints for connecting to the external
+    | translation service (such as OpenAI, OpenRouter, etc).
     |
     */
-    'api_key' => env('OPENAI_API_KEY', ''),
+    'api' => [
+        'key' => env('TRANSLATION_API_KEY'), // No fallback default! Force developer to set it
+        'url' => env('TRANSLATION_API_URL', 'https://openrouter.ai/api/v1/chat/completions'),
+        'model' => env('TRANSLATION_MODEL', 'openai/gpt-4o'),
+        'timeout' => env('TRANSLATION_API_TIMEOUT', 10), // default 10 seconds
+    ],
 
     /*
     |--------------------------------------------------------------------------
-    | API Endpoint
+    | Translation Behavior Settings
     |--------------------------------------------------------------------------
     |
-    | The URL used to send requests to the translation API.
+    | Control how the translation model behaves such as creativity (temperature)
+    | and the maximum allowed output length (tokens).
     |
     */
-    'api_url' => env('TRANSLATION_API_URL', 'https://openrouter.ai/api/v1/chat/completions'),
-
-    /*
-    |--------------------------------------------------------------------------
-    | Default Model
-    |--------------------------------------------------------------------------
-    |
-    | The AI model used for translation processing.
-    |
-    */
-    'model' => env('TRANSLATION_MODEL', 'openai/gpt-4o'),
-
-    /*
-    |--------------------------------------------------------------------------
-    | Translation Settings
-    |--------------------------------------------------------------------------
-    |
-    | Additional settings such as temperature and max tokens to adjust translation behavior.
-    |
-    */
-    'temperature' => env('TRANSLATION_TEMPERATURE', 0.3),
-    'max_tokens' => env('TRANSLATION_MAX_TOKENS', 200),
+    'settings' => [
+        'temperature' => env('TRANSLATION_TEMPERATURE', 0.3),
+        'max_tokens' => env('TRANSLATION_MAX_TOKENS', 200),
+    ],
 ];

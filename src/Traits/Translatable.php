@@ -19,7 +19,7 @@ trait Translatable
 {
     use HasTranslations;
 
-/**
+    /**
      * Boot the Translatable trait.
      *
      * This method sets up event listeners for the model's `created` and `updated` events.
@@ -33,34 +33,31 @@ trait Translatable
 
         static::updated(function ($model) {
             $translatableFields = $model->getTranslatableAttributes();
-            if (empty($translatableFields)) {
-                return;
-            }
-
-            $currentLocale = get_current_locale();
-
-            $sourceLocaleValueWasModified = false;
-
-            foreach ($translatableFields as $field) {
-                if ($model->isDirty($field)) {
-                    $originalJson = $model->getRawOriginal($field);
-                    $originalTranslations = is_string($originalJson) ? json_decode($originalJson, true) : [];
-                    $originalTranslations = is_array($originalTranslations) ? $originalTranslations : [];
-                    $originalValueForCurrentLocale = $originalTranslations[$currentLocale] ?? null;
-
-                    $newValueForCurrentLocale = $model->getTranslation($field, $currentLocale, false);
-
-                    if ($originalValueForCurrentLocale !== $newValueForCurrentLocale) {
-                        $sourceLocaleValueWasModified = true;
-                        break;
-                    }
-                }
-            }
-
-            if ($sourceLocaleValueWasModified) {
+            if (!empty($translatableFields) && static::hasSourceLocaleChanged($model, $translatableFields)) {
                 TranslateFields::dispatch($model, $translatableFields);
             }
         });
+    }
+
+    protected static function hasSourceLocaleChanged($model, array $translatableFields): bool
+    {
+        $currentLocale = get_current_locale();
+
+        foreach ($translatableFields as $field) {
+            if ($model->isDirty($field)) {
+                $originalJson = $model->getRawOriginal($field);
+                $originalTranslations = is_string($originalJson) ? json_decode($originalJson, true) : [];
+                $originalTranslations = is_array($originalTranslations) ? $originalTranslations : [];
+                $originalValue = $originalTranslations[$currentLocale] ?? null;
+                $newValue = $model->getTranslation($field, $currentLocale, false);
+
+                if ($originalValue !== $newValue) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -84,6 +81,10 @@ trait Translatable
      */
     public function scopeFullyTranslated(Builder $query)
     {
+        if (empty($this->translatable) || !is_array($this->translatable)) {
+            return $query;
+        }
+
         $targetLanguages = get_supported_languages();
 
         foreach ($this->translatable as $field) {

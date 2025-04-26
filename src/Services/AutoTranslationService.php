@@ -47,11 +47,11 @@ class AutoTranslationService
      */
     public function __construct()
     {
-        $this->apiKey      = config('translaGenius.api_key');
-        $this->apiUrl      = config('translaGenius.api_url');
-        $this->model       = config('translaGenius.model');
-        $this->temperature = config('translaGenius.temperature');
-        $this->maxTokens   = config('translaGenius.max_tokens');
+        $this->apiKey = config('translaGenius.api.key');
+        $this->apiUrl = config('translaGenius.api.url');
+        $this->model = config('translaGenius.api.model');
+        $this->temperature = config('translaGenius.settings.temperature');
+        $this->maxTokens = config('translaGenius.settings.max_tokens');
     }
 
     /**
@@ -88,7 +88,11 @@ class AutoTranslationService
      */
     public function translate($text, $sourceLanguage, $targetLanguage)
     {
-        $message = "Translate this text from {$sourceLanguage} to {$targetLanguage}...";
+        if (empty($this->apiKey) || empty($this->apiUrl)) {
+            throw new \RuntimeException('Translation service configuration missing: API key or API URL.');
+        }
+
+        $message = "Translate the following text from {$sourceLanguage} to {$targetLanguage}:\n\n{$text}";
 
         $response = Http::withHeaders([
             'Content-Type' => 'application/json',
