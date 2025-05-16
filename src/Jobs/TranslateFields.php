@@ -53,7 +53,10 @@ class TranslateFields implements ShouldQueue
             }
         } catch (\Throwable $th) {
             Log::error('Translation job failed', [
-                'error' => $th->getMessage(),
+                'error_message' => $th->getMessage(),
+                'error_class' => get_class($th),
+                'error_file' => $th->getFile(),
+                'error_line' => $th->getLine(),
                 'trace' => $th->getTraceAsString(),
                 'model_class' => get_class($this->model),
                 'model_id' => $this->model->id ?? null,

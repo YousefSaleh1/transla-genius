@@ -4,6 +4,7 @@ namespace CodingPartners\TranslaGenius\Services;
 
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Class AutoTranslationService
@@ -88,48 +89,86 @@ class AutoTranslationService
      */
     public function translate($text, $sourceLanguage, $targetLanguage)
     {
-        if (empty($this->apiKey) || empty($this->apiUrl)) {
-            throw new \RuntimeException('Translation service configuration missing: API key or API URL.');
+        try {
+            Log::debug('AutoTranslationService: translate called', [
+                'text' => $text,
+                'source' => $sourceLanguage,
+                'target' => $targetLanguage,
+                'apiKey_present' => !empty($this->apiKey),
+                'apiUrl' => $this->apiUrl
+            ]);
+
+            if (empty($this->apiKey) || empty($this->apiUrl)) {
+                throw new \RuntimeException('Translation service configuration missing: API key or API URL.');
+            }
+
+            $message = "Translate the following text from {$sourceLanguage} to {$targetLanguage}:\n\n{$text}";
+
+            Log::debug('AutoTranslationService: Prepared message for API', ['message' => $message]);
+
+            $response = Http::withHeaders([
+                'Content-Type' => 'application/json',
+                'Authorization' => 'Bearer ' . $this->apiKey,
+            ])->retry(
+                3,
+                function (int $attempt, \Exception $e) {
+                    if ($e instanceof \Illuminate\Http\Client\RequestException && $e->response->status() >= 400) {
+                        return false;
+                    }
+
+                    return min(1000, 200 * (2 ** ($attempt - 1))) + rand(0, 100);
+                },
+                throw: false
+            )->post($this->apiUrl, [
+                "model" => $this->model,
+                'messages' => [["role" => "user", "content" => $message]],
+                'temperature' => $this->temperature,
+                "max_tokens" => $this->maxTokens
+            ]);
+
+            Log::debug('AutoTranslationService: API response status', ['status' => $response->status()]);
+
+            if ($response->failed()) {
+                Log::error('AutoTranslationService: API request failed', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                    'json_error' => $response->json()['error'] ?? null
+                ]);
+
+                throw new HttpResponseException(response()->json([
+                    'message' => 'Translation failed after 3 attempts',
+                    'error' => $response->json()['error'] ?? $response->body(),
+                ], $response->status()));
+            }
+
+            $data = $response->json();
+
+            Log::debug('AutoTranslationService: API response data', ['data' => $data]);
+
+            if (empty($data['choices'][0]['message']['content'])) {
+                throw new HttpResponseException(response()->json([
+                    'message' => 'AI model returned an empty or invalid response',
+                    'error' => $data['error'] ?? 'No content generated',
+                ], 500));
+            }
+
+            Log::info('AutoTranslationService: Translation successful', ['translated_text' => $data['choices'][0]['message']['content']]);
+            return $data['choices'][0]['message']['content'];
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            Log::error('AutoTranslationService: ConnectionException', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            throw $e;
+        } catch (\Throwable $e) {
+            Log::error('AutoTranslationService: Unhandled Throwable in translate', [
+                'message' => $e->getMessage(),
+                'class' => get_class($e),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            throw $e;
         }
-
-        $message = "Translate the following text from {$sourceLanguage} to {$targetLanguage}:\n\n{$text}";
-
-        $response = Http::withHeaders([
-            'Content-Type' => 'application/json',
-            'Authorization' => 'Bearer ' . $this->apiKey,
-        ])->retry(
-            3,
-            function (int $attempt, \Exception $e) {
-                if ($e instanceof \Illuminate\Http\Client\RequestException && $e->response->status() >= 400) {
-                    return false;
-                }
-
-                return min(1000, 200 * (2 ** ($attempt - 1))) + rand(0, 100);
-            },
-            throw: false
-        )->post($this->apiUrl, [
-            "model" => $this->model,
-            'messages' => [["role" => "user", "content" => $message]],
-            'temperature' => $this->temperature,
-            "max_tokens" => $this->maxTokens
-        ]);
-
-        if ($response->failed()) {
-            throw new HttpResponseException(response()->json([
-                'message' => 'Translation failed after 3 attempts',
-                'error' => $response->json()['error'] ?? $response->body(),
-            ], 500));
-        }
-
-        $data = $response->json();
-
-        if (empty($data['choices'][0]['message']['content'])) {
-            throw new HttpResponseException(response()->json([
-                'message' => 'AI model returned an empty or invalid response',
-                'error' => $data['error'] ?? 'No content generated',
-            ], 500));
-        }
-
-        return $data['choices'][0]['message']['content'];
     }
 }

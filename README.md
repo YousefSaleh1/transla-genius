@@ -23,7 +23,7 @@ composer require coding-partners/transla-genius
 After installing the package, you need to publish the configuration file:
 
 ```bash
-php artisan vendor:publish --provider="CodingPartners\TranslaGenius\TranslaGeniusServiceProvider" --tag="config"
+php artisan vendor:publish --provider="CodingPartners\TranslaGenius\TranslaGeniusServiceProvider" --tag="translagenius-config"
 ```
 
 This will create a `translaGenius.php` file in your `config` directory. You can modify this file to set your Supported Languages, and other translation settings:
@@ -50,7 +50,7 @@ return [
 Make sure to set the following environment variables in your `.env` file:
 
 ```env
-OPENAI_API_KEY=your_openai_api_key
+TRANSLATION_API_KEY=your_openai_api_key
 TRANSLATION_API_URL=https://openrouter.ai/api/v1/chat/completions
 TRANSLATION_MODEL=openai/gpt-4o
 TRANSLATION_TEMPERATURE=0.3
