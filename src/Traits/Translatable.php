@@ -76,6 +76,10 @@ trait Translatable
     /**
      * Scope to filter models that are fully translated in all target languages.
      *
+     * Uses the query builder's `column->path` JSON syntax rather than raw SQL,
+     * so it compiles to the correct JSON-extraction expression per driver
+     * (MySQL, PostgreSQL, SQLite) instead of only ever working on MySQL.
+     *
      * @param \Illuminate\Database\Eloquent\Builder $query
      * @return \Illuminate\Database\Eloquent\Builder
      */
@@ -90,7 +94,7 @@ trait Translatable
         foreach ($this->translatable as $field) {
             $query->where(function ($q) use ($field, $targetLanguages) {
                 foreach ($targetLanguages as $language) {
-                    $q->whereRaw("JSON_UNQUOTE(JSON_EXTRACT(`$field`, '$.$language')) IS NOT NULL");
+                    $q->whereNotNull("{$field}->{$language}");
                 }
             });
         }
