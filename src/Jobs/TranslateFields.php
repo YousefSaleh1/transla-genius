@@ -3,12 +3,12 @@
 namespace CodingPartners\TranslaGenius\Jobs;
 
 use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
-use CodingPartners\TranslaGenius\Services\AutoTranslationService;
+use CodingPartners\TranslaGenius\Services\Translator;
+use CodingPartners\TranslaGenius\Services\TranslationWriter;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -56,16 +56,16 @@ class TranslateFields implements ShouldQueue
     /**
      * Execute the job.
      */
-    public function handle(AutoTranslationService $translationService)
+    public function handle(Translator $translator, TranslationWriter $writer)
     {
         try {
             $currentLocale = get_current_locale();
             $targetLanguages = get_supported_languages();
 
-            $translations = $this->prepareTranslations($translationService, $currentLocale, $targetLanguages);
+            $translations = $this->prepareTranslations($translator, $currentLocale, $targetLanguages);
 
             if (!empty($translations)) {
-                $this->applyTranslations($translations);
+                $writer->apply($this->model, $translations);
 
                 Log::info('Translation completed successfully', [
                     'model_id' => $this->model->getKey(),
@@ -118,60 +118,20 @@ class TranslateFields implements ShouldQueue
     }
 
     /**
-     * Persist the computed translations, guarding against a concurrent job
-     * (dispatched by a later update on the same model) already having
-     * written some of the same field/locale values while this job's HTTP
-     * calls were in flight.
-     *
-     * The translation calls themselves happen outside any lock/transaction
-     * (see prepareTranslations() in handle()) - they're slow, external I/O,
-     * and holding a row lock across them would block unrelated writes for
-     * as long as the API takes to respond. Instead, only this final
-     * decide-and-write step re-fetches the row under `lockForUpdate()`,
-     * re-checks what's still actually missing, and writes just that -
-     * so a concurrent job's newer result is never clobbered by this job's
-     * possibly-stale computation.
-     *
-     * @param array $translations
-     * @return void
-     */
-    protected function applyTranslations(array $translations): void
-    {
-        DB::transaction(function () use ($translations) {
-            $model = $this->model->newQuery()->lockForUpdate()->find($this->model->getKey());
-
-            // Model was deleted between dispatch and execution - nothing to save.
-            if (!$model) {
-                return;
-            }
-
-            $model->withoutEvents(function () use ($model, $translations) {
-                foreach ($translations as $field => $values) {
-                    foreach ($values as $locale => $value) {
-                        $existing = $model->getTranslation($field, $locale, false);
-
-                        if (empty($existing)) {
-                            $model->setTranslation($field, $locale, $value);
-                        }
-                    }
-                }
-
-                if ($model->isDirty()) {
-                    $model->save();
-                }
-            });
-        });
-    }
-
-    /**
      * Prepare translations for the given model and fields.
      *
-     * @param AutoTranslationService $translationService
+     * Persistence is deliberately not this method's concern - it only
+     * computes the [field => [locale => text]] map; TranslationWriter
+     * (called from handle()) owns the locked read-check-write that applies
+     * it. See TranslationWriter for why that split matters under
+     * concurrent updates.
+     *
+     * @param Translator $translator
      * @param string $currentLocale
      * @param array $targetLanguages
      * @return array
      */
-    protected function prepareTranslations(AutoTranslationService $translationService, string $currentLocale, array $targetLanguages): array
+    protected function prepareTranslations(Translator $translator, string $currentLocale, array $targetLanguages): array
     {
         $translations = [];
 
@@ -186,12 +146,8 @@ class TranslateFields implements ShouldQueue
 
             foreach ($targetLanguages as $targetLanguage) {
                 if (empty($fieldTranslations[$targetLanguage])) {
-                    $translated = $translationService->translate(
-                        $sourceText,
-                        $currentLocale,
-                        $targetLanguage
-                    );
-                    $fieldTranslations[$targetLanguage] = $translated;
+                    $result = $translator->translate($sourceText, $currentLocale, $targetLanguage);
+                    $fieldTranslations[$targetLanguage] = $result->text;
                 }
             }
 

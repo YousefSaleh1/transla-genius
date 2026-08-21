@@ -2,8 +2,12 @@
 
 namespace CodingPartners\TranslaGenius\Tests\Unit;
 
+use CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface;
+use CodingPartners\TranslaGenius\Providers\OpenRouterProvider;
+use CodingPartners\TranslaGenius\Services\Translator;
 use CodingPartners\TranslaGenius\TranslaGeniusServiceProvider;
 use CodingPartners\TranslaGenius\Tests\TestCase;
+use RuntimeException;
 
 /**
  * Unit tests for TranslaGeniusServiceProvider
@@ -11,6 +15,7 @@ use CodingPartners\TranslaGenius\Tests\TestCase;
  * Tests the service provider functionality including:
  * - Configuration file publishing
  * - Helper function registration
+ * - TranslationProviderInterface/Translator binding (Phase 2d)
  */
 class ServiceProviderTest extends TestCase
 {
@@ -43,5 +48,42 @@ class ServiceProviderTest extends TestCase
     {
         $this->assertTrue(function_exists('get_current_locale'));
         $this->assertTrue(function_exists('get_supported_languages'));
+    }
+
+    /**
+     * The interface resolves to the driver configured under
+     * translaGenius.providers.{default}, constructed with that provider's
+     * config array (see TestCase's fixture: default => openrouter).
+     *
+     * @return void
+     */
+    public function test_translation_provider_interface_resolves_to_the_configured_driver()
+    {
+        $this->assertInstanceOf(OpenRouterProvider::class, $this->app->make(TranslationProviderInterface::class));
+    }
+
+    /**
+     * Translator is resolvable and receives whatever provider is bound.
+     *
+     * @return void
+     */
+    public function test_translator_resolves_and_receives_the_bound_provider()
+    {
+        $this->assertInstanceOf(Translator::class, $this->app->make(Translator::class));
+    }
+
+    /**
+     * An unconfigured/unknown default provider must fail loudly at
+     * resolution time, not silently deep inside a swallowed job.
+     *
+     * @return void
+     */
+    public function test_resolving_an_unknown_provider_throws_immediately()
+    {
+        config(['translaGenius.default' => 'does-not-exist']);
+
+        $this->expectException(RuntimeException::class);
+
+        $this->app->make(TranslationProviderInterface::class);
     }
 }

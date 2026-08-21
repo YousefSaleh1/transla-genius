@@ -74,6 +74,13 @@ class TranslatableTraitTest extends TestCase
      */
     public function test_fully_translated_scope()
     {
+        // Without this, create() below would synchronously dispatch a real
+        // TranslateFields job (QUEUE_CONNECTION=sync) against a real
+        // provider hitting the fake, unreachable test API URL - see the
+        // same fix applied in TranslateFieldsJobTest for why that matters
+        // now that job failures propagate instead of being swallowed.
+        Queue::fake();
+
         // Create a fully translated model
         $translatedModel = TestTranslatableModel::create([
             'name' => ['en' => 'Test', 'ar' => 'اختبار', 'es' => 'Prueba'],

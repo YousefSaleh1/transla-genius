@@ -1,5 +1,7 @@
 <?php
 
+use CodingPartners\TranslaGenius\Providers\OpenRouterProvider;
+
 return [
 
     /*
@@ -15,31 +17,39 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Translation API Configuration
+    | Default Translation Provider
     |--------------------------------------------------------------------------
     |
-    | API credentials and endpoints for connecting to the external
-    | translation service (such as OpenAI, OpenRouter, etc).
+    | Which entry in `providers` below is used to actually perform
+    | translations. Switch providers by changing this value (and adding a
+    | corresponding entry under `providers`) - no code changes needed.
     |
     */
-    'api' => [
-        'key' => env('TRANSLATION_API_KEY'), // No fallback default! Force developer to set it
-        'url' => env('TRANSLATION_API_URL', 'https://openrouter.ai/api/v1/chat/completions'),
-        'model' => env('TRANSLATION_MODEL', 'openai/gpt-4o'),
-        'timeout' => env('TRANSLATION_API_TIMEOUT', 10), // default 10 seconds
-    ],
+    'default' => env('TRANSLATION_PROVIDER', 'openrouter'),
 
     /*
     |--------------------------------------------------------------------------
-    | Translation Behavior Settings
+    | Translation Providers
     |--------------------------------------------------------------------------
     |
-    | Control how the translation model behaves such as creativity (temperature)
-    | and the maximum allowed output length (tokens).
+    | Each entry is a `driver` (a class implementing
+    | CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface,
+    | constructed with this array) plus whatever configuration that driver
+    | needs. To add a custom provider, implement the interface and add an
+    | entry here - see the README's "Custom Translation Providers" section.
     |
     */
-    'settings' => [
-        'temperature' => env('TRANSLATION_TEMPERATURE', 0.3),
-        'max_tokens' => env('TRANSLATION_MAX_TOKENS', 200),
+    'providers' => [
+        'openrouter' => [
+            'driver' => OpenRouterProvider::class,
+
+            // No fallback default for the key! Force the developer to set it.
+            'key' => env('TRANSLATION_API_KEY'),
+            'url' => env('TRANSLATION_API_URL', 'https://openrouter.ai/api/v1/chat/completions'),
+            'model' => env('TRANSLATION_MODEL', 'openai/gpt-4o'),
+            'timeout' => env('TRANSLATION_API_TIMEOUT', 10), // seconds
+            'temperature' => env('TRANSLATION_TEMPERATURE', 0.3),
+            'max_tokens' => env('TRANSLATION_MAX_TOKENS', 200),
+        ],
     ],
 ];

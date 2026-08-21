@@ -2,6 +2,7 @@
 
 namespace CodingPartners\TranslaGenius\Tests;
 
+use CodingPartners\TranslaGenius\Providers\OpenRouterProvider;
 use CodingPartners\TranslaGenius\TranslaGeniusServiceProvider;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
@@ -52,14 +53,17 @@ class TestCase extends Orchestra
         // Set default package configuration
         Config::set('translaGenius', [
             'supported_languages' => ['en', 'ar', 'es'],
-            'api' => [
-                'key' => 'test-api-key',
-                'url' => 'https://test-api-url.com',
-                'model' => 'test-model',
-            ],
-            'settings' => [
-                'temperature' => 0.3,
-                'max_tokens' => 200,
+            'default' => 'openrouter',
+            'providers' => [
+                'openrouter' => [
+                    'driver' => OpenRouterProvider::class,
+                    'key' => 'test-api-key',
+                    'url' => 'https://test-api-url.com',
+                    'model' => 'test-model',
+                    'timeout' => 10,
+                    'temperature' => 0.3,
+                    'max_tokens' => 200,
+                ],
             ],
         ]);
 

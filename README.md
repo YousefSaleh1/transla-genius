@@ -29,7 +29,6 @@ php artisan vendor:publish --provider="CodingPartners\TranslaGenius\TranslaGeniu
 This will create a `translaGenius.php` file in your `config` directory. You can modify this file to set your Supported Languages, and other translation settings:
 
 ```php
-
 return [
     /*
     |--------------------------------------------------------------------------
@@ -40,10 +39,36 @@ return [
     */
     'supported_languages' => ['en', 'ar', 'es', 'fr'],
 
-    // ... other settings
+    /*
+    |--------------------------------------------------------------------------
+    | Default Translation Provider
+    |--------------------------------------------------------------------------
+    | Which entry in `providers` below actually performs translations.
+    */
+    'default' => env('TRANSLATION_PROVIDER', 'openrouter'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Translation Providers
+    |--------------------------------------------------------------------------
+    | Each entry is a `driver` class plus whatever config that driver needs.
+    | See "Custom Translation Providers" below to add your own.
+    */
+    'providers' => [
+        'openrouter' => [
+            'driver' => \CodingPartners\TranslaGenius\Providers\OpenRouterProvider::class,
+            'key' => env('TRANSLATION_API_KEY'),
+            'url' => env('TRANSLATION_API_URL', 'https://openrouter.ai/api/v1/chat/completions'),
+            'model' => env('TRANSLATION_MODEL', 'openai/gpt-4o'),
+            'timeout' => env('TRANSLATION_API_TIMEOUT', 10),
+            'temperature' => env('TRANSLATION_TEMPERATURE', 0.3),
+            'max_tokens' => env('TRANSLATION_MAX_TOKENS', 200),
+        ],
+    ],
 ];
 ```
 
+> **Upgrading from 1.x?** The config shape changed - see [CHANGELOG.md](CHANGELOG.md) for the v2.0.0 migration notes.
 
 ### Environment Variables
 
@@ -53,6 +78,7 @@ Make sure to set the following environment variables in your `.env` file:
 TRANSLATION_API_KEY=your_openai_api_key
 TRANSLATION_API_URL=https://openrouter.ai/api/v1/chat/completions
 TRANSLATION_MODEL=openai/gpt-4o
+TRANSLATION_API_TIMEOUT=10
 TRANSLATION_TEMPERATURE=0.3
 TRANSLATION_MAX_TOKENS=200
 ```
@@ -142,8 +168,51 @@ This scope checks if all translatable fields have a translation in the Supported
 ## How It Works
 
 1. **Model Events**: When a model is created or updated, the `Translatable` trait automatically dispatches a `TranslateFields` job.
-2. **Translation Job**: The `TranslateFields` job uses the `AutoTranslationService` to translate the specified fields into the target language.
-3. **Translation Service**: The `AutoTranslationService` communicates with the external API to perform the translation and updates the model with the translated content.
+2. **Translation Job**: The `TranslateFields` job asks `Translator` to translate each missing field/locale, then hands the results to `TranslationWriter` to persist.
+3. **Translator**: `Translator` resolves whichever `TranslationProviderInterface` implementation is configured (`translaGenius.default`) and delegates to it - the job never talks to a specific provider directly.
+4. **Provider**: The bound provider (`OpenRouterProvider` by default) communicates with the external API and returns a `TranslationResult`.
+
+## Custom Translation Providers
+
+TranslaGenius doesn't hard-code OpenRouter/GPT-4o into the translation flow - it's the default of a swappable `TranslationProviderInterface`. To use a different backend (DeepL, Google Translate, another LLM, an internal translation service), implement the interface:
+
+```php
+use CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface;
+use CodingPartners\TranslaGenius\DTOs\TranslationRequest;
+use CodingPartners\TranslaGenius\DTOs\TranslationResult;
+
+class DeepLProvider implements TranslationProviderInterface
+{
+    public function __construct(protected array $config)
+    {
+        // $config is whatever you put under providers.deepl below.
+    }
+
+    public function translate(TranslationRequest $request): TranslationResult
+    {
+        // Call DeepL, map its response into a TranslationResult.
+        // On failure, throw CodingPartners\TranslaGenius\Exceptions\TranslationFailedException,
+        // setting `retryable: false` for permanent failures (bad key) and
+        // `retryable: true` for transient ones (timeouts, rate limits) -
+        // that flag drives the job's retry/fail behavior.
+        return new TranslationResult(text: $translatedText, provider: 'deepl');
+    }
+}
+```
+
+Then register it in `config/translaGenius.php` and point `default` at it - no changes to the `Translatable` trait, `TranslateFields`, or anything else in the package:
+
+```php
+'default' => 'deepl',
+
+'providers' => [
+    'deepl' => [
+        'driver' => \App\Translation\DeepLProvider::class,
+        'key' => env('DEEPL_API_KEY'),
+    ],
+    // 'openrouter' => [ ... ] can stay defined alongside it
+],
+```
 
 ## Example Workflow
 
