@@ -45,7 +45,7 @@ class AutoTranslationServiceTest extends TestCase
                 $request['model'] === 'test-model' &&
                 $request['temperature'] === 0.3 &&
                 $request['max_tokens'] === 200 &&
-                str_contains($request['messages'][0]['content'], 'Translate this text from en to ar');
+                str_contains($request['messages'][0]['content'], 'Translate the following text from en to ar');
         });
 
         // Assert the response was properly handled

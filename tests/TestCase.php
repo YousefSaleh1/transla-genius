@@ -52,11 +52,15 @@ class TestCase extends Orchestra
         // Set default package configuration
         Config::set('translaGenius', [
             'supported_languages' => ['en', 'ar', 'es'],
-            'api_key' => 'test-api-key',
-            'api_url' => 'https://test-api-url.com',
-            'model' => 'test-model',
-            'temperature' => 0.3,
-            'max_tokens' => 200,
+            'api' => [
+                'key' => 'test-api-key',
+                'url' => 'https://test-api-url.com',
+                'model' => 'test-model',
+            ],
+            'settings' => [
+                'temperature' => 0.3,
+                'max_tokens' => 200,
+            ],
         ]);
 
         $this->setUpDatabase();
