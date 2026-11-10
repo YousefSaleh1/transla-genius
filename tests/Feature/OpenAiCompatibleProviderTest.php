@@ -197,4 +197,15 @@ class OpenAiCompatibleProviderTest extends TestCase
             && !$request->hasHeader('X-Empty')
             && $request->header('Authorization') === ['Bearer test-api-key']);
     }
+
+    public function test_token_limit_can_be_sent_as_max_completion_tokens()
+    {
+        $this->fakeSuccess();
+
+        (new OpenAiCompatibleProvider($this->config(['token_limit_param' => 'max_completion_tokens'])))
+            ->translate(new TranslationRequest('Hi', 'en', 'ar'));
+
+        Http::assertSent(fn (Request $request) => $request['max_completion_tokens'] === 200
+            && !isset($request['max_tokens']));
+    }
 }

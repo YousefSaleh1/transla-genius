@@ -64,7 +64,14 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
     protected array $headers;
 
     /**
-     * @param array{name?: string, key?: string, url?: string, model?: string, temperature?: float, max_tokens?: int, timeout?: int, auth_header?: string, headers?: array<string, string>} $config
+     * @var string Request-body field $maxTokens is sent as: "max_tokens"
+     *      (default) or "max_completion_tokens", which OpenAI's own API now
+     *      prefers and its reasoning models require.
+     */
+    protected string $tokenLimitParam;
+
+    /**
+     * @param array{name?: string, key?: string, url?: string, model?: string, temperature?: float, max_tokens?: int, timeout?: int, auth_header?: string, headers?: array<string, string>, token_limit_param?: string} $config
      *        Provider configuration array - one translaGenius.providers.* entry
      *        from config/translaGenius.php. `name` is injected by the service
      *        provider (the entry's config key). Every key is optional; missing
@@ -81,6 +88,7 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
         $this->timeout = (int) ($config['timeout'] ?? 10);
         $this->name = isset($config['name']) ? (string) $config['name'] : null;
         $this->authHeader = (string) ($config['auth_header'] ?? 'Authorization') ?: 'Authorization';
+        $this->tokenLimitParam = (string) ($config['token_limit_param'] ?? 'max_tokens') ?: 'max_tokens';
         $this->headers = array_filter(
             (array) ($config['headers'] ?? []),
             fn ($value) => $value !== null && $value !== ''
@@ -132,7 +140,7 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
                     ['role' => 'user', 'content' => $request->text],
                 ],
                 'temperature' => $this->temperature,
-                'max_tokens' => $this->maxTokens,
+                $this->tokenLimitParam => $this->maxTokens,
             ]);
         } catch (ConnectionException $e) {
             Log::warning('OpenAiCompatibleProvider: connection to translation API failed', [
