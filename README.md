@@ -12,6 +12,7 @@ The TranslaGenius package is a Laravel package designed to automatically transla
 - Lifecycle events for translation start/completion/failure
 - Provider fallback/chaining for resilience against a single backend's outage
 - Cost-safe Artisan command to backfill translations on existing records
+- Opt-in usage/cost tracking, queryable via a plain Eloquent model
 
 ## Installation
 
@@ -307,6 +308,59 @@ Event::listen(function (TranslationFailed $event) {
 The `TranslationCompleted` example above is what "Usage & Cost Tracking" below does out of the box (with cost estimation and a queryable model) - write your own listener like this only if you need something it doesn't cover, e.g. your own table shape or per-tenant billing logic.
 
 These are only dispatched from the automatic model-save lifecycle (the `Translatable` trait's job), not from direct `TranslatorInterface`/facade use - that context has no model or field to report.
+
+## Usage & Cost Tracking
+
+Opt-in, off by default - enabling it adds a `Listeners\LogTranslationUsage` listener on `Events\TranslationCompleted` that writes one row per completed translation to `translation_usage_logs`, and does nothing at all (no listener registered, no table required) when left disabled.
+
+**1. Publish and run the migration:**
+
+```bash
+php artisan vendor:publish --tag=translagenius-migrations
+php artisan migrate
+```
+
+**2. Enable it and (optionally) set per-provider cost rates**, in `config/translaGenius.php`:
+
+```php
+'usage_tracking' => [
+    'enabled' => env('TRANSLATION_USAGE_TRACKING_ENABLED', true),
+
+    'providers' => [
+        // Keyed by the provider identifier a TranslationResult reports
+        // (its `provider` property, e.g. 'openrouter'), not necessarily
+        // the same as a key under the top-level `providers` above.
+        'openrouter' => [
+            'cost_per_1k_prompt_tokens' => 0.0025,
+            'cost_per_1k_completion_tokens' => 0.01,
+        ],
+    ],
+],
+```
+
+A provider with no rate configured (or one whose result doesn't report token counts) gets a `null` `estimated_cost` on its rows - never a `0`, which would falsely claim the translation was free.
+
+**3. Query `Models\TranslationUsageLog`** like any other Eloquent model - it's public API surface meant for exactly this:
+
+```php
+use CodingPartners\TranslaGenius\Models\TranslationUsageLog;
+
+// Total estimated spend so far (rows with no known rate are correctly excluded).
+TranslationUsageLog::whereNotNull('estimated_cost')->sum('estimated_cost');
+
+// Usage for one model.
+TranslationUsageLog::where('model_class', Post::class)
+    ->where('model_id', $post->id)
+    ->get();
+
+// Per-provider token usage this month.
+TranslationUsageLog::selectRaw('provider, sum(prompt_tokens) as prompt, sum(completion_tokens) as completion')
+    ->whereMonth('created_at', now()->month)
+    ->groupBy('provider')
+    ->get();
+```
+
+Only successful translations (`TranslationCompleted`) are logged - not `TranslationFailed`. This feature is scoped to usage/cost, and a failed attempt has no token counts or cost to report; if you also want failure-rate visibility, listen to `TranslationFailed` yourself (see "Lifecycle Events" above) rather than expecting it in this table.
 
 ## Other Extension Points
 

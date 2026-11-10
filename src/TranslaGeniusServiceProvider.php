@@ -7,6 +7,8 @@ use CodingPartners\TranslaGenius\Console\Commands\CheckCommand;
 use CodingPartners\TranslaGenius\Contracts\LocaleResolverInterface;
 use CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface;
 use CodingPartners\TranslaGenius\Contracts\TranslatorInterface;
+use CodingPartners\TranslaGenius\Events\TranslationCompleted;
+use CodingPartners\TranslaGenius\Listeners\LogTranslationUsage;
 use CodingPartners\TranslaGenius\LocaleResolvers\DefaultLocaleResolver;
 use CodingPartners\TranslaGenius\Providers\FallbackProvider;
 use CodingPartners\TranslaGenius\Services\Translator;
@@ -131,11 +133,42 @@ class TranslaGeniusServiceProvider extends ServiceProvider
             __DIR__ . '/config/translaGenius.php' => config_path('translaGenius.php'),
         ], 'translagenius-config');
 
+        // Publish the usage-log migration - opt-in, same as the feature it
+        // backs (translaGenius.usage_tracking.enabled). Timestamped fresh
+        // at publish time, like any other package-shipped migration stub.
+        $this->publishes([
+            __DIR__ . '/database/migrations/create_translation_usage_logs_table.php.stub' => database_path(
+                'migrations/' . date('Y_m_d_His') . '_create_translation_usage_logs_table.php'
+            ),
+        ], 'translagenius-migrations');
+
         if ($this->app->runningInConsole()) {
             $this->commands([
                 CheckCommand::class,
                 BackfillCommand::class,
             ]);
         }
+
+        $this->registerUsageTrackingListener();
+    }
+
+    /**
+     * Register Listeners\LogTranslationUsage against Events\TranslationCompleted
+     * - but only when translaGenius.usage_tracking.enabled is true. This
+     * check happens here, once, at registration time - not inside the
+     * listener itself - so that when the feature is off, the listener is
+     * never wired up at all (no listener registered, nothing runs, no
+     * query against a table that may not even exist), not merely "runs but
+     * writes nothing."
+     *
+     * @return void
+     */
+    protected function registerUsageTrackingListener(): void
+    {
+        if (!$this->app['config']->get('translaGenius.usage_tracking.enabled', false)) {
+            return;
+        }
+
+        $this->app['events']->listen(TranslationCompleted::class, LogTranslationUsage::class);
     }
 }

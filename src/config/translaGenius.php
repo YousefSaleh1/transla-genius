@@ -52,4 +52,37 @@ return [
             'max_tokens' => env('TRANSLATION_MAX_TOKENS', 200),
         ],
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Usage & Cost Tracking
+    |--------------------------------------------------------------------------
+    |
+    | Opt-in: disabled by default, so a consuming app that doesn't want an
+    | extra database table doesn't get one silently. When enabled, one row
+    | is written to `translation_usage_logs` (see the publishable migration -
+    | `php artisan vendor:publish --tag=translagenius-migrations`) per
+    | successfully completed translation - see Events\TranslationCompleted
+    | and Listeners\LogTranslationUsage.
+    |
+    | `providers` below is keyed by the provider *identifier a
+    | TranslationResult reports* (its `provider` property - e.g.
+    | 'openrouter'), not necessarily the same as a key under the top-level
+    | `providers` config above (a custom driver could be registered under
+    | any name there, but still report whatever provider string it wants on
+    | each TranslationResult). Both cost rates are nullable and default to
+    | null - a provider with no rate configured gets a null estimated_cost
+    | on its log rows, not a misleading 0.
+    |
+    */
+    'usage_tracking' => [
+        'enabled' => env('TRANSLATION_USAGE_TRACKING_ENABLED', false),
+
+        'providers' => [
+            'openrouter' => [
+                'cost_per_1k_prompt_tokens' => env('TRANSLATION_OPENROUTER_COST_PER_1K_PROMPT_TOKENS'),
+                'cost_per_1k_completion_tokens' => env('TRANSLATION_OPENROUTER_COST_PER_1K_COMPLETION_TOKENS'),
+            ],
+        ],
+    ],
 ];

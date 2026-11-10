@@ -1,0 +1,44 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+/**
+ * Backs Models\TranslationUsageLog / Listeners\LogTranslationUsage - one row
+ * per Events\TranslationCompleted when translaGenius.usage_tracking.enabled
+ * is true. Plain relational columns only (no JSON) - unlike the package's
+ * own translatable-field storage, nothing here needs driver-specific
+ * JSON-path handling, so this sidesteps that portability concern entirely.
+ *
+ * model_class/model_id/field are nullable: every row TranslationCompleted
+ * produces today includes full model context (Phase 4c's design guarantees
+ * it), but the column shape doesn't assume that stays true forever.
+ */
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('translation_usage_logs', function (Blueprint $table) {
+            $table->id();
+            $table->string('provider')->nullable();
+            $table->string('model_class')->nullable();
+            $table->string('model_id')->nullable();
+            $table->string('field')->nullable();
+            $table->string('source_locale');
+            $table->string('target_locale');
+            $table->unsignedInteger('prompt_tokens')->nullable();
+            $table->unsignedInteger('completion_tokens')->nullable();
+            $table->decimal('estimated_cost', 10, 6)->nullable();
+            $table->timestamps();
+
+            $table->index(['model_class', 'model_id']);
+            $table->index('provider');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('translation_usage_logs');
+    }
+};
