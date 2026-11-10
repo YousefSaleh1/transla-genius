@@ -76,6 +76,13 @@ jobs:
           extensions: mbstring, pdo, pdo_sqlite, pdo_mysql, pdo_pgsql${{ matrix.db == 'sqlsrv' && ', pdo_sqlsrv' || '' }}
           coverage: none
 
+      # Audits the committed composer.lock, before this cell's require/update
+      # steps re-resolve dependencies. One cell is enough: the lock is the same
+      # file everywhere.
+      - name: Audit locked dependencies
+        if: matrix.php == '8.4' && matrix.laravel == '^13.0' && matrix.stability == 'prefer-stable' && matrix.db == 'sqlite'
+        run: composer audit --locked --no-interaction
+
       - name: Require Laravel ${{ matrix.laravel }} with testbench ${{ matrix.testbench }}
         run: |
           composer require "laravel/framework:${{ matrix.laravel }}" --no-update --no-interaction
