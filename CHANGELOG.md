@@ -46,6 +46,7 @@ A breaking architectural release: the translation backend is now swappable behin
 - Added an opt-in `shouldTranslateField()` hook models can define to filter which field content is sent for translation.
 - `Providers\OpenAiCompatibleProvider` accepts an optional `headers` array (merged into every request; null/empty values are dropped) an optional `auth_header` (default `Authorization`, which sends `Bearer <key>`; any other header name sends the raw key), and an optional `token_limit_param` (default `max_tokens`; set `max_completion_tokens` for APIs that deprecate `max_tokens`, such as OpenAI's).
 - Ready-made provider presets in the shipped config: `openrouter` (still the default), `openai`, `gemini`, `deepseek`, `mistral`, and `custom` for any other OpenAI-compatible endpoint (Ollama, vLLM, LiteLLM, ...). Each reads its own environment variables, so switching providers is a `.env` change (`TRANSLATION_PROVIDER=gemini` plus `GEMINI_API_KEY=...`). The legacy `TRANSLATION_API_KEY`/`TRANSLATION_API_URL`/`TRANSLATION_MODEL` variables keep working for the `openrouter` default and drive the `custom` entry.
+- Failover through `.env` alone: `TRANSLATION_PROVIDER=fallback` with `TRANSLATION_FALLBACK_CHAIN=openai,gemini` (comma-separated, whitespace trimmed, empty items ignored) uses the shipped `fallback` entry. A `chain` may now be an array or a comma-separated string.
 
 ### Fixed
 

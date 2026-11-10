@@ -102,12 +102,13 @@ class TranslaGeniusServiceProvider extends ServiceProvider
         }
 
         if ($providerConfig['driver'] === FallbackProvider::class) {
-            $chain = $providerConfig['chain'] ?? [];
+            $chain = $this->normalizeChain($providerConfig['chain'] ?? []);
 
             if (empty($chain)) {
                 throw new RuntimeException(
                     "TranslaGenius: fallback provider [{$name}] has no `chain` configured. "
-                    . 'Set `chain` to an array of at least 2 other provider names from `providers`.'
+                    . 'Set `chain` (or TRANSLATION_FALLBACK_CHAIN for the shipped `fallback` entry) '
+                    . 'to at least 2 other provider names from `providers`, e.g. "openai,gemini".'
                 );
             }
 
@@ -122,6 +123,25 @@ class TranslaGeniusServiceProvider extends ServiceProvider
         return $app->make($providerConfig['driver'], [
             'config' => array_merge($providerConfig, ['name' => $name]),
         ]);
+    }
+
+    /**
+     * Normalize a fallback `chain` to a list of provider names. Accepts an
+     * array or a comma-separated string (as read from
+     * TRANSLATION_FALLBACK_CHAIN); trims each name and drops empty items, so
+     * " openai, ,gemini " becomes ['openai', 'gemini'].
+     *
+     * @param array<int, string>|string|null $chain
+     * @return array<int, string>
+     */
+    protected function normalizeChain(array|string|null $chain): array
+    {
+        $names = is_array($chain) ? $chain : explode(',', (string) $chain);
+
+        return array_values(array_filter(
+            array_map(fn ($name) => trim((string) $name), $names),
+            fn (string $name) => $name !== ''
+        ));
     }
 
     /**

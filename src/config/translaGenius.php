@@ -1,5 +1,6 @@
 <?php
 
+use CodingPartners\TranslaGenius\Providers\FallbackProvider;
 use CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider;
 
 return [
@@ -154,6 +155,14 @@ return [
             'auth_header' => env('TRANSLATION_AUTH_HEADER', 'Authorization'),
             'cost_per_1k_prompt_tokens' => env('TRANSLATION_COST_PER_1K_PROMPT_TOKENS'),
             'cost_per_1k_completion_tokens' => env('TRANSLATION_COST_PER_1K_COMPLETION_TOKENS'),
+        ],
+
+        // Failover across other entries, in order: the first success wins.
+        // Enable with TRANSLATION_PROVIDER=fallback and a comma-separated
+        // TRANSLATION_FALLBACK_CHAIN, e.g. "openai,gemini" (at least 2).
+        'fallback' => [
+            'driver' => FallbackProvider::class,
+            'chain' => env('TRANSLATION_FALLBACK_CHAIN'),
         ],
     ],
 

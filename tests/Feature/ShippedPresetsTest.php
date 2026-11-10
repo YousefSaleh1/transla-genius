@@ -177,4 +177,94 @@ class ShippedPresetsTest extends Orchestra
             && $r->header('HTTP-Referer') === ['https://myapp.test']
             && $r->header('X-OpenRouter-Title') === ['My App']);
     }
+
+    /** @param array<string, int> $counts host => expected request count */
+    protected function assertRequestCounts(array $counts): void
+    {
+        foreach ($counts as $host => $expected) {
+            $actual = Http::recorded(fn (Request $r) => parse_url($r->url(), PHP_URL_HOST) === $host)->count();
+            $this->assertSame($expected, $actual, "Requests sent to {$host}");
+        }
+    }
+
+    public function test_env_only_fallback_serves_from_secondary_when_primary_fails()
+    {
+        Http::fake([
+            'api.openai.com/*' => Http::response(['error' => ['message' => 'down']], 503),
+            'generativelanguage.googleapis.com/*' => Http::response(['choices' => [['message' => ['content' => 'from-gemini']]]]),
+        ]);
+        $this->withEnv([
+            'TRANSLATION_PROVIDER' => 'fallback',
+            'TRANSLATION_FALLBACK_CHAIN' => 'openai,gemini',
+            'OPENAI_API_KEY' => 'sk-openai',
+            'GEMINI_API_KEY' => 'g-key',
+        ]);
+
+        $result = $this->translate();
+
+        $this->assertSame('from-gemini', $result->text);
+        $this->assertSame('gemini', $result->provider);
+        // 503 is retryable, so the primary uses its own retries (3 attempts)
+        // before the chain moves on; the secondary is called exactly once.
+        $this->assertRequestCounts(['api.openai.com' => 3, 'generativelanguage.googleapis.com' => 1]);
+    }
+
+    public function test_env_only_fallback_never_calls_secondary_when_primary_succeeds()
+    {
+        $this->fakeEndpoints();
+        $this->withEnv([
+            'TRANSLATION_PROVIDER' => 'fallback',
+            'TRANSLATION_FALLBACK_CHAIN' => 'openai,gemini',
+            'OPENAI_API_KEY' => 'sk-openai',
+            'GEMINI_API_KEY' => 'g-key',
+        ]);
+
+        $result = $this->translate();
+
+        $this->assertSame('openai', $result->provider);
+        $this->assertRequestCounts(['api.openai.com' => 1, 'generativelanguage.googleapis.com' => 0]);
+    }
+
+    public function test_fallback_chain_env_trims_whitespace_and_ignores_empty_items()
+    {
+        $this->fakeEndpoints();
+        $this->withEnv([
+            'TRANSLATION_PROVIDER' => 'fallback',
+            'TRANSLATION_FALLBACK_CHAIN' => ' openai , ,gemini ,',
+            'OPENAI_API_KEY' => 'sk-openai',
+            'GEMINI_API_KEY' => 'g-key',
+        ]);
+
+        $this->assertSame('openai', $this->translate()->provider);
+    }
+
+    public function test_fallback_without_chain_env_has_a_clear_error()
+    {
+        $this->withEnv(['TRANSLATION_PROVIDER' => 'fallback']);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('fallback provider [fallback] has no `chain` configured');
+
+        $this->app->make(TranslationProviderInterface::class);
+    }
+
+    public function test_fallback_chain_env_with_a_single_provider_is_rejected()
+    {
+        $this->withEnv(['TRANSLATION_PROVIDER' => 'fallback', 'TRANSLATION_FALLBACK_CHAIN' => 'openai, ']);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('requires at least 2 providers');
+
+        $this->app->make(TranslationProviderInterface::class);
+    }
+
+    public function test_fallback_chain_env_referencing_itself_is_rejected_as_a_cycle()
+    {
+        $this->withEnv(['TRANSLATION_PROVIDER' => 'fallback', 'TRANSLATION_FALLBACK_CHAIN' => 'openai,fallback']);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('provider chain forms a cycle: fallback -> fallback');
+
+        $this->app->make(TranslationProviderInterface::class);
+    }
 }
