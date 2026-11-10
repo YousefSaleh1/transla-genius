@@ -62,7 +62,7 @@ return [
     */
     'providers' => [
         'openrouter' => [
-            'driver' => \CodingPartners\TranslaGenius\Providers\OpenRouterProvider::class,
+            'driver' => \CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider::class,
             'key' => env('TRANSLATION_API_KEY'),
             'url' => env('TRANSLATION_API_URL', 'https://openrouter.ai/api/v1/chat/completions'),
             'model' => env('TRANSLATION_MODEL', 'openai/gpt-4o'),
@@ -222,7 +222,7 @@ There's no `--locales=` filter: `TranslateFields` always translates into every l
 1. **Model Events**: When a model is created or updated, the `Translatable` trait automatically dispatches a `TranslateFields` job.
 2. **Translation Job**: The `TranslateFields` job asks `Translator` to translate each missing field/locale, then hands the results to `TranslationWriter` to persist.
 3. **Translator**: `Translator` resolves whichever `TranslationProviderInterface` implementation is configured (`translaGenius.default`) and delegates to it - the job never talks to a specific provider directly.
-4. **Provider**: The bound provider (`OpenRouterProvider` by default) communicates with the external API and returns a `TranslationResult`.
+4. **Provider**: The bound provider (`OpenAiCompatibleProvider` by default) communicates with the external API and returns a `TranslationResult`.
 
 ## Custom Translation Providers
 
@@ -275,7 +275,7 @@ Then register it in `config/translaGenius.php` and point `default` at it - no ch
 
 'providers' => [
     'openrouter' => [
-        'driver' => \CodingPartners\TranslaGenius\Providers\OpenRouterProvider::class,
+        'driver' => \CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider::class,
         'key' => env('TRANSLATION_API_KEY'),
         'url' => env('TRANSLATION_API_URL', 'https://openrouter.ai/api/v1/chat/completions'),
         'model' => env('TRANSLATION_MODEL', 'openai/gpt-4o'),

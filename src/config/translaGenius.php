@@ -1,6 +1,6 @@
 <?php
 
-use CodingPartners\TranslaGenius\Providers\OpenRouterProvider;
+use CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider;
 
 return [
 
@@ -41,7 +41,7 @@ return [
     */
     'providers' => [
         'openrouter' => [
-            'driver' => OpenRouterProvider::class,
+            'driver' => OpenAiCompatibleProvider::class,
 
             // No fallback default for the key! Force the developer to set it.
             'key' => env('TRANSLATION_API_KEY'),

@@ -4,14 +4,14 @@ namespace CodingPartners\TranslaGenius\Tests\Feature;
 
 use CodingPartners\TranslaGenius\DTOs\TranslationRequest;
 use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
-use CodingPartners\TranslaGenius\Providers\OpenRouterProvider;
+use CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Orchestra\Testbench\TestCase;
 
 /**
- * Feature tests for OpenRouterProvider - the default
+ * Feature tests for OpenAiCompatibleProvider - the default
  * TranslationProviderInterface implementation.
  *
  * Deliberately does NOT extend the package's shared TestCase: this class
@@ -20,7 +20,7 @@ use Orchestra\Testbench\TestCase;
  * facades to resolve, but no database and no package config bootstrap at
  * all. That's the point of the refactor - prove it here.
  */
-class OpenRouterProviderTest extends TestCase
+class OpenAiCompatibleProviderTest extends TestCase
 {
     protected function config(array $overrides = []): array
     {
@@ -49,7 +49,7 @@ class OpenRouterProviderTest extends TestCase
             ], 200)
         ]);
 
-        $provider = new OpenRouterProvider($this->config());
+        $provider = new OpenAiCompatibleProvider($this->config());
         $result = $provider->translate(new TranslationRequest('Hello', 'en', 'ar'));
 
         Http::assertSent(function (Request $request) {
@@ -71,7 +71,7 @@ class OpenRouterProviderTest extends TestCase
     public function test_throws_non_retryable_exception_on_auth_error()
     {
         Http::fake(['test-api-url.com' => Http::response(['error' => 'Invalid API key'], 401)]);
-        $provider = new OpenRouterProvider($this->config());
+        $provider = new OpenAiCompatibleProvider($this->config());
 
         try {
             $provider->translate(new TranslationRequest('Hello', 'en', 'ar'));
@@ -85,7 +85,7 @@ class OpenRouterProviderTest extends TestCase
     public function test_throws_retryable_exception_on_rate_limit()
     {
         Http::fake(['test-api-url.com' => Http::response(['error' => 'Rate limited'], 429)]);
-        $provider = new OpenRouterProvider($this->config());
+        $provider = new OpenAiCompatibleProvider($this->config());
 
         try {
             $provider->translate(new TranslationRequest('Hello', 'en', 'ar'));
@@ -99,7 +99,7 @@ class OpenRouterProviderTest extends TestCase
     public function test_throws_retryable_exception_on_server_error()
     {
         Http::fake(['test-api-url.com' => Http::response(['error' => 'Internal error'], 500)]);
-        $provider = new OpenRouterProvider($this->config());
+        $provider = new OpenAiCompatibleProvider($this->config());
 
         try {
             $provider->translate(new TranslationRequest('Hello', 'en', 'ar'));
@@ -113,7 +113,7 @@ class OpenRouterProviderTest extends TestCase
     public function test_throws_retryable_exception_on_empty_content()
     {
         Http::fake(['test-api-url.com' => Http::response(['choices' => []], 200)]);
-        $provider = new OpenRouterProvider($this->config());
+        $provider = new OpenAiCompatibleProvider($this->config());
 
         try {
             $provider->translate(new TranslationRequest('Hello', 'en', 'ar'));
@@ -128,7 +128,7 @@ class OpenRouterProviderTest extends TestCase
         Http::fake(function () {
             throw new ConnectionException('Connection timed out');
         });
-        $provider = new OpenRouterProvider($this->config());
+        $provider = new OpenAiCompatibleProvider($this->config());
 
         try {
             $provider->translate(new TranslationRequest('Hello', 'en', 'ar'));
@@ -141,7 +141,7 @@ class OpenRouterProviderTest extends TestCase
 
     public function test_throws_non_retryable_exception_on_missing_config()
     {
-        $provider = new OpenRouterProvider($this->config(['key' => null]));
+        $provider = new OpenAiCompatibleProvider($this->config(['key' => null]));
 
         try {
             $provider->translate(new TranslationRequest('Hello', 'en', 'ar'));

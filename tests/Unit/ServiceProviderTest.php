@@ -3,7 +3,7 @@
 namespace CodingPartners\TranslaGenius\Tests\Unit;
 
 use CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface;
-use CodingPartners\TranslaGenius\Providers\OpenRouterProvider;
+use CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider;
 use CodingPartners\TranslaGenius\Services\Translator;
 use CodingPartners\TranslaGenius\TranslaGeniusServiceProvider;
 use CodingPartners\TranslaGenius\Tests\TestCase;
@@ -59,7 +59,7 @@ class ServiceProviderTest extends TestCase
      */
     public function test_translation_provider_interface_resolves_to_the_configured_driver()
     {
-        $this->assertInstanceOf(OpenRouterProvider::class, $this->app->make(TranslationProviderInterface::class));
+        $this->assertInstanceOf(OpenAiCompatibleProvider::class, $this->app->make(TranslationProviderInterface::class));
     }
 
     /**

@@ -2,7 +2,7 @@
 
 namespace CodingPartners\TranslaGenius\Tests;
 
-use CodingPartners\TranslaGenius\Providers\OpenRouterProvider;
+use CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider;
 use CodingPartners\TranslaGenius\TranslaGeniusServiceProvider;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
@@ -59,7 +59,7 @@ class TestCase extends Orchestra
             'default' => 'openrouter',
             'providers' => [
                 'openrouter' => [
-                    'driver' => OpenRouterProvider::class,
+                    'driver' => OpenAiCompatibleProvider::class,
                     'key' => 'test-api-key',
                     'url' => 'https://test-api-url.com',
                     'model' => 'test-model',

@@ -17,7 +17,7 @@ A breaking architectural release: the translation backend is now swappable behin
   // After
   'default' => 'openrouter',
   'providers' => [
-      'openrouter' => ['driver' => OpenRouterProvider::class, 'key' => ..., 'url' => ..., 'model' => ..., 'timeout' => ..., 'temperature' => ..., 'max_tokens' => ...],
+      'openrouter' => ['driver' => OpenAiCompatibleProvider::class, 'key' => ..., 'url' => ..., 'model' => ..., 'timeout' => ..., 'temperature' => ..., 'max_tokens' => ...],
   ],
   ```
   Republish the config file (`php artisan vendor:publish --tag=translagenius-config --force`) and migrate any custom values you'd set.
@@ -56,6 +56,6 @@ A breaking architectural release: the translation backend is now swappable behin
 
 ### Changed
 
-- `Services\AutoTranslationService` → split into `Providers\OpenRouterProvider` (HTTP transport, prompt construction, response parsing - the OpenRouter-specific implementation) and `Services\Translator` (a thin class that resolves the configured provider and delegates).
+- `Services\AutoTranslationService` → split into `Providers\OpenAiCompatibleProvider` (HTTP transport, prompt construction, response parsing - the OpenRouter-specific implementation) and `Services\Translator` (a thin class that resolves the configured provider and delegates).
 - Introduced `Exceptions\TranslationFailedException`, replacing the misused `Illuminate\Http\Exceptions\HttpResponseException`.
 - The translation prompt now uses the chat API's `system`/`user` message roles instead of one concatenated string.

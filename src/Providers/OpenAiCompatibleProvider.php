@@ -27,7 +27,7 @@ use Illuminate\Support\Str;
  * than reading the global config() facade directly - makes this class
  * constructible and testable with a plain array, no app config needed.
  */
-class OpenRouterProvider implements TranslationProviderInterface
+class OpenAiCompatibleProvider implements TranslationProviderInterface
 {
     /** @var string API key sent as a Bearer token; blank fails fast in translate(). */
     protected string $apiKey;
@@ -80,7 +80,7 @@ class OpenRouterProvider implements TranslationProviderInterface
     public function translate(TranslationRequest $request): TranslationResult
     {
         if (empty($this->apiKey) || empty($this->apiUrl)) {
-            Log::error('OpenRouterProvider: missing API key or URL configuration.');
+            Log::error('OpenAiCompatibleProvider: missing API key or URL configuration.');
 
             throw new TranslationFailedException(
                 'Translation provider configuration missing: API key or API URL.',
@@ -115,7 +115,7 @@ class OpenRouterProvider implements TranslationProviderInterface
                 'max_tokens' => $this->maxTokens,
             ]);
         } catch (ConnectionException $e) {
-            Log::warning('OpenRouterProvider: connection to translation API failed', [
+            Log::warning('OpenAiCompatibleProvider: connection to translation API failed', [
                 'exception_class' => get_class($e),
                 'message' => $e->getMessage(),
             ]);
@@ -131,7 +131,7 @@ class OpenRouterProvider implements TranslationProviderInterface
             $status = $response->status();
             $snippet = Str::limit((string) ($response->json('error.message') ?? $response->body()), 300);
 
-            Log::warning('OpenRouterProvider: API request failed', [
+            Log::warning('OpenAiCompatibleProvider: API request failed', [
                 'status' => $status,
                 'error' => $snippet,
             ]);
@@ -147,7 +147,7 @@ class OpenRouterProvider implements TranslationProviderInterface
         $content = $response->json('choices.0.message.content');
 
         if (empty($content)) {
-            Log::warning('OpenRouterProvider: API returned empty or invalid content', [
+            Log::warning('OpenAiCompatibleProvider: API returned empty or invalid content', [
                 'status' => $response->status(),
             ]);
 
@@ -158,7 +158,7 @@ class OpenRouterProvider implements TranslationProviderInterface
             );
         }
 
-        Log::info('OpenRouterProvider: translation successful');
+        Log::info('OpenAiCompatibleProvider: translation successful');
 
         return new TranslationResult(
             text: $content,

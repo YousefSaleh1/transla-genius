@@ -9,7 +9,7 @@ use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
 
 /**
  * A TranslationProviderInterface fake constructed from `array $config`
- * exactly like a real driver (OpenRouterProvider, FallbackProvider) - so,
+ * exactly like a real driver (OpenAiCompatibleProvider, FallbackProvider) - so,
  * unlike FakeTranslationProvider, it can be resolved through
  * TranslaGeniusServiceProvider's normal `providers.{name}.driver`
  * container-resolution path (`$app->make($driver, ['config' => $config])`)

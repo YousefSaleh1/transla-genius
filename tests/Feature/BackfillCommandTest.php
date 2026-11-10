@@ -4,7 +4,7 @@ namespace CodingPartners\TranslaGenius\Tests\Feature;
 
 use CodingPartners\TranslaGenius\DTOs\TranslationRequest;
 use CodingPartners\TranslaGenius\Jobs\TranslateFields;
-use CodingPartners\TranslaGenius\Providers\OpenRouterProvider;
+use CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider;
 use CodingPartners\TranslaGenius\Tests\Support\MarkerTranslationJob;
 use CodingPartners\TranslaGenius\Tests\TestModels\CustomJobTranslatableModel;
 use CodingPartners\TranslaGenius\Tests\TestModels\EmptyTranslatableModel;
@@ -57,7 +57,7 @@ class BackfillCommandTest extends Orchestra
             'default' => 'openrouter',
             'providers' => [
                 'openrouter' => [
-                    'driver' => OpenRouterProvider::class,
+                    'driver' => OpenAiCompatibleProvider::class,
                     'key' => 'test-api-key',
                     'url' => 'https://test-api-url.com',
                     'model' => 'test-model',
