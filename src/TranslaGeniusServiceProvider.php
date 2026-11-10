@@ -78,9 +78,10 @@ class TranslaGeniusServiceProvider extends ServiceProvider
      *        (directly or indirectly) references itself.
      * @return TranslationProviderInterface
      *
-     * @throws RuntimeException If $name has no config, no `driver`, an
-     *         empty `chain` (for a FallbackProvider driver), or `chain`
-     *         forms a cycle.
+     * @throws RuntimeException If $name has no config, no `driver`, a
+     *         `driver` class that doesn't exist or doesn't implement
+     *         TranslationProviderInterface, an empty `chain` (for a
+     *         FallbackProvider driver), or `chain` forms a cycle.
      */
     protected function resolveProvider(Application $app, string $name, array $seen = []): TranslationProviderInterface
     {
@@ -120,7 +121,27 @@ class TranslaGeniusServiceProvider extends ServiceProvider
             return new FallbackProvider($resolvedChain);
         }
 
-        return $app->make($providerConfig['driver'], [
+        $driver = $providerConfig['driver'];
+
+        if (!is_string($driver) || !class_exists($driver)) {
+            throw new RuntimeException(sprintf(
+                'TranslaGenius: provider [%s] has driver class [%s], which does not exist. '
+                . 'Check the class name and that it is autoloadable.',
+                $name,
+                is_string($driver) ? $driver : get_debug_type($driver)
+            ));
+        }
+
+        if (!is_subclass_of($driver, TranslationProviderInterface::class)) {
+            throw new RuntimeException(sprintf(
+                'TranslaGenius: provider [%s] has driver class [%s], which does not implement %s.',
+                $name,
+                $driver,
+                TranslationProviderInterface::class
+            ));
+        }
+
+        return $app->make($driver, [
             'config' => array_merge($providerConfig, ['name' => $name]),
         ]);
     }

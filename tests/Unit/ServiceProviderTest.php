@@ -92,6 +92,32 @@ class ServiceProviderTest extends TestCase
         $this->assertSame('my-gateway', $result->provider);
     }
 
+    public function test_driver_class_that_does_not_exist_has_a_clear_error()
+    {
+        config([
+            'translaGenius.default' => 'deepl',
+            'translaGenius.providers.deepl' => ['driver' => 'App\\Translation\\DeeplProvider'],
+        ]);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('provider [deepl] has driver class [App\\Translation\\DeeplProvider], which does not exist');
+
+        $this->app->make(TranslationProviderInterface::class);
+    }
+
+    public function test_driver_class_not_implementing_the_interface_has_a_clear_error()
+    {
+        config([
+            'translaGenius.default' => 'broken',
+            'translaGenius.providers.broken' => ['driver' => \stdClass::class],
+        ]);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('provider [broken] has driver class [stdClass], which does not implement ' . TranslationProviderInterface::class);
+
+        $this->app->make(TranslationProviderInterface::class);
+    }
+
     /**
      * Translator is resolvable and receives whatever provider is bound.
      *
