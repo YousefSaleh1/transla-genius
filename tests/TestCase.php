@@ -154,6 +154,9 @@ class TestCase extends Orchestra
                 'password' => env('DB_PASSWORD', ''),
                 'charset' => 'utf8',
                 'prefix' => '',
+                // ODBC Driver 18 encrypts by default; the CI SQL Server
+                // container uses a self-signed certificate.
+                'trust_server_certificate' => true,
             ],
             default => throw new \RuntimeException(
                 "Unsupported TRANSLAGENIUS_TEST_DB_CONNECTION value '$connection'. "
