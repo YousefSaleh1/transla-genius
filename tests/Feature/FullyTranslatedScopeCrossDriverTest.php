@@ -11,8 +11,9 @@ use Illuminate\Support\Facades\Schema;
 use Orchestra\Testbench\TestCase as Orchestra;
 
 /**
- * Fix 6 verification: scopeFullyTranslated() must produce equivalent
- * results on a non-MySQL driver, not just "compile" there.
+ * Fix 6 verification: scopeFullyTranslated() (and, since Phase 4d, its
+ * exact inverse scopeNotFullyTranslated()) must produce equivalent results
+ * on a non-MySQL driver, not just "compile" there.
  *
  * This intentionally does NOT extend the package's own TestCase - that
  * class hardcodes a MySQL connection (see tests/TestCase.php), which is
@@ -105,5 +106,53 @@ class FullyTranslatedScopeCrossDriverTest extends Orchestra
         ]);
 
         $this->assertCount(0, TestTranslatableModel::fullyTranslated()->get());
+    }
+
+    /**
+     * Phase 4d: notFullyTranslated() is scopeFullyTranslated()'s exact
+     * inverse - every record scopeFullyTranslated() excludes,
+     * notFullyTranslated() must include, and vice versa. Reuses this
+     * file's existing SQLite setup since it's the same cross-driver JSON
+     * query pattern (whereNull instead of whereNotNull), just inverted.
+     */
+    public function test_not_fully_translated_scope_on_sqlite()
+    {
+        Queue::fake();
+
+        $fullyTranslated = TestTranslatableModel::create([
+            'name' => ['en' => 'Test', 'ar' => 'اختبار', 'es' => 'Prueba'],
+            'description' => ['en' => 'Description', 'ar' => 'وصف', 'es' => 'Descripción'],
+        ]);
+
+        // Missing both target locales entirely.
+        $untranslated = TestTranslatableModel::create([
+            'name' => ['en' => 'Test'],
+            'description' => ['en' => 'Description'],
+        ]);
+
+        // Missing only 'es' on 'name' - one field, one locale.
+        $partiallyTranslated = TestTranslatableModel::create([
+            'name' => ['en' => 'Test', 'ar' => 'اختبار'],
+            'description' => ['en' => 'Description', 'ar' => 'وصف', 'es' => 'Descripción'],
+        ]);
+
+        $notFullyTranslated = TestTranslatableModel::notFullyTranslated()->get();
+
+        $this->assertCount(2, $notFullyTranslated);
+        $this->assertTrue($notFullyTranslated->contains($untranslated));
+        $this->assertTrue($notFullyTranslated->contains($partiallyTranslated));
+        $this->assertFalse($notFullyTranslated->contains($fullyTranslated));
+    }
+
+    public function test_not_fully_translated_scope_returns_empty_when_everything_qualifies()
+    {
+        Queue::fake();
+
+        TestTranslatableModel::create([
+            'name' => ['en' => 'Test', 'ar' => 'اختبار', 'es' => 'Prueba'],
+            'description' => ['en' => 'Description', 'ar' => 'وصف', 'es' => 'Descripción'],
+        ]);
+
+        $this->assertCount(0, TestTranslatableModel::notFullyTranslated()->get());
     }
 }

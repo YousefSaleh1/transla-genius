@@ -50,11 +50,36 @@ trait Translatable
      * the same constructor signature as TranslateFields and is dispatchable
      * (implements ShouldQueue, uses Dispatchable).
      *
+     * Stays `protected` - overriding it is a model's own internal
+     * customization, not something meant to be called from outside the
+     * model. External code (e.g. Console\Commands\BackfillCommand) that
+     * needs to know which job a model would dispatch should call
+     * getTranslationJobClass() instead of widening this method's own
+     * visibility, which would force every existing `protected` override
+     * (including the one documented in the README) to change too.
+     *
      * @return class-string<\Illuminate\Contracts\Queue\ShouldQueue>
+     *
+     * @see self::getTranslationJobClass() The public accessor for this.
      */
     protected static function translationJobClass(): string
     {
         return TranslateFields::class;
+    }
+
+    /**
+     * Public accessor for translationJobClass() - lets external code
+     * (e.g. BackfillCommand) resolve which job this model dispatches
+     * on create/update, including a model's own override, without that
+     * override point itself needing to be public.
+     *
+     * @return class-string<\Illuminate\Contracts\Queue\ShouldQueue>
+     *
+     * @see self::translationJobClass() The overridable extension point this exposes.
+     */
+    public static function getTranslationJobClass(): string
+    {
+        return static::translationJobClass();
     }
 
     /**
@@ -110,6 +135,8 @@ trait Translatable
      *
      * @param \Illuminate\Database\Eloquent\Builder $query
      * @return \Illuminate\Database\Eloquent\Builder
+     *
+     * @see self::scopeNotFullyTranslated() The inverse.
      */
     public function scopeFullyTranslated(Builder $query)
     {
@@ -128,5 +155,45 @@ trait Translatable
         }
 
         return $query;
+    }
+
+    /**
+     * Scope to filter models that are missing at least one target
+     * language, in at least one translatable field - the exact inverse of
+     * scopeFullyTranslated(). Used by `php artisan translagenius:backfill`
+     * to find records to (re-)dispatch TranslateFields for.
+     *
+     * The De Morgan's-dual of scopeFullyTranslated()'s query: that scope
+     * ANDs together "every field has every language" (where/whereNotNull,
+     * implicitly AND-joined); this one ORs together "some field is missing
+     * some language" (orWhere/orWhereNull), wrapped in a single top-level
+     * where() so the OR logic stays self-contained and composes safely
+     * with any other constraints already on $query (rather than OR-ing
+     * against them too). Same `column->path` JSON syntax as
+     * scopeFullyTranslated(), so it's equally driver-agnostic.
+     *
+     * @param \Illuminate\Database\Eloquent\Builder $query
+     * @return \Illuminate\Database\Eloquent\Builder
+     *
+     * @see self::scopeFullyTranslated() The inverse.
+     */
+    public function scopeNotFullyTranslated(Builder $query)
+    {
+        if (empty($this->translatable) || !is_array($this->translatable)) {
+            return $query;
+        }
+
+        $targetLanguages = get_supported_languages();
+        $translatableFields = $this->translatable;
+
+        return $query->where(function ($outer) use ($translatableFields, $targetLanguages) {
+            foreach ($translatableFields as $field) {
+                $outer->orWhere(function ($inner) use ($field, $targetLanguages) {
+                    foreach ($targetLanguages as $language) {
+                        $inner->orWhereNull("{$field}->{$language}");
+                    }
+                });
+            }
+        });
     }
 }

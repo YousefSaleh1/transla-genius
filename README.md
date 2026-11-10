@@ -11,6 +11,7 @@ The TranslaGenius package is a Laravel package designed to automatically transla
 - Comprehensive scope filters
 - Lifecycle events for translation start/completion/failure
 - Provider fallback/chaining for resilience against a single backend's outage
+- Cost-safe Artisan command to backfill translations on existing records
 
 ## Installation
 
@@ -175,6 +176,30 @@ $posts = Post::fullyTranslated()->get();
 ```
 
 This scope checks if all translatable fields have a translation in the Supported Languages. It ensures that only records with complete translations are returned, which is useful for ensuring data consistency and completeness.
+
+The exact inverse, `notFullyTranslated`, is what powers the backfill command below - `Post::notFullyTranslated()->get()` returns every record missing at least one field/locale.
+
+## Backfilling Existing Records
+
+`php artisan translagenius:backfill {model}` finds existing records that aren't fully translated and dispatches the same `TranslateFields` job for them that a normal create/update would - useful after adding a new translatable field or a new supported language, or after a period where the queue worker wasn't running.
+
+```bash
+# Preview only - reports the count, dispatches nothing.
+php artisan translagenius:backfill "App\Models\Post" --dry-run
+
+# Interactive: shows the count and estimated API calls, then prompts to confirm.
+php artisan translagenius:backfill "App\Models\Post"
+
+# Non-interactive/CI use - skips the prompt.
+php artisan translagenius:backfill "App\Models\Post" --force
+
+# Tune how many records are loaded per chunk (default 100).
+php artisan translagenius:backfill "App\Models\Post" --force --chunk=500
+```
+
+It always requires either `--force` or an interactive "yes" before dispatching anything - a bare run with no confirmation mechanism satisfied reports the count and stops, dispatching nothing. `{model}` must be a fully-qualified class using the `Translatable` trait; an invalid class, a non-Eloquent class, or a model missing the trait is rejected up front with a clear message rather than failing partway through. Iteration uses `chunkById()` (not `chunk()`) so it stays correct even while jobs it just dispatched are being processed concurrently.
+
+There's no `--locales=` filter: `TranslateFields` always translates into every locale from `translaGenius.supported_languages` (already-translated field/locale pairs are skipped automatically, at no API cost), and that target set isn't parameterized per-dispatch - narrowing it correctly would mean changing `TranslateFields` itself, which this command deliberately doesn't touch.
 
 ## How It Works
 

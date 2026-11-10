@@ -2,6 +2,7 @@
 
 namespace CodingPartners\TranslaGenius;
 
+use CodingPartners\TranslaGenius\Console\Commands\BackfillCommand;
 use CodingPartners\TranslaGenius\Console\Commands\CheckCommand;
 use CodingPartners\TranslaGenius\Contracts\LocaleResolverInterface;
 use CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface;
@@ -133,6 +134,7 @@ class TranslaGeniusServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 CheckCommand::class,
+                BackfillCommand::class,
             ]);
         }
     }
