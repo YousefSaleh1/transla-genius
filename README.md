@@ -74,7 +74,7 @@ return [
 ];
 ```
 
-> **Upgrading from 1.x?** The config shape changed - see [CHANGELOG.md](CHANGELOG.md) for the v2.0.0 migration notes.
+> **Upgrading from 3.x?** The config shape changed - see [CHANGELOG.md](CHANGELOG.md) for the migration notes.
 
 ### Environment Variables
 
