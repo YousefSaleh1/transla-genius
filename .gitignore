@@ -8,7 +8,7 @@
 # OS files
 .DS_Store
 
-# Claude Code: machine-local state only. Shared, project-level config
+# Local tool state only. Shared, project-level config
 # (settings.json, commands/, agents/, skills/) stays trackable.
 /.claude/*
 !/.claude/settings.json
