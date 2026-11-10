@@ -7,6 +7,12 @@ use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
+/**
+ * Sets the application locale for the current request from its
+ * Accept-Language header, constrained to the resolver's supported locales.
+ *
+ * @see \CodingPartners\TranslaGenius\Contracts\LocaleResolverInterface
+ */
 class SetLocale
 {
     /**
@@ -19,6 +25,10 @@ class SetLocale
 
     /**
      * Handle an incoming request and set application locale.
+     *
+     * Picks the first of the request's Accept-Language preferences that is
+     * in the resolver's supported locale list; falls back to the first
+     * supported locale (the configured default) if none match.
      *
      * @param  \Illuminate\Http\Request  $request
      * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next

@@ -29,13 +29,31 @@ use Illuminate\Support\Str;
  */
 class OpenRouterProvider implements TranslationProviderInterface
 {
+    /** @var string API key sent as a Bearer token; blank fails fast in translate(). */
     protected string $apiKey;
+
+    /** @var string Full chat-completions endpoint URL to POST to. */
     protected string $apiUrl;
+
+    /** @var string Model identifier passed through to the API (e.g. "openai/gpt-4o"). */
     protected string $model;
+
+    /** @var float Sampling temperature passed through to the API. */
     protected float $temperature;
+
+    /** @var int Maximum tokens the API may generate for the response. */
     protected int $maxTokens;
+
+    /** @var int HTTP request timeout, in seconds. */
     protected int $timeout;
 
+    /**
+     * @param array{key?: string, url?: string, model?: string, temperature?: float, max_tokens?: int, timeout?: int} $config
+     *        Provider configuration array - see translaGenius.providers.openrouter
+     *        in config/translaGenius.php. Every key is optional; missing
+     *        key/url are caught explicitly in translate() rather than left
+     *        to fail as an opaque HTTP error.
+     */
     public function __construct(array $config)
     {
         $this->apiKey = (string) ($config['key'] ?? '');
@@ -46,6 +64,19 @@ class OpenRouterProvider implements TranslationProviderInterface
         $this->timeout = (int) ($config['timeout'] ?? 10);
     }
 
+    /**
+     * Translate the given request via an OpenAI-compatible chat-completions
+     * endpoint, retrying transient failures (connection errors, 5xx, 429)
+     * up to 3 times with jittered exponential backoff before giving up.
+     *
+     * @param TranslationRequest $request The text and locale pair to translate.
+     * @return TranslationResult
+     *
+     * @throws TranslationFailedException If the API key/URL are missing, the
+     *         connection fails, the API returns a failed response, or the
+     *         response contains no translated content. `retryable` is set
+     *         per failure mode - see isRetryableStatus().
+     */
     public function translate(TranslationRequest $request): TranslationResult
     {
         if (empty($this->apiKey) || empty($this->apiUrl)) {

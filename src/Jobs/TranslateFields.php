@@ -13,6 +13,20 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
+/**
+ * Queued job that translates a model's translatable fields into every
+ * configured target language and persists the results.
+ *
+ * Dispatched automatically by Traits\Translatable on model create/update
+ * (see Translatable::bootTranslatable() and translationJobClass() for how
+ * to swap in a custom job with the same constructor signature). Computing
+ * the translations (this class, via TranslatorInterface) is deliberately
+ * separate from persisting them (TranslationWriter) - see TranslationWriter
+ * for why only the write step runs under a row lock.
+ *
+ * @see \CodingPartners\TranslaGenius\Traits\Translatable
+ * @see \CodingPartners\TranslaGenius\Services\TranslationWriter
+ */
 class TranslateFields implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, SerializesModels;
@@ -65,7 +79,22 @@ class TranslateFields implements ShouldQueue
     }
 
     /**
-     * Execute the job.
+     * Execute the job: compute missing translations for every configured
+     * field via $translator, then persist them via $writer.
+     *
+     * A TranslationFailedException that isn't retryable calls
+     * $this->fail() immediately instead of retrying; a retryable one is
+     * rethrown so the queue applies $tries/backoff() as normal. Any other
+     * exception propagates uncaught.
+     *
+     * @param TranslatorInterface $translator Resolves the actual per-field,
+     *        per-locale translate() calls.
+     * @param TranslationWriter $writer Persists the computed translations
+     *        onto $this->model.
+     * @return void
+     *
+     * @throws TranslationFailedException If translation fails and is
+     *         retryable (propagated for the queue to retry).
      */
     public function handle(TranslatorInterface $translator, TranslationWriter $writer)
     {
@@ -138,9 +167,9 @@ class TranslateFields implements ShouldQueue
      * concurrent updates.
      *
      * @param TranslatorInterface $translator
-     * @param string $currentLocale
-     * @param array $targetLanguages
-     * @return array
+     * @param string $currentLocale The locale field values are read/translated from.
+     * @param array<int, string> $targetLanguages Locales to translate into.
+     * @return array<string, array<string, string>> Map of field => [locale => text].
      */
     protected function prepareTranslations(TranslatorInterface $translator, string $currentLocale, array $targetLanguages): array
     {
@@ -189,11 +218,13 @@ class TranslateFields implements ShouldQueue
     }
 
     /**
-     * Normalize field translations to array format.
+     * Normalize a field's current value to a [locale => text] array: passed
+     * through as-is if already an array, otherwise wrapped as the single
+     * value for $currentLocale.
      *
-     * @param mixed $value
-     * @param string $currentLocale
-     * @return array
+     * @param mixed $value The field's current value (array or scalar).
+     * @param string $currentLocale Locale to key a scalar $value under.
+     * @return array<string, string>
      */
     protected function normalizeFieldTranslations($value, string $currentLocale): array
     {

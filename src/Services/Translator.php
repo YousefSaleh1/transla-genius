@@ -24,17 +24,26 @@ use CodingPartners\TranslaGenius\DTOs\TranslationResult;
  */
 class Translator implements TranslatorInterface
 {
+    /**
+     * @param TranslationProviderInterface $provider The backend to delegate
+     *        translate() calls to - whichever implementation is bound (see
+     *        translaGenius.default / translaGenius.providers.*).
+     */
     public function __construct(protected TranslationProviderInterface $provider)
     {
     }
 
     /**
-     * @param string $text
-     * @param string $sourceLocale
-     * @param string $targetLocale
+     * Translate a piece of text by delegating to the bound
+     * TranslationProviderInterface.
+     *
+     * @param string $text The source text to translate.
+     * @param string $sourceLocale The locale $text is written in.
+     * @param string $targetLocale The locale to translate $text into.
      * @return TranslationResult
      *
      * @throws \CodingPartners\TranslaGenius\Exceptions\TranslationFailedException
+     *         If the underlying provider cannot complete the translation.
      */
     public function translate(string $text, string $sourceLocale, string $targetLocale): TranslationResult
     {

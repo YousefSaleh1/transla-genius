@@ -9,6 +9,11 @@ namespace CodingPartners\TranslaGenius\DTOs;
  */
 final readonly class TranslationRequest
 {
+    /**
+     * @param string $text The source text to translate.
+     * @param string $sourceLocale The locale $text is written in.
+     * @param string $targetLocale The locale to translate $text into.
+     */
     public function __construct(
         public string $text,
         public string $sourceLocale,

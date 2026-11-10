@@ -24,6 +24,17 @@ use InvalidArgumentException;
  */
 final readonly class TranslationResult
 {
+    /**
+     * @param string $text The translated text. Must be non-empty.
+     * @param string|null $provider Identifier of the provider that produced
+     *        this result (e.g. "openrouter"), if the provider reports one.
+     * @param int|null $promptTokens Prompt token usage, if the provider
+     *        reports token-level usage metadata.
+     * @param int|null $completionTokens Completion token usage, if the
+     *        provider reports token-level usage metadata.
+     *
+     * @throws \InvalidArgumentException If $text is empty or all whitespace.
+     */
     public function __construct(
         public string $text,
         public ?string $provider = null,

@@ -57,6 +57,16 @@ trait Translatable
         return TranslateFields::class;
     }
 
+    /**
+     * Whether any translatable field's value for the current locale actually
+     * changed on this save. Guards the `updated` listener so a save that
+     * only touches non-source-locale data (or non-translatable columns)
+     * doesn't trigger a needless re-translation dispatch.
+     *
+     * @param \Illuminate\Database\Eloquent\Model $model
+     * @param array<int, string> $translatableFields
+     * @return bool
+     */
     protected static function hasSourceLocaleChanged($model, array $translatableFields): bool
     {
         $currentLocale = get_current_locale();

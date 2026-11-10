@@ -29,7 +29,7 @@ if (!function_exists('get_supported_languages')) {
      * requiring callers to resolve the interface themselves.
      *
      * @param string|null $excludeLang Language to exclude (default: current locale)
-     * @return array
+     * @return array<int, string>
      */
     function get_supported_languages(?string $excludeLang = null)
     {

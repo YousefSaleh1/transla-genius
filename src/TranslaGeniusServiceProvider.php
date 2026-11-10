@@ -29,6 +29,11 @@ class TranslaGeniusServiceProvider extends ServiceProvider
      * Register any application services.
      *
      * @return void
+     *
+     * @throws \RuntimeException When TranslationProviderInterface is
+     *         resolved and no provider is configured for
+     *         translaGenius.default (raised lazily, inside the singleton
+     *         factory - not at register() call time).
      */
     public function register()
     {

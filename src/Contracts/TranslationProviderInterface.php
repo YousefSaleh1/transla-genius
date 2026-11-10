@@ -27,8 +27,11 @@ interface TranslationProviderInterface
      * CodingPartners\TranslaGenius\Exceptions\TranslationFailedException on
      * failure (setting `retryable` appropriately for the failure mode).
      *
-     * @param TranslationRequest $request
+     * @param TranslationRequest $request The text and locale pair to translate.
      * @return TranslationResult
+     *
+     * @throws \CodingPartners\TranslaGenius\Exceptions\TranslationFailedException
+     *         If the backend cannot complete the translation.
      */
     public function translate(TranslationRequest $request): TranslationResult;
 }
