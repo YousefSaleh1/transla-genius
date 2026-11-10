@@ -7,83 +7,63 @@ on:
   workflow_dispatch:
 
 jobs:
-  # The tracked suite's shared TestCase now reads TRANSLAGENIUS_TEST_DB_CONNECTION
-  # to pick its driver (default: sqlite in-memory) - each row below sets it to
-  # match its own service container. MariaDB is wire-compatible with the mysql
-  # PDO driver, so it's a genuine, valid row here; Postgres/SQL Server use
-  # TestCase's own pgsql/sqlsrv config branches - see the sqlserver job below.
   test:
     runs-on: ubuntu-latest
+
+    # SQL Server has not had a green run yet. Remove this once it has.
+    continue-on-error: ${{ matrix.db == 'sqlsrv' }}
 
     strategy:
       fail-fast: false
       matrix:
-        php: ["8.3"]
-        laravel: ["12", "13"]
-        db: ["mysql", "mariadb"]
+        # Base grid: every supported PHP x Laravel x dependency-stability
+        # combination, on SQLite. Catches constraint and framework-version
+        # problems cheaply, with no service container.
+        php: ["8.3", "8.4"]
+        laravel: ["^12.0", "^13.0"]
+        stability: ["prefer-stable", "prefer-lowest"]
+        db: ["sqlite"]
+        include:
+          # Matching testbench per Laravel major (added to the base cells).
+          - laravel: "^12.0"
+            testbench: "^10.0"
+          - laravel: "^13.0"
+            testbench: "^11.0"
 
-    name: PHP ${{ matrix.php }} — Laravel ${{ matrix.laravel }} — ${{ matrix.db }}
+          # Every database on the newest stack: the JSON-path SQL differs by
+          # driver, not by PHP version, so one full pass is enough there.
+          - { php: "8.4", laravel: "^13.0", testbench: "^11.0", stability: "prefer-stable", db: "mysql", db_image: "mysql:8.0", db_port: "3306", db_user: "root", db_password: "" }
+          - { php: "8.4", laravel: "^13.0", testbench: "^11.0", stability: "prefer-stable", db: "mariadb", db_image: "mariadb:10.6", db_port: "3306", db_user: "root", db_password: "" }
+          - { php: "8.4", laravel: "^13.0", testbench: "^11.0", stability: "prefer-stable", db: "pgsql", db_image: "postgres:16", db_port: "5432", db_user: "postgres", db_password: "" }
+          - { php: "8.4", laravel: "^13.0", testbench: "^11.0", stability: "prefer-stable", db: "sqlsrv", db_image: "mcr.microsoft.com/mssql/server:2022-latest", db_port: "1433", db_user: "sa", db_password: "TranslaGenius_CI_2024!" }
+
+          # The query grammar lives in the framework, so also run the two most
+          # common server databases on the oldest stack we allow.
+          - { php: "8.3", laravel: "^12.0", testbench: "^10.0", stability: "prefer-lowest", db: "mysql", db_image: "mysql:8.0", db_port: "3306", db_user: "root", db_password: "" }
+          - { php: "8.3", laravel: "^12.0", testbench: "^10.0", stability: "prefer-lowest", db: "pgsql", db_image: "postgres:16", db_port: "5432", db_user: "postgres", db_password: "" }
+
+    name: PHP ${{ matrix.php }} - Laravel ${{ matrix.laravel }} - ${{ matrix.stability }} - ${{ matrix.db }}
 
     services:
       db:
-        image: ${{ matrix.db == 'mariadb' && 'mariadb:10.6' || 'mysql:8.0' }}
+        # An empty image (the sqlite cells) means no service container starts.
+        image: ${{ matrix.db_image || '' }}
         env:
-          MYSQL_ALLOW_EMPTY_PASSWORD: yes
-          MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: yes
+          MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+          MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: "yes"
+          POSTGRES_HOST_AUTH_METHOD: trust
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: ${{ matrix.db_password }}
         ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mysqladmin ping"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=10
+          - ${{ matrix.db_port || '3306' }}:${{ matrix.db_port || '3306' }}
 
     env:
       TRANSLAGENIUS_TEST_DB_CONNECTION: ${{ matrix.db }}
       DB_HOST: 127.0.0.1
-      DB_PORT: 3306
+      DB_PORT: ${{ matrix.db_port }}
       DB_DATABASE: translagenius_test
-      DB_USERNAME: root
-      DB_PASSWORD: ""
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup PHP ${{ matrix.php }}
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: ${{ matrix.php }}
-          extensions: mbstring, pdo, pdo_mysql, pdo_sqlite, json
-          coverage: none
-
-      - name: Require Laravel ${{ matrix.laravel }}
-        run: |
-          composer require "illuminate/support:^${{ matrix.laravel }}.0" --no-update --no-interaction
-
-      - name: Install dependencies
-        run: composer update --prefer-dist --no-interaction --no-progress
-
-      - name: Wait for database
-        run: |
-          for i in $(seq 1 30); do
-            mysqladmin ping -h 127.0.0.1 -P 3306 -u root --silent && break
-            sleep 2
-          done
-
-      - name: Run test suite
-        run: vendor/bin/phpunit
-
-  # Everything here boots its own Orchestra Testbench app against SQLite
-  # in-memory directly (not the shared MySQL-only TestCase), so it needs no
-  # service container and is unaffected by the TestCase limitation above.
-  # This is real coverage for PostgreSQL-shape JSON path behavior too, in
-  # the sense that these tests exercise the same whereNotNull("field->locale")
-  # code path Task 3's report verified identically compiles across drivers -
-  # but a live PostgreSQL/SQL Server row against the *tracked* suite is not
-  # yet possible without fixing TestCase.php's hardcoded driver first.
-  sqlite-and-cross-driver:
-    runs-on: ubuntu-latest
+      DB_USERNAME: ${{ matrix.db_user }}
+      DB_PASSWORD: ${{ matrix.db_password }}
 
     steps:
       - name: Checkout
@@ -92,70 +72,36 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: "8.3"
-          extensions: mbstring, pdo, pdo_sqlite, json
+          php-version: ${{ matrix.php }}
+          extensions: mbstring, pdo, pdo_sqlite, pdo_mysql, pdo_pgsql${{ matrix.db == 'sqlsrv' && ', pdo_sqlsrv' || '' }}
           coverage: none
 
-      - name: Install dependencies
-        run: composer install --prefer-dist --no-interaction --no-progress
-
-      - name: Verify SQLite JSON support
+      - name: Require Laravel ${{ matrix.laravel }} with testbench ${{ matrix.testbench }}
         run: |
-          php -r "var_dump((new PDO('sqlite::memory:'))->query(\"select json_extract('{}', '\$')\")->fetchColumn() !== false);"
+          composer require "laravel/framework:${{ matrix.laravel }}" --no-update --no-interaction
+          composer require --dev "orchestra/testbench:${{ matrix.testbench }}" --no-update --no-interaction
 
-      - name: Run SQLite-backed and cross-driver tests
-        run: >
-          vendor/bin/phpunit
-          tests/Feature/FullyTranslatedScopeCrossDriverTest.php
-          tests/Feature/IsolationSwapTest.php
-          tests/Feature/ProviderSwapTest.php
-          tests/Feature/OpenRouterProviderTest.php
-          tests/Feature/CheckCommandTest.php
-          tests/Unit
+      - name: Install dependencies (${{ matrix.stability }})
+        run: composer update --${{ matrix.stability }} --prefer-dist --no-interaction --no-progress
 
-  # Attempted, not locally verifiable from this project's dev sandbox
-  # (arm64 macOS has no pdo_sqlsrv build path and no ARM64 mssql-server
-  # image works cleanly here - see the Phase 3 report). GitHub's
-  # ubuntu-latest runners are x86_64, where Microsoft's official
-  # mssql-server Linux image *does* run natively, so this row is a
-  # legitimate attempt, not a known-broken placeholder - but it has not
-  # actually been exercised by a CI run yet. Treat its first real result
-  # as the actual verification, not this file existing.
-  sqlserver:
-    runs-on: ubuntu-latest
-    continue-on-error: true
-
-    services:
-      mssql:
-        image: mcr.microsoft.com/mssql/server:2022-latest
-        env:
-          ACCEPT_EULA: "Y"
-          MSSQL_SA_PASSWORD: "TranslaGenius_CI_2024!"
-        ports:
-          - 1433:1433
-        options: >-
-          --health-cmd="/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P TranslaGenius_CI_2024! -Q 'SELECT 1'"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=10
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup PHP with sqlsrv
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: "8.3"
-          extensions: mbstring, pdo, pdo_sqlsrv, json
-          coverage: none
-
-      - name: Install dependencies
-        run: composer install --prefer-dist --no-interaction --no-progress
-
-      - name: Verify SQL Server JSON support
+      - name: Wait for database
+        if: matrix.db != 'sqlite'
         run: |
-          php -r "
-          \$pdo = new PDO('sqlsrv:Server=127.0.0.1,1433;Database=master', 'sa', 'TranslaGenius_CI_2024!');
-          var_dump(\$pdo->query(\"select JSON_VALUE('{}', '\$.x') as x\")->fetchColumn() !== false);
-          "
+          for i in $(seq 1 60); do
+            php -r '
+              $c = getenv("TRANSLAGENIUS_TEST_DB_CONNECTION");
+              $h = getenv("DB_HOST"); $p = getenv("DB_PORT");
+              $dsn = match ($c) {
+                  "mysql", "mariadb" => "mysql:host=$h;port=$p",
+                  "pgsql" => "pgsql:host=$h;port=$p;dbname=postgres",
+                  "sqlsrv" => "sqlsrv:Server=$h,$p;TrustServerCertificate=1",
+              };
+              new PDO($dsn, getenv("DB_USERNAME"), getenv("DB_PASSWORD"));
+            ' 2>/dev/null && exit 0
+            sleep 2
+          done
+          echo "Database did not become ready in time" >&2
+          exit 1
+
+      - name: Run test suite
+        run: vendor/bin/phpunit
