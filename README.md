@@ -7,7 +7,7 @@ The TranslaGenius package is a Laravel package designed to automatically transla
 - Multi-language support (configurable)
 - Automatic field translation
 - Queue-based translation processing
-- Flexible API integration
+- Switch between AI providers (OpenAI, Gemini, OpenRouter, DeepSeek, Mistral, or any OpenAI-compatible endpoint) with `.env` only
 - Comprehensive scope filters
 - Lifecycle events for translation start/completion/failure
 - Provider fallback/chaining for resilience against a single backend's outage
@@ -26,68 +26,100 @@ composer require coding-partners/transla-genius
 
 ## Configuration
 
-After installing the package, you need to publish the configuration file:
+You don't need to write code or edit config to choose a translation provider: everything below is driven by `.env`. Publishing the config file is optional, for when you want to change supported languages or a preset's defaults:
 
 ```bash
 php artisan vendor:publish --provider="CodingPartners\TranslaGenius\TranslaGeniusServiceProvider" --tag="translagenius-config"
 ```
 
-This will create a `translaGenius.php` file in your `config` directory. You can modify this file to set your Supported Languages, and other translation settings:
+The languages to translate between live in `supported_languages` (the first is the default):
 
 ```php
-return [
-    /*
-    |--------------------------------------------------------------------------
-    | Supported Languages
-    |--------------------------------------------------------------------------
-    | List of supported language codes (ISO 639-1).
-    | The first language will be considered as default.
-    */
-    'supported_languages' => ['en', 'ar', 'es', 'fr'],
-
-    /*
-    |--------------------------------------------------------------------------
-    | Default Translation Provider
-    |--------------------------------------------------------------------------
-    | Which entry in `providers` below actually performs translations.
-    */
-    'default' => env('TRANSLATION_PROVIDER', 'openrouter'),
-
-    /*
-    |--------------------------------------------------------------------------
-    | Translation Providers
-    |--------------------------------------------------------------------------
-    | Each entry is a `driver` class plus whatever config that driver needs.
-    | See "Custom Translation Providers" below to add your own.
-    */
-    'providers' => [
-        'openrouter' => [
-            'driver' => \CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider::class,
-            'key' => env('TRANSLATION_API_KEY'),
-            'url' => env('TRANSLATION_API_URL', 'https://openrouter.ai/api/v1/chat/completions'),
-            'model' => env('TRANSLATION_MODEL', 'openai/gpt-4o'),
-            'timeout' => env('TRANSLATION_API_TIMEOUT', 10),
-            'temperature' => env('TRANSLATION_TEMPERATURE', 0.3),
-            'max_tokens' => env('TRANSLATION_MAX_TOKENS', 200),
-        ],
-    ],
-];
+'supported_languages' => ['en', 'ar', 'es', 'fr'],
 ```
 
 > **Upgrading from 3.x?** The config shape changed - see [CHANGELOG.md](CHANGELOG.md) for the migration notes.
 
-### Environment Variables
+### Choosing a Provider
 
-Make sure to set the following environment variables in your `.env` file:
+The package ships ready-made presets for common OpenAI-compatible services. Each one reads its own environment variables and defaults to the service's official endpoint.
+
+| Preset | Required | Optional | Default model |
+|---|---|---|---|
+| `openrouter` (default) | `OPENROUTER_API_KEY`, or the legacy `TRANSLATION_API_KEY` | `OPENROUTER_MODEL`, `OPENROUTER_API_URL`, `OPENROUTER_SITE_URL`, `OPENROUTER_APP_NAME` | `openai/gpt-4o` |
+| `openai` | `OPENAI_API_KEY` | `OPENAI_MODEL`, `OPENAI_API_URL` | `gpt-6-luna` |
+| `gemini` | `GEMINI_API_KEY` | `GEMINI_MODEL`, `GEMINI_API_URL` | `gemini-3.5-flash-lite` |
+| `deepseek` | `DEEPSEEK_API_KEY` | `DEEPSEEK_MODEL`, `DEEPSEEK_API_URL` | `deepseek-flash` |
+| `mistral` | `MISTRAL_API_KEY` | `MISTRAL_MODEL`, `MISTRAL_API_URL` | `mistral-small-latest` |
+| `custom` | `TRANSLATION_API_URL`, `TRANSLATION_MODEL` | `TRANSLATION_API_KEY`, `TRANSLATION_AUTH_HEADER`, `TRANSLATION_TOKEN_LIMIT_PARAM` | none |
+
+Settings shared by every preset: `TRANSLATION_API_TIMEOUT` (seconds, default 10), `TRANSLATION_TEMPERATURE` (default 0.3), `TRANSLATION_MAX_TOKENS` (default 200). Usage-tracking cost rates are per preset: `OPENAI_COST_PER_1K_PROMPT_TOKENS` / `OPENAI_COST_PER_1K_COMPLETION_TOKENS`, and the same pattern for `OPENROUTER_`, `GEMINI_`, `DEEPSEEK_` and `MISTRAL_`; `custom` uses `TRANSLATION_COST_PER_1K_*`.
+
+Default models are a starting point, checked against each provider's documentation when they were chosen. Providers retire models over time; set the `*_MODEL` variable to pin the one you want. `mistral-small-latest` is an alias that Mistral may move to a newer model (and price) without notice.
+
+### Switching Providers with `.env` Only
+
+Set the preset name and its key. Nothing else changes:
 
 ```env
-TRANSLATION_API_KEY=your_openai_api_key
-TRANSLATION_API_URL=https://openrouter.ai/api/v1/chat/completions
-TRANSLATION_MODEL=openai/gpt-4o
-TRANSLATION_API_TIMEOUT=10
-TRANSLATION_TEMPERATURE=0.3
-TRANSLATION_MAX_TOKENS=200
+TRANSLATION_PROVIDER=gemini
+GEMINI_API_KEY=your-gemini-key
 ```
+
+Existing setups keep working: `TRANSLATION_PROVIDER` still defaults to `openrouter`, and that preset still reads `TRANSLATION_API_KEY`, `TRANSLATION_API_URL` and `TRANSLATION_MODEL` when its own `OPENROUTER_*` variables aren't set. Those legacy names also drive `custom`, so if you use both presets together (for example in a fallback chain), set `OPENROUTER_API_KEY` and friends explicitly for OpenRouter.
+
+### Fallback with `.env` Only
+
+To fail over from one provider to another, point `TRANSLATION_PROVIDER` at the shipped `fallback` entry and list the presets to try, in order:
+
+```env
+TRANSLATION_PROVIDER=fallback
+TRANSLATION_FALLBACK_CHAIN=openai,gemini
+OPENAI_API_KEY=your-openai-key
+GEMINI_API_KEY=your-gemini-key
+```
+
+The first provider to succeed wins; later ones aren't called. Names are trimmed and empty items ignored, and the chain needs at least 2 entries. A missing chain, a chain that references itself, or an unknown name fails at resolution time with an error naming the problem. See [Provider Fallback / Chaining](#provider-fallback--chaining) for how failures are handled.
+
+### Any Other OpenAI-Compatible Endpoint
+
+The `custom` preset covers any service or self-hosted gateway that speaks the OpenAI chat-completions format (Ollama, vLLM, LiteLLM, a corporate proxy, ...). Set the **full** chat-completions URL:
+
+```env
+TRANSLATION_PROVIDER=custom
+TRANSLATION_API_URL=http://localhost:11434/v1/chat/completions
+TRANSLATION_MODEL=llama3.1
+TRANSLATION_API_KEY=anything-or-empty-if-your-gateway-ignores-it
+```
+
+By default the key is sent as `Authorization: Bearer <key>`. For a service that takes the key in a different header, name it with `TRANSLATION_AUTH_HEADER` and the raw key is sent there instead. Azure OpenAI's key-based auth, for example, documents an `api-key` header (`TRANSLATION_AUTH_HEADER=api-key`); this has not been tested against a live Azure resource. If a service rejects `max_tokens`, set `TRANSLATION_TOKEN_LIMIT_PARAM=max_completion_tokens`.
+
+In a published config, any OpenAI-compatible entry also accepts a `headers` array of extra request headers (null or empty values are dropped). The `openrouter` preset uses it for OpenRouter's optional `HTTP-Referer` / `X-OpenRouter-Title` attribution headers, set via `OPENROUTER_SITE_URL` / `OPENROUTER_APP_NAME`.
+
+One provider entry, with every setting it understands:
+
+```php
+'gemini' => [
+    'driver' => \CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider::class,
+    'key' => env('GEMINI_API_KEY'),
+    'url' => env('GEMINI_API_URL', 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'),
+    'model' => env('GEMINI_MODEL', 'gemini-3.5-flash-lite'),
+    'timeout' => env('TRANSLATION_API_TIMEOUT', 10),
+    'temperature' => env('TRANSLATION_TEMPERATURE', 0.3),
+    'max_tokens' => env('TRANSLATION_MAX_TOKENS', 200),
+    'token_limit_param' => 'max_tokens',   // or 'max_completion_tokens'
+    'auth_header' => 'Authorization',      // or e.g. 'api-key'
+    'headers' => [],                       // extra request headers
+    'cost_per_1k_prompt_tokens' => env('GEMINI_COST_PER_1K_PROMPT_TOKENS'),
+    'cost_per_1k_completion_tokens' => env('GEMINI_COST_PER_1K_COMPLETION_TOKENS'),
+],
+```
+
+Each translation's `TranslationResult->provider` (and its usage-log row) records the entry's key - `gemini` here.
+
+### APIs That Aren't OpenAI-Compatible
+
+`.env` alone can't reach an API with a different request shape, such as DeepL, AWS Translate or Azure Translator. Those need a small class implementing `TranslationProviderInterface` - see [Custom Translation Providers](#custom-translation-providers).
 
 ## Usage
 
@@ -226,68 +258,81 @@ There's no `--locales=` filter: `TranslateFields` always translates into every l
 
 ## Custom Translation Providers
 
-TranslaGenius doesn't hard-code OpenRouter/GPT-4o into the translation flow - it's the default of a swappable `TranslationProviderInterface`. To use a different backend (DeepL, Google Translate, another LLM, an internal translation service), implement the interface:
+For a translation API that doesn't speak the OpenAI chat-completions format, write a class implementing `TranslationProviderInterface` and register it as a provider entry. The `Translatable` trait, the job, fallback chains and usage tracking all work with it unchanged.
+
+A DeepL provider, as a worked example (endpoint and fields per DeepL's [Translate text](https://developers.deepl.com/api-reference/translate/request-translation) reference):
 
 ```php
+namespace App\Translation;
+
 use CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface;
 use CodingPartners\TranslaGenius\DTOs\TranslationRequest;
 use CodingPartners\TranslaGenius\DTOs\TranslationResult;
+use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
+use Illuminate\Support\Facades\Http;
 
 class DeepLProvider implements TranslationProviderInterface
 {
+    // $config is this provider's entry from config/translaGenius.php, plus
+    // `name` (the entry's key), which the package adds for you.
     public function __construct(protected array $config)
     {
-        // $config is whatever you put under providers.deepl below.
     }
 
     public function translate(TranslationRequest $request): TranslationResult
     {
-        // Call DeepL, map its response into a TranslationResult.
-        // On failure, throw CodingPartners\TranslaGenius\Exceptions\TranslationFailedException,
-        // setting `retryable: false` for permanent failures (bad key) and
-        // `retryable: true` for transient ones (timeouts, rate limits) -
-        // that flag drives the job's retry/fail behavior.
-        return new TranslationResult(text: $translatedText, provider: 'deepl');
+        $response = Http::withHeaders([
+            'Authorization' => 'DeepL-Auth-Key ' . $this->config['key'],
+        ])->timeout(10)->post($this->config['url'], [
+            'text' => [$request->text],
+            'source_lang' => strtoupper($request->sourceLocale),
+            'target_lang' => strtoupper($request->targetLocale),
+        ]);
+
+        if ($response->failed()) {
+            throw new TranslationFailedException(
+                "DeepL request failed with status {$response->status()}",
+                statusCode: $response->status(),
+                // Permanent failures (bad key) shouldn't be retried; rate
+                // limits and server errors should.
+                retryable: $response->status() === 429 || $response->serverError(),
+            );
+        }
+
+        $text = $response->json('translations.0.text');
+
+        if (empty($text)) {
+            throw new TranslationFailedException('DeepL returned no translation', retryable: true);
+        }
+
+        return new TranslationResult(text: $text, provider: $this->config['name'] ?? 'deepl');
     }
 }
 ```
 
-Then register it in `config/translaGenius.php` and point `default` at it - no changes to the `Translatable` trait, `TranslateFields`, or anything else in the package:
+Register it next to the shipped presets in a published `config/translaGenius.php`:
 
 ```php
-'default' => 'deepl',
-
 'providers' => [
+    // ... shipped presets ...
     'deepl' => [
         'driver' => \App\Translation\DeepLProvider::class,
         'key' => env('DEEPL_API_KEY'),
+        'url' => env('DEEPL_API_URL', 'https://api.deepl.com/v2/translate'), // api-free.deepl.com on the Free plan
     ],
-    // 'openrouter' => [ ... ] can stay defined alongside it
 ],
 ```
 
+From then on it's selectable like any preset: `TRANSLATION_PROVIDER=deepl`, or as a member of `TRANSLATION_FALLBACK_CHAIN`. If `driver` names a class that doesn't exist, or one that doesn't implement `TranslationProviderInterface`, resolution fails immediately with an error naming the provider key and the class. Locale codes are passed through as configured in `supported_languages`; map them if your API expects a different format (DeepL distinguishes `EN-GB`/`EN-US` targets, for example).
+
 ## Provider Fallback / Chaining
 
-`Providers\FallbackProvider` wraps an ordered list of other providers: it tries each in turn and returns the first success, so a primary outage doesn't take translation down with it. It's just another `driver`, configured with a `chain` of other provider names instead of API credentials:
+`Providers\FallbackProvider` wraps an ordered list of other providers: it tries each in turn and returns the first success, so a primary outage doesn't take translation down with it. The shipped `fallback` entry is driven by `TRANSLATION_FALLBACK_CHAIN` (see [Fallback with `.env` Only](#fallback-with-env-only)); in a published config you can also define your own, with `chain` as an array:
 
 ```php
-'default' => 'resilient',
-
-'providers' => [
-    'openrouter' => [
-        'driver' => \CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider::class,
-        'key' => env('TRANSLATION_API_KEY'),
-        'url' => env('TRANSLATION_API_URL', 'https://openrouter.ai/api/v1/chat/completions'),
-        'model' => env('TRANSLATION_MODEL', 'openai/gpt-4o'),
-    ],
-    'deepl' => [
-        'driver' => \App\Translation\DeepLProvider::class,
-        'key' => env('DEEPL_API_KEY'),
-    ],
-    'resilient' => [
-        'driver' => \CodingPartners\TranslaGenius\Providers\FallbackProvider::class,
-        'chain' => ['openrouter', 'deepl'], // tried in this order
-    ],
+'resilient' => [
+    'driver' => \CodingPartners\TranslaGenius\Providers\FallbackProvider::class,
+    'chain' => ['openai', 'deepl'], // any provider names, tried in this order
 ],
 ```
 
@@ -335,7 +380,15 @@ php artisan vendor:publish --tag=translagenius-migrations
 php artisan migrate
 ```
 
-**2. Enable it and (optionally) set cost rates.** Rates belong to each provider's own entry under `providers`, so one provider's settings live in one place:
+**2. Enable it and (optionally) set cost rates.** With the shipped presets this is `.env` only:
+
+```env
+TRANSLATION_USAGE_TRACKING_ENABLED=true
+OPENAI_COST_PER_1K_PROMPT_TOKENS=0.0001
+OPENAI_COST_PER_1K_COMPLETION_TOKENS=0.0005
+```
+
+Rates belong to each provider's own entry under `providers`, so in a published config they sit with the rest of that provider's settings:
 
 ```php
 'providers' => [
