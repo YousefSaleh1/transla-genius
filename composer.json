@@ -71,6 +71,11 @@
             }
         }
     },
+    "config": {
+        "platform": {
+            "php": "8.3.0"
+        }
+    },
     "minimum-stability": "stable",
     "scripts": {
         "test": "vendor/bin/phpunit",
