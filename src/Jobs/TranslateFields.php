@@ -176,7 +176,7 @@ class TranslateFields implements ShouldQueue
         $translations = [];
 
         foreach ($this->fields as $field) {
-            $fieldTranslations = $this->normalizeFieldTranslations($this->model->{$field}, $currentLocale);
+            $fieldTranslations = $this->normalizeFieldTranslations($this->model->getTranslations($field), $currentLocale);
             $sourceText = $fieldTranslations[$currentLocale] ?? null;
 
             if ($sourceText === null || !$this->shouldTranslateField($field, $sourceText)) {
