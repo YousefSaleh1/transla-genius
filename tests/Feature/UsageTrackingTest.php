@@ -157,4 +157,22 @@ class UsageTrackingTest extends Orchestra
         $this->assertGreaterThan(0, TranslationUsageLog::count());
         $this->assertSame(0, TranslationUsageLog::whereNotNull('estimated_cost')->count());
     }
+
+    public function test_empty_string_rates_from_env_count_as_unconfigured_not_zero()
+    {
+        Config::set('translaGenius.providers.fake', [
+            'cost_per_1k_prompt_tokens' => '',
+            'cost_per_1k_completion_tokens' => '',
+        ]);
+
+        $this->app->singleton(
+            TranslationProviderInterface::class,
+            fn () => new FakeConfigurableProvider(['id' => 'fake', 'prompt_tokens' => 100, 'completion_tokens' => 50])
+        );
+
+        TestTranslatableModel::create(['name' => ['en' => 'Hello'], 'description' => ['en' => 'World']]);
+
+        $this->assertGreaterThan(0, TranslationUsageLog::count());
+        $this->assertSame(0, TranslationUsageLog::whereNotNull('estimated_cost')->count());
+    }
 }

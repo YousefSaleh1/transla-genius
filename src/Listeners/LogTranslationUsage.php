@@ -73,8 +73,10 @@ class LogTranslationUsage
         }
 
         $rates = config("translaGenius.providers.{$provider}", []);
-        $promptRate = $rates['cost_per_1k_prompt_tokens'] ?? null;
-        $completionRate = $rates['cost_per_1k_completion_tokens'] ?? null;
+        // An empty string (e.g. `OPENAI_COST_PER_1K_PROMPT_TOKENS=` in .env)
+        // means "not configured", not a rate of 0.
+        $promptRate = ($rates['cost_per_1k_prompt_tokens'] ?? '') === '' ? null : $rates['cost_per_1k_prompt_tokens'];
+        $completionRate = ($rates['cost_per_1k_completion_tokens'] ?? '') === '' ? null : $rates['cost_per_1k_completion_tokens'];
 
         if ($promptRate === null && $completionRate === null) {
             return null;
