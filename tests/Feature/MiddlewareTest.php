@@ -29,7 +29,7 @@ class MiddlewareTest extends TestCase
      */
     public function test_middleware_sets_locale_from_header()
     {
-        $middleware = new SetLocale();
+        $middleware = $this->app->make(SetLocale::class);
         $request = Request::create('/', 'GET');
         $request->headers->set('Accept-Language', 'ar');
 
@@ -52,7 +52,7 @@ class MiddlewareTest extends TestCase
      */
     public function test_middleware_sets_default_locale_for_unsupported_language()
     {
-        $middleware = new SetLocale();
+        $middleware = $this->app->make(SetLocale::class);
         $request = Request::create('/', 'GET');
         $request->headers->set('Accept-Language', 'fr'); // French not in supported languages
 
@@ -75,7 +75,7 @@ class MiddlewareTest extends TestCase
      */
     public function test_middleware_sets_default_locale_when_no_header()
     {
-        $middleware = new SetLocale();
+        $middleware = $this->app->make(SetLocale::class);
         $request = Request::create('/', 'GET');
 
         $response = $middleware->handle($request, function ($req) {

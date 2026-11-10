@@ -9,6 +9,7 @@ The TranslaGenius package is a Laravel package designed to automatically transla
 - Queue-based translation processing
 - Flexible API integration
 - Comprehensive scope filters
+- Provider fallback/chaining for resilience against a single backend's outage
 
 ## Installation
 
@@ -117,6 +118,15 @@ Schema::create('posts', function (Blueprint $table) {
 });
 ```
 
+### Database Requirements
+
+TranslaGenius targets Laravel's five first-party-supported relational databases: MariaDB 10.3+, MySQL 5.7+, PostgreSQL 10.0+, SQLite 3.26.0+, and SQL Server 2017+. The `fullyTranslated` scope and the translatable columns rely on each database's JSON path functions, which are unconditionally available on MySQL, MariaDB, PostgreSQL, and SQL Server at those floors - but **not** on SQLite:
+
+- **SQLite's actual requirement is 3.38.0+, or an earlier 3.26.0+ build with JSON1 explicitly compiled in** - Laravel's own bare 3.26.0+ floor is not sufficient on its own for this package. JSON functions were an optional SQLite extension before 3.38.0 (2022), and several real-world PHP distributions (older Debian/Ubuntu base images, some bundled Windows builds) shipped without it, producing a cryptic `no such function: json_extract` error the first time a model saves. Run `php artisan translagenius:check` after installing to verify your connection supports what this package needs - it checks all four SQL-based drivers, but SQLite is the one where the answer genuinely isn't guaranteed by version number alone.
+- **MySQL/MariaDB**: the row-level locking `TranslateFields` uses to protect against concurrent-update races requires the InnoDB storage engine. On a table using the legacy MyISAM engine, the lock is silently a no-op (MyISAM has no row-level locking at all). This is the practical default for any MySQL/MariaDB app - not something you need to configure - but worth knowing if you're running against an unusually old or custom-configured install.
+- **PostgreSQL**: `$table->json()` migrations create a plain `json` column, not `jsonb` - correctness of `fullyTranslated` and translation storage is unaffected either way, but if you need indexed/containment JSON queries at scale, consider migrating your translatable columns to `jsonb` yourself (not a default this package imposes).
+- **SQLite locking note**: `lockForUpdate()` compiles to nothing on SQLite (`SQLiteGrammar::compileLock()` is unconditionally empty) - the concurrent-write protection still holds there, but because SQLite serializes all writers at the database-file/WAL level regardless of query-level lock hints, not because of an explicit row lock.
+
 ### Step 3: Middleware Setup
 
 To automatically set the locale based on the request, you can include the `SetLocale` middleware in your `bootstrap/app.php`:
@@ -213,6 +223,57 @@ Then register it in `config/translaGenius.php` and point `default` at it - no ch
     // 'openrouter' => [ ... ] can stay defined alongside it
 ],
 ```
+
+## Provider Fallback / Chaining
+
+`Providers\FallbackProvider` wraps an ordered list of other providers: it tries each in turn and returns the first success, so a primary outage doesn't take translation down with it. It's just another `driver`, configured with a `chain` of other provider names instead of API credentials:
+
+```php
+'default' => 'resilient',
+
+'providers' => [
+    'openrouter' => [
+        'driver' => \CodingPartners\TranslaGenius\Providers\OpenRouterProvider::class,
+        'key' => env('TRANSLATION_API_KEY'),
+        'url' => env('TRANSLATION_API_URL', 'https://openrouter.ai/api/v1/chat/completions'),
+        'model' => env('TRANSLATION_MODEL', 'openai/gpt-4o'),
+    ],
+    'deepl' => [
+        'driver' => \App\Translation\DeepLProvider::class,
+        'key' => env('DEEPL_API_KEY'),
+    ],
+    'resilient' => [
+        'driver' => \CodingPartners\TranslaGenius\Providers\FallbackProvider::class,
+        'chain' => ['openrouter', 'deepl'], // tried in this order
+    ],
+],
+```
+
+Each name in `chain` is resolved the normal way (through its own `driver`/config entry), so a chain can mix any providers - built-in or your own - with no special-casing required from them. Falls through to the next provider on *any* translation failure from the current one, not only a retryable one - an unusable primary (bad key, exhausted quota) is exactly the case a fallback exists for, and that's typically a non-retryable failure. If every provider in the chain fails, `Exceptions\AllProvidersFailedException` (a `TranslationFailedException` subclass, so it's handled by `TranslateFields` exactly like any other translation failure) is thrown with each provider's individual failure attached via `getFailures()`, for diagnosing which one(s) actually broke.
+
+## Other Extension Points
+
+Beyond the provider, two more seams are swappable without forking anything:
+
+- **The dispatched job** - override `translationJobClass()` on your model to dispatch a custom job (e.g. one with additional side effects) instead of the default `TranslateFields`:
+  ```php
+  class Post extends Model
+  {
+      use Translatable;
+
+      protected static function translationJobClass(): string
+      {
+          return \App\Jobs\CustomTranslateFields::class;
+      }
+  }
+  ```
+- **Locale resolution** - `SetLocale`, the `Translatable` trait, and the `get_current_locale()`/`get_supported_languages()` helpers all resolve locale through the bound `Contracts\LocaleResolverInterface` (default: `LocaleResolvers\DefaultLocaleResolver`, which reads the request's `Accept-Language` header via `SetLocale` and `translaGenius.supported_languages`). Rebind it in your own service provider for a different strategy (subdomain-based, per-user preference, ...):
+  ```php
+  $this->app->singleton(
+      \CodingPartners\TranslaGenius\Contracts\LocaleResolverInterface::class,
+      \App\Support\SubdomainLocaleResolver::class
+  );
+  ```
 
 ## Example Workflow
 

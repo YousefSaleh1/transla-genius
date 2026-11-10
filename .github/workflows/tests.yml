@@ -15,14 +15,16 @@ jobs:
       matrix:
         php: ["8.3"]
         laravel: ["12", "13"]
+        db: ["mysql", "mariadb"]
 
-    name: PHP ${{ matrix.php }} — Laravel ${{ matrix.laravel }}
+    name: PHP ${{ matrix.php }} — Laravel ${{ matrix.laravel }} — ${{ matrix.db }}
 
     services:
-      mysql:
-        image: mysql:8.0
+      db:
+        image: ${{ matrix.db == 'mariadb' && 'mariadb:10.6' || 'mysql:8.0' }}
         env:
           MYSQL_ALLOW_EMPTY_PASSWORD: yes
+          MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: yes
         ports:
           - 3306:3306
         options: >-
@@ -56,7 +58,7 @@ jobs:
       - name: Install dependencies
         run: composer update --prefer-dist --no-interaction --no-progress
 
-      - name: Wait for MySQL
+      - name: Wait for database
         run: |
           for i in $(seq 1 30); do
             mysqladmin ping -h 127.0.0.1 -P 3306 -u root --silent && break
@@ -65,3 +67,89 @@ jobs:
 
       - name: Run test suite
         run: vendor/bin/phpunit
+
+  # Everything here boots its own Orchestra Testbench app against SQLite
+  # in-memory directly (not the shared MySQL-only TestCase), so it needs no
+  # service container and is unaffected by the TestCase limitation above.
+  # This is real coverage for PostgreSQL-shape JSON path behavior too, in
+  # the sense that these tests exercise the same whereNotNull("field->locale")
+  # code path Task 3's report verified identically compiles across drivers -
+  # but a live PostgreSQL/SQL Server row against the *tracked* suite is not
+  # yet possible without fixing TestCase.php's hardcoded driver first.
+  sqlite-and-cross-driver:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: mbstring, pdo, pdo_sqlite, json
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Verify SQLite JSON support
+        run: |
+          php -r "var_dump((new PDO('sqlite::memory:'))->query(\"select json_extract('{}', '\$')\")->fetchColumn() !== false);"
+
+      - name: Run SQLite-backed and cross-driver tests
+        run: >
+          vendor/bin/phpunit
+          tests/Feature/FullyTranslatedScopeCrossDriverTest.php
+          tests/Feature/IsolationSwapTest.php
+          tests/Feature/ProviderSwapTest.php
+          tests/Feature/OpenRouterProviderTest.php
+          tests/Feature/CheckCommandTest.php
+          tests/Unit
+
+  # Attempted, not locally verifiable from this project's dev sandbox
+  # (arm64 macOS has no pdo_sqlsrv build path and no ARM64 mssql-server
+  # image works cleanly here - see the Phase 3 report). GitHub's
+  # ubuntu-latest runners are x86_64, where Microsoft's official
+  # mssql-server Linux image *does* run natively, so this row is a
+  # legitimate attempt, not a known-broken placeholder - but it has not
+  # actually been exercised by a CI run yet. Treat its first real result
+  # as the actual verification, not this file existing.
+  sqlserver:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    services:
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: "TranslaGenius_CI_2024!"
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd="/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P TranslaGenius_CI_2024! -Q 'SELECT 1'"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP with sqlsrv
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: mbstring, pdo, pdo_sqlsrv, json
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Verify SQL Server JSON support
+        run: |
+          php -r "
+          \$pdo = new PDO('sqlsrv:Server=127.0.0.1,1433;Database=master', 'sa', 'TranslaGenius_CI_2024!');
+          var_dump(\$pdo->query(\"select JSON_VALUE('{}', '\$.x') as x\")->fetchColumn() !== false);
+          "

@@ -2,10 +2,11 @@
 
 namespace CodingPartners\TranslaGenius\Jobs;
 
+use CodingPartners\TranslaGenius\Contracts\TranslatorInterface;
 use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
-use CodingPartners\TranslaGenius\Services\Translator;
 use CodingPartners\TranslaGenius\Services\TranslationWriter;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
@@ -16,8 +17,15 @@ class TranslateFields implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, SerializesModels;
 
-    protected $model;
-    protected $fields;
+    /**
+     * @var Model&\CodingPartners\TranslaGenius\Contracts\HasTranslatableAttributes
+     */
+    protected Model $model;
+
+    /**
+     * @var array<int, string>
+     */
+    protected array $fields;
 
     /**
      * Number of attempts before the job is considered permanently failed.
@@ -46,8 +54,11 @@ class TranslateFields implements ShouldQueue
 
     /**
      * Create a new job instance.
+     *
+     * @param Model&\CodingPartners\TranslaGenius\Contracts\HasTranslatableAttributes $model
+     * @param array<int, string> $fields
      */
-    public function __construct($model, $fields)
+    public function __construct(Model $model, array $fields)
     {
         $this->model = $model;
         $this->fields = $fields;
@@ -56,7 +67,7 @@ class TranslateFields implements ShouldQueue
     /**
      * Execute the job.
      */
-    public function handle(Translator $translator, TranslationWriter $writer)
+    public function handle(TranslatorInterface $translator, TranslationWriter $writer)
     {
         try {
             $currentLocale = get_current_locale();
@@ -126,12 +137,12 @@ class TranslateFields implements ShouldQueue
      * it. See TranslationWriter for why that split matters under
      * concurrent updates.
      *
-     * @param Translator $translator
+     * @param TranslatorInterface $translator
      * @param string $currentLocale
      * @param array $targetLanguages
      * @return array
      */
-    protected function prepareTranslations(Translator $translator, string $currentLocale, array $targetLanguages): array
+    protected function prepareTranslations(TranslatorInterface $translator, string $currentLocale, array $targetLanguages): array
     {
         $translations = [];
 

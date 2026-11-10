@@ -4,6 +4,7 @@ namespace CodingPartners\TranslaGenius\Services;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
+use InvalidArgumentException;
 
 /**
  * Persists a computed set of translations onto one model, guarding against
@@ -28,6 +29,14 @@ class TranslationWriter
     {
         if (empty($translations)) {
             return;
+        }
+
+        if (!method_exists($model, 'getTranslation') || !method_exists($model, 'setTranslation')) {
+            throw new InvalidArgumentException(sprintf(
+                '%s must use the %s trait (getTranslation()/setTranslation() are missing).',
+                get_class($model),
+                \CodingPartners\TranslaGenius\Traits\Translatable::class
+            ));
         }
 
         DB::transaction(function () use ($model, $translations) {

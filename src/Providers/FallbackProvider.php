@@ -1,0 +1,119 @@
+<?php
+
+namespace CodingPartners\TranslaGenius\Providers;
+
+use CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface;
+use CodingPartners\TranslaGenius\DTOs\TranslationRequest;
+use CodingPartners\TranslaGenius\DTOs\TranslationResult;
+use CodingPartners\TranslaGenius\Exceptions\AllProvidersFailedException;
+use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
+use Illuminate\Support\Facades\Log;
+use InvalidArgumentException;
+
+/**
+ * A pure TranslationProviderInterface decorator over an ordered chain of
+ * other providers: try each in order, return the first success, and only
+ * throw once every provider has failed. Nothing about this class is
+ * OpenRouter- or HTTP-specific - it composes any TranslationProviderInterface
+ * implementations, including a mix of different backends (an LLM provider
+ * chained with DeepL, say).
+ *
+ * Falls through to the next provider on ANY TranslationFailedException from
+ * the current one, not just a retryable() one. isRetryable() encodes
+ * whether retrying the SAME provider (same credentials, same endpoint) is
+ * worth it - a 401 from provider A says nothing about whether provider B,
+ * with entirely different credentials, would also fail. Gating fallback on
+ * provider A's own retry semantics would also mean the chain never helps
+ * with exactly the failure it exists for: provider A being completely
+ * unusable (bad key, expired quota) is a non-retryable failure, and that's
+ * precisely when falling through to B matters most.
+ *
+ * Constructed via config - see translaGenius.providers.*.driver /
+ * translaGenius.providers.*.chain and TranslaGeniusServiceProvider - rather
+ * than ever being instantiated directly outside that resolution path.
+ *
+ * @see \CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface
+ * @see \CodingPartners\TranslaGenius\Exceptions\AllProvidersFailedException
+ */
+final class FallbackProvider implements TranslationProviderInterface
+{
+    /** @var array<int, TranslationProviderInterface> */
+    protected array $providers;
+
+    /**
+     * @param array<int, TranslationProviderInterface> $providers Ordered
+     *        chain, tried first-to-last. At least 2 required - a single
+     *        provider needs no fallback wrapper.
+     *
+     * @throws InvalidArgumentException If fewer than 2 providers are given,
+     *         or any element doesn't implement TranslationProviderInterface.
+     */
+    public function __construct(array $providers)
+    {
+        if (count($providers) < 2) {
+            throw new InvalidArgumentException(
+                'FallbackProvider requires at least 2 providers in its chain, got ' . count($providers) . '.'
+            );
+        }
+
+        foreach ($providers as $provider) {
+            if (!$provider instanceof TranslationProviderInterface) {
+                throw new InvalidArgumentException(
+                    'Every entry in a FallbackProvider chain must implement TranslationProviderInterface, got '
+                    . get_debug_type($provider) . '.'
+                );
+            }
+        }
+
+        $this->providers = array_values($providers);
+    }
+
+    /**
+     * Try each provider in order and return the first success. Providers
+     * after the first success are never called - see this class's
+     * docblock for why fallback happens on any failure, not only a
+     * retryable one.
+     *
+     * @param TranslationRequest $request
+     * @return TranslationResult
+     *
+     * @throws AllProvidersFailedException If every provider in the chain fails.
+     */
+    public function translate(TranslationRequest $request): TranslationResult
+    {
+        $failures = [];
+
+        foreach ($this->providers as $position => $provider) {
+            try {
+                $result = $provider->translate($request);
+
+                if ($position > 0) {
+                    Log::info('FallbackProvider: request served by a non-primary provider', [
+                        'provider' => get_class($provider),
+                        'position' => $position,
+                        'prior_failures' => count($failures),
+                    ]);
+                }
+
+                return $result;
+            } catch (TranslationFailedException $e) {
+                Log::warning('FallbackProvider: provider failed, trying next in chain', [
+                    'provider' => get_class($provider),
+                    'position' => $position,
+                    'status_code' => $e->getStatusCode(),
+                    'retryable' => $e->isRetryable(),
+                    'message' => $e->getMessage(),
+                ]);
+
+                $failures[] = [
+                    'provider' => get_class($provider),
+                    'message' => $e->getMessage(),
+                    'status_code' => $e->getStatusCode(),
+                    'retryable' => $e->isRetryable(),
+                ];
+            }
+        }
+
+        throw new AllProvidersFailedException($failures);
+    }
+}

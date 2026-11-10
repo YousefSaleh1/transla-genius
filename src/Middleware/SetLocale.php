@@ -2,12 +2,21 @@
 
 namespace CodingPartners\TranslaGenius\Middleware;
 
+use CodingPartners\TranslaGenius\Contracts\LocaleResolverInterface;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 class SetLocale
 {
+    /**
+     * @param LocaleResolverInterface $resolver Supplies the supported
+     *        locale list this middleware matches Accept-Language against.
+     */
+    public function __construct(protected LocaleResolverInterface $resolver)
+    {
+    }
+
     /**
      * Handle an incoming request and set application locale.
      *
@@ -17,7 +26,7 @@ class SetLocale
      */
     public function handle(Request $request, Closure $next): Response
     {
-        $supportedLanguages = config('translaGenius.supported_languages', ['en']);
+        $supportedLanguages = $this->resolver->supportedLocales();
         $defaultLanguage = $supportedLanguages[0];
 
         $requestedLanguages = $this->parseAcceptLanguageHeader($request->header('Accept-Language'));

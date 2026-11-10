@@ -29,14 +29,32 @@ trait Translatable
      */
     protected static function bootTranslatable()
     {
-        static::created(fn($model) => TranslateFields::dispatch($model, $model->translatable));
+        static::created(function ($model) {
+            $jobClass = static::translationJobClass();
+            $jobClass::dispatch($model, $model->translatable);
+        });
 
         static::updated(function ($model) {
             $translatableFields = $model->getTranslatableAttributes();
             if (!empty($translatableFields) && static::hasSourceLocaleChanged($model, $translatableFields)) {
-                TranslateFields::dispatch($model, $translatableFields);
+                $jobClass = static::translationJobClass();
+                $jobClass::dispatch($model, $translatableFields);
             }
         });
+    }
+
+    /**
+     * Which job class to dispatch on create/update. Override this on your
+     * model to use a custom job (e.g. one with additional side effects)
+     * without forking this trait - the only requirement is that it accepts
+     * the same constructor signature as TranslateFields and is dispatchable
+     * (implements ShouldQueue, uses Dispatchable).
+     *
+     * @return class-string<\Illuminate\Contracts\Queue\ShouldQueue>
+     */
+    protected static function translationJobClass(): string
+    {
+        return TranslateFields::class;
     }
 
     protected static function hasSourceLocaleChanged($model, array $translatableFields): bool

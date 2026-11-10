@@ -6,7 +6,7 @@ use CodingPartners\TranslaGenius\DTOs\TranslationResult;
 use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
 use CodingPartners\TranslaGenius\Jobs\TranslateFields;
 use CodingPartners\TranslaGenius\Services\TranslationWriter;
-use CodingPartners\TranslaGenius\Services\Translator;
+use CodingPartners\TranslaGenius\Contracts\TranslatorInterface;
 use CodingPartners\TranslaGenius\Tests\TestModels\TestTranslatableModel;
 use CodingPartners\TranslaGenius\Tests\TestCase;
 use Illuminate\Support\Facades\Queue;
@@ -75,7 +75,7 @@ class TranslateFieldsJobTest extends TestCase
         ]);
 
         // Mock the translator with expected calls and responses
-        $mockTranslator = Mockery::mock(Translator::class);
+        $mockTranslator = Mockery::mock(TranslatorInterface::class);
         $mockTranslator->shouldReceive('translate')
             ->with('Test Name', 'en', 'ar')
             ->andReturn($this->translationResult('اسم الاختبار'));
@@ -123,7 +123,7 @@ class TranslateFieldsJobTest extends TestCase
         ]);
 
         // Mock the translator with expected calls only for missing translations
-        $mockTranslator = Mockery::mock(Translator::class);
+        $mockTranslator = Mockery::mock(TranslatorInterface::class);
         // Should only be called for Spanish (Arabic already exists) and for description
         $mockTranslator->shouldReceive('translate')
             ->with('Test Name', 'en', 'es')
@@ -181,7 +181,7 @@ class TranslateFieldsJobTest extends TestCase
             'description' => ['en' => 'Test Description'],
         ]);
 
-        $mockTranslator = Mockery::mock(Translator::class);
+        $mockTranslator = Mockery::mock(TranslatorInterface::class);
         $mockTranslator->shouldReceive('translate')
             ->andThrow(new TranslationFailedException('Invalid API key', statusCode: 401, retryable: false));
 
@@ -207,7 +207,7 @@ class TranslateFieldsJobTest extends TestCase
             'description' => ['en' => 'Test Description'],
         ]);
 
-        $mockTranslator = Mockery::mock(Translator::class);
+        $mockTranslator = Mockery::mock(TranslatorInterface::class);
         $mockTranslator->shouldReceive('translate')
             ->andThrow(new TranslationFailedException('Timed out', retryable: true));
 
@@ -234,7 +234,7 @@ class TranslateFieldsJobTest extends TestCase
             'description' => ['en' => 'Test Description'],
         ]);
 
-        $mockTranslator = Mockery::mock(Translator::class);
+        $mockTranslator = Mockery::mock(TranslatorInterface::class);
         $mockTranslator->shouldReceive('translate')
             ->with('Test Name', 'en', 'ar')
             ->andReturn($this->translationResult('STALE ar (should not be saved)'));
@@ -290,7 +290,7 @@ class TranslateFieldsJobTest extends TestCase
 
         // No expectation is set for 'description' - Mockery raises if it's
         // called with args that don't match any declared expectation.
-        $mockTranslator = Mockery::mock(Translator::class);
+        $mockTranslator = Mockery::mock(TranslatorInterface::class);
         $mockTranslator->shouldReceive('translate')
             ->with('Test Name', 'en', 'ar')
             ->andReturn($this->translationResult('اسم الاختبار'));
