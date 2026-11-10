@@ -1,6 +1,6 @@
 {
     "name": "coding-partners/transla-genius",
-    "description": "A Laravel package for automatic translations.",
+    "description": "Automatic, queued translation of Eloquent model attributes for Laravel, with swappable translation providers (OpenRouter by default), provider fallback chains, lifecycle events, a backfill command, and opt-in usage/cost tracking.",
     "keywords": [
         "laravel",
         "translation",
@@ -24,12 +24,21 @@
     "type": "library",
     "require": {
         "php": "^8.3",
-        "illuminate/support": "^10.0 || ^11.0 || ^12.0 || ^13.0",
+        "illuminate/bus": "^12.0 || ^13.0",
+        "illuminate/console": "^12.0 || ^13.0",
+        "illuminate/contracts": "^12.0 || ^13.0",
+        "illuminate/database": "^12.0 || ^13.0",
+        "illuminate/events": "^12.0 || ^13.0",
+        "illuminate/http": "^12.0 || ^13.0",
+        "illuminate/log": "^12.0 || ^13.0",
+        "illuminate/queue": "^12.0 || ^13.0",
+        "illuminate/support": "^12.0 || ^13.0",
+        "laravel/framework": "^12.0 || ^13.0",
         "spatie/laravel-translatable": "^6.14"
     },
     "require-dev": {
         "phpunit/phpunit": "^11.5",
-        "orchestra/testbench": "^11.0",
+        "orchestra/testbench": "^10.0 || ^11.0",
         "psy/psysh": "^0.12.0"
     },
     "license": "MIT",
@@ -56,7 +65,10 @@
         "laravel": {
             "providers": [
                 "CodingPartners\\TranslaGenius\\TranslaGeniusServiceProvider"
-            ]
+            ],
+            "aliases": {
+                "TranslaGenius": "CodingPartners\\TranslaGenius\\Facades\\TranslaGenius"
+            }
         }
     },
     "minimum-stability": "stable",

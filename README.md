@@ -16,6 +16,8 @@ The TranslaGenius package is a Laravel package designed to automatically transla
 
 ## Installation
 
+Requires PHP 8.3+ and Laravel 12.x or 13.x. These are the versions CI tests against.
+
 To install the package, you can use Composer:
 
 ```bash
@@ -179,6 +181,19 @@ $posts = Post::fullyTranslated()->get();
 This scope checks if all translatable fields have a translation in the Supported Languages. It ensures that only records with complete translations are returned, which is useful for ensuring data consistency and completeness.
 
 The exact inverse, `notFullyTranslated`, is what powers the backfill command below - `Post::notFullyTranslated()->get()` returns every record missing at least one field/locale.
+
+### Translating Arbitrary Text
+
+To translate text outside the automatic model-save flow, use the `TranslaGenius` facade. Laravel's package discovery registers it under the global alias `TranslaGenius`, or you can import it directly:
+
+```php
+use CodingPartners\TranslaGenius\Facades\TranslaGenius;
+
+$result = TranslaGenius::translate('Hello', 'en', 'ar');
+$result->text; // the translated string
+```
+
+The facade resolves `Contracts\TranslatorInterface` from the container, so it uses whichever provider (or fallback chain) is configured. It throws `Exceptions\TranslationFailedException` on failure.
 
 ## Backfilling Existing Records
 
