@@ -43,7 +43,11 @@ A breaking architectural release: the translation backend is now swappable behin
 - `Traits\Translatable::scopeNotFullyTranslated()` - the exact inverse of `scopeFullyTranslated()`, for finding records missing at least one field/locale.
 - `php artisan translagenius:backfill {model}` - finds existing records that aren't fully translated and dispatches `TranslateFields` for each, chunked via `chunkById()`. Reports the affected record count and an estimated API-call count before doing anything, and requires `--force` or an interactive confirmation before dispatching (a bare, unconfirmed run dispatches nothing). `--dry-run` reports only. See the README's "Backfilling Existing Records" section.
 - `translaGenius.usage_tracking` (opt-in, `enabled: false` by default) - when turned on, `Listeners\LogTranslationUsage` writes one `Models\TranslationUsageLog` row per `Events\TranslationCompleted`, with an estimated cost computed from configurable per-provider `cost_per_1k_prompt_tokens`/`cost_per_1k_completion_tokens` rates (`null`, never `0`, when a rate or token count isn't available). Ships the package's first publishable migration (`php artisan vendor:publish --tag=translagenius-migrations`), for the `translation_usage_logs` table this backs. `TranslationUsageLog` is public API surface - query it directly for your own usage/cost reporting. See the README's "Usage & Cost Tracking" section. When disabled (the default), no listener is registered and the migration isn't required.
-- `translaGenius.api.timeout` is now actually applied to the HTTP client (it was defined in config but silently ignored before).
+
+### Fixed
+
+- `TranslateFields` no longer re-requests translations that already exist. `prepareTranslations()` read each field through the model's magic accessor (`$model->{$field}`), which Spatie's `HasTranslations` resolves to the current locale's string only. Every other locale's existing translation was invisible to the job, so every save re-translated (and re-billed) every non-current locale. It now reads the full locale map via `getTranslations($field)`, and existing field/locale pairs are skipped as intended.
+- The HTTP timeout is now actually applied to translation requests. It was defined in config (`api.timeout` in 1.x, now `translaGenius.providers.openrouter.timeout` / `TRANSLATION_API_TIMEOUT`) but silently ignored.
 
 ### Changed
 
