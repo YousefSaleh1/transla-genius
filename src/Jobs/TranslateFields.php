@@ -3,6 +3,9 @@
 namespace CodingPartners\TranslaGenius\Jobs;
 
 use CodingPartners\TranslaGenius\Contracts\TranslatorInterface;
+use CodingPartners\TranslaGenius\Events\TranslationCompleted;
+use CodingPartners\TranslaGenius\Events\TranslationFailed as TranslationFailedEvent;
+use CodingPartners\TranslaGenius\Events\TranslationStarted;
 use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
 use CodingPartners\TranslaGenius\Services\TranslationWriter;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -24,8 +27,18 @@ use Throwable;
  * separate from persisting them (TranslationWriter) - see TranslationWriter
  * for why only the write step runs under a row lock.
  *
+ * Fires three lifecycle events a consuming app can listen for without
+ * touching this class: Events\TranslationStarted and
+ * Events\TranslationCompleted around each individual field/locale
+ * translate() call (see prepareTranslations()), and Events\TranslationFailed
+ * once, from failed(), if the job gives up permanently. See each event's
+ * own docblock for exactly when/why it fires.
+ *
  * @see \CodingPartners\TranslaGenius\Traits\Translatable
  * @see \CodingPartners\TranslaGenius\Services\TranslationWriter
+ * @see \CodingPartners\TranslaGenius\Events\TranslationStarted
+ * @see \CodingPartners\TranslaGenius\Events\TranslationCompleted
+ * @see \CodingPartners\TranslaGenius\Events\TranslationFailed
  */
 class TranslateFields implements ShouldQueue
 {
@@ -141,6 +154,11 @@ class TranslateFields implements ShouldQueue
      * listen for Illuminate\Queue\Events\JobFailed rather than needing
      * this method extended.
      *
+     * Also dispatches Events\TranslationFailed, but only when $exception is
+     * a TranslationFailedException - anything else (e.g. a TranslationWriter
+     * persistence failure) isn't a "translation failed" in the domain sense
+     * that event names, so it's logged here but not turned into that event.
+     *
      * @param \Throwable $exception
      * @return void
      */
@@ -155,6 +173,14 @@ class TranslateFields implements ShouldQueue
                 ? $exception->getStatusCode()
                 : null,
         ]);
+
+        if ($exception instanceof TranslationFailedException) {
+            TranslationFailedEvent::dispatch(
+                get_class($this->model),
+                $this->model->getKey() ?? null,
+                $exception,
+            );
+        }
     }
 
     /**
@@ -165,6 +191,12 @@ class TranslateFields implements ShouldQueue
      * (called from handle()) owns the locked read-check-write that applies
      * it. See TranslationWriter for why that split matters under
      * concurrent updates.
+     *
+     * Dispatches Events\TranslationStarted immediately before, and
+     * Events\TranslationCompleted immediately after, each individual
+     * translate() call this method makes. If translate() throws, only
+     * TranslationStarted will have fired for that attempt - see
+     * TranslateFields::failed() for the corresponding failure event.
      *
      * @param TranslatorInterface $translator
      * @param string $currentLocale The locale field values are read/translated from.
@@ -186,8 +218,26 @@ class TranslateFields implements ShouldQueue
 
             foreach ($targetLanguages as $targetLanguage) {
                 if (empty($fieldTranslations[$targetLanguage])) {
+                    TranslationStarted::dispatch(
+                        get_class($this->model),
+                        $this->model->getKey(),
+                        $field,
+                        $currentLocale,
+                        $targetLanguage,
+                        $sourceText,
+                    );
+
                     $result = $translator->translate($sourceText, $currentLocale, $targetLanguage);
                     $fieldTranslations[$targetLanguage] = $result->text;
+
+                    TranslationCompleted::dispatch(
+                        get_class($this->model),
+                        $this->model->getKey(),
+                        $field,
+                        $currentLocale,
+                        $targetLanguage,
+                        $result,
+                    );
                 }
             }
 

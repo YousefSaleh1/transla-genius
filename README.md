@@ -9,6 +9,7 @@ The TranslaGenius package is a Laravel package designed to automatically transla
 - Queue-based translation processing
 - Flexible API integration
 - Comprehensive scope filters
+- Lifecycle events for translation start/completion/failure
 - Provider fallback/chaining for resilience against a single backend's outage
 
 ## Installation
@@ -250,6 +251,37 @@ Then register it in `config/translaGenius.php` and point `default` at it - no ch
 ```
 
 Each name in `chain` is resolved the normal way (through its own `driver`/config entry), so a chain can mix any providers - built-in or your own - with no special-casing required from them. Falls through to the next provider on *any* translation failure from the current one, not only a retryable one - an unusable primary (bad key, exhausted quota) is exactly the case a fallback exists for, and that's typically a non-retryable failure. If every provider in the chain fails, `Exceptions\AllProvidersFailedException` (a `TranslationFailedException` subclass, so it's handled by `TranslateFields` exactly like any other translation failure) is thrown with each provider's individual failure attached via `getFailures()`, for diagnosing which one(s) actually broke.
+
+## Lifecycle Events
+
+`TranslateFields` dispatches three events a consuming app can listen for without touching the package: `Events\TranslationStarted` and `Events\TranslationCompleted` fire around each individual field/locale translation (so `TranslationCompleted` is the hook for usage/cost tracking - it carries the full `TranslationResult`, including its token-count fields), and `Events\TranslationFailed` fires once, from the job's `failed()` method, only when the job gives up permanently on a real `TranslationFailedException` (not on a transient, retried failure, and not on an unrelated job error).
+
+```php
+use CodingPartners\TranslaGenius\Events\TranslationCompleted;
+use CodingPartners\TranslaGenius\Events\TranslationFailed;
+
+// e.g. in your EventServiceProvider, or Event::listen() anywhere in boot():
+
+Event::listen(function (TranslationCompleted $event) {
+    UsageLog::create([
+        'model_type' => $event->modelClass,
+        'model_id' => $event->modelId,
+        'field' => $event->field,
+        'target_locale' => $event->targetLocale,
+        'prompt_tokens' => $event->result->promptTokens,
+        'completion_tokens' => $event->result->completionTokens,
+    ]);
+});
+
+Event::listen(function (TranslationFailed $event) {
+    Notification::route('slack', config('services.slack.alerts'))
+        ->notify(new TranslationFailedNotification($event->modelClass, $event->modelId, $event->exception));
+});
+```
+
+The `TranslationCompleted` example above is what "Usage & Cost Tracking" below does out of the box (with cost estimation and a queryable model) - write your own listener like this only if you need something it doesn't cover, e.g. your own table shape or per-tenant billing logic.
+
+These are only dispatched from the automatic model-save lifecycle (the `Translatable` trait's job), not from direct `TranslatorInterface`/facade use - that context has no model or field to report.
 
 ## Other Extension Points
 
