@@ -54,7 +54,17 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
     protected ?string $name;
 
     /**
-     * @param array{name?: string, key?: string, url?: string, model?: string, temperature?: float, max_tokens?: int, timeout?: int} $config
+     * @var string Header the API key is sent in. "Authorization" (the
+     *      default) sends "Bearer <key>"; any other header (e.g. Azure
+     *      OpenAI's "api-key") sends the raw key.
+     */
+    protected string $authHeader;
+
+    /** @var array<string, string> Extra headers merged into every request. */
+    protected array $headers;
+
+    /**
+     * @param array{name?: string, key?: string, url?: string, model?: string, temperature?: float, max_tokens?: int, timeout?: int, auth_header?: string, headers?: array<string, string>} $config
      *        Provider configuration array - one translaGenius.providers.* entry
      *        from config/translaGenius.php. `name` is injected by the service
      *        provider (the entry's config key). Every key is optional; missing
@@ -70,6 +80,11 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
         $this->maxTokens = (int) ($config['max_tokens'] ?? 200);
         $this->timeout = (int) ($config['timeout'] ?? 10);
         $this->name = isset($config['name']) ? (string) $config['name'] : null;
+        $this->authHeader = (string) ($config['auth_header'] ?? 'Authorization') ?: 'Authorization';
+        $this->headers = array_filter(
+            (array) ($config['headers'] ?? []),
+            fn ($value) => $value !== null && $value !== ''
+        );
     }
 
     /**
@@ -100,10 +115,7 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
             . 'Respond with only the translated text - no explanation, commentary, or additional formatting.';
 
         try {
-            $response = Http::withHeaders([
-                'Content-Type' => 'application/json',
-                'Authorization' => 'Bearer ' . $this->apiKey,
-            ])->timeout($this->timeout)->retry(
+            $response = Http::withHeaders($this->requestHeaders())->timeout($this->timeout)->retry(
                 3,
                 function (int $attempt, \Exception $e) {
                     if ($e instanceof RequestException && $e->response->status() >= 400) {
@@ -173,6 +185,25 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
             provider: $this->name,
             promptTokens: $response->json('usage.prompt_tokens'),
             completionTokens: $response->json('usage.completion_tokens'),
+        );
+    }
+
+    /**
+     * Headers for every request: JSON content type, the API key in
+     * $authHeader, then any configured extra headers (which win on a clash,
+     * so a service with unusual requirements can override the defaults).
+     *
+     * @return array<string, string>
+     */
+    protected function requestHeaders(): array
+    {
+        $auth = strcasecmp($this->authHeader, 'Authorization') === 0
+            ? 'Bearer ' . $this->apiKey
+            : $this->apiKey;
+
+        return array_merge(
+            ['Content-Type' => 'application/json', $this->authHeader => $auth],
+            $this->headers,
         );
     }
 

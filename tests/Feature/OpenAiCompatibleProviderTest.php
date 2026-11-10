@@ -151,4 +151,50 @@ class OpenAiCompatibleProviderTest extends TestCase
             $this->assertFalse($e->isRetryable());
         }
     }
+
+    protected function fakeSuccess(): void
+    {
+        Http::fake([
+            'test-api-url.com' => Http::response(['choices' => [['message' => ['content' => 'ok']]]], 200),
+        ]);
+    }
+
+    public function test_sends_bearer_authorization_by_default()
+    {
+        $this->fakeSuccess();
+
+        (new OpenAiCompatibleProvider($this->config()))->translate(new TranslationRequest('Hi', 'en', 'ar'));
+
+        Http::assertSent(fn (Request $request) => $request->header('Authorization') === ['Bearer test-api-key']
+            && $request->header('Content-Type') === ['application/json']);
+    }
+
+    public function test_custom_auth_header_sends_the_raw_key_instead_of_bearer()
+    {
+        $this->fakeSuccess();
+
+        (new OpenAiCompatibleProvider($this->config(['auth_header' => 'api-key'])))
+            ->translate(new TranslationRequest('Hi', 'en', 'ar'));
+
+        Http::assertSent(fn (Request $request) => $request->header('api-key') === ['test-api-key']
+            && !$request->hasHeader('Authorization'));
+    }
+
+    public function test_extra_headers_are_merged_and_empty_values_are_dropped()
+    {
+        $this->fakeSuccess();
+
+        (new OpenAiCompatibleProvider($this->config([
+            'headers' => [
+                'HTTP-Referer' => 'https://example.test',
+                'X-OpenRouter-Title' => null,
+                'X-Empty' => '',
+            ],
+        ])))->translate(new TranslationRequest('Hi', 'en', 'ar'));
+
+        Http::assertSent(fn (Request $request) => $request->header('HTTP-Referer') === ['https://example.test']
+            && !$request->hasHeader('X-OpenRouter-Title')
+            && !$request->hasHeader('X-Empty')
+            && $request->header('Authorization') === ['Bearer test-api-key']);
+    }
 }
