@@ -7,6 +7,11 @@ on:
   workflow_dispatch:
 
 jobs:
+  # The tracked suite's shared TestCase now reads TRANSLAGENIUS_TEST_DB_CONNECTION
+  # to pick its driver (default: sqlite in-memory) - each row below sets it to
+  # match its own service container. MariaDB is wire-compatible with the mysql
+  # PDO driver, so it's a genuine, valid row here; Postgres/SQL Server use
+  # TestCase's own pgsql/sqlsrv config branches - see the sqlserver job below.
   test:
     runs-on: ubuntu-latest
 
@@ -34,6 +39,7 @@ jobs:
           --health-retries=10
 
     env:
+      TRANSLAGENIUS_TEST_DB_CONNECTION: ${{ matrix.db }}
       DB_HOST: 127.0.0.1
       DB_PORT: 3306
       DB_DATABASE: translagenius_test
@@ -48,7 +54,7 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: mbstring, pdo, pdo_mysql, json
+          extensions: mbstring, pdo, pdo_mysql, pdo_sqlite, json
           coverage: none
 
       - name: Require Laravel ${{ matrix.laravel }}
