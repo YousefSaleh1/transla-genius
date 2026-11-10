@@ -68,7 +68,8 @@ class TranslaGeniusServiceProvider extends ServiceProvider
      * FallbackProvider itself stays a pure decorator over already-built
      * TranslationProviderInterface instances - see FallbackProvider's own
      * docblock. Every other driver is constructed the normal way:
-     * `$app->make($driver, ['config' => $providerConfig])`.
+     * `$app->make($driver, ['config' => $providerConfig])`, with the entry's
+     * own key added as `name` so the provider can report which entry it is.
      *
      * @param Application $app
      * @param string $name Key under translaGenius.providers.
@@ -118,7 +119,9 @@ class TranslaGeniusServiceProvider extends ServiceProvider
             return new FallbackProvider($resolvedChain);
         }
 
-        return $app->make($providerConfig['driver'], ['config' => $providerConfig]);
+        return $app->make($providerConfig['driver'], [
+            'config' => array_merge($providerConfig, ['name' => $name]),
+        ]);
     }
 
     /**

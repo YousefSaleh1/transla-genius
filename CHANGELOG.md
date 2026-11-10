@@ -47,6 +47,7 @@ A breaking architectural release: the translation backend is now swappable behin
 
 ### Fixed
 
+- `TranslationResult->provider` now reports the `translaGenius.providers` key the provider was resolved under (for example `gemini`). It was hardcoded to `openrouter`, so pointing the OpenAI-compatible provider at any other service logged usage under the wrong provider name and looked up the wrong cost rates.
 - `TranslateFields` no longer re-requests translations that already exist. `prepareTranslations()` read each field through the model's magic accessor (`$model->{$field}`), which Spatie's `HasTranslations` resolves to the current locale's string only. Every other locale's existing translation was invisible to the job, so every save re-translated (and re-billed) every non-current locale. It now reads the full locale map via `getTranslations($field)`, and existing field/locale pairs are skipped as intended.
 - The HTTP timeout is now actually applied to translation requests. It was defined in config (`api.timeout` in 3.x, now `translaGenius.providers.openrouter.timeout` / `TRANSLATION_API_TIMEOUT`) but silently ignored.
 - `TranslateFields` now has explicit `$tries`/`backoff()` and a `failed()` handler; translation failures propagate to the queue's native retry/failure handling instead of being silently swallowed.

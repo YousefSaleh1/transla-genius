@@ -25,6 +25,7 @@ class OpenAiCompatibleProviderTest extends TestCase
     protected function config(array $overrides = []): array
     {
         return array_merge([
+            'name' => 'test-provider',
             'key' => 'test-api-key',
             'url' => 'https://test-api-url.com',
             'model' => 'test-model',
@@ -63,7 +64,7 @@ class OpenAiCompatibleProviderTest extends TestCase
         });
 
         $this->assertEquals('Translated Text', $result->text);
-        $this->assertSame('openrouter', $result->provider);
+        $this->assertSame('test-provider', $result->provider);
         $this->assertSame(12, $result->promptTokens);
         $this->assertSame(4, $result->completionTokens);
     }

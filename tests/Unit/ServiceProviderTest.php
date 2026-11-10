@@ -63,6 +63,36 @@ class ServiceProviderTest extends TestCase
     }
 
     /**
+     * A provider reports the config key it was resolved under, not a fixed
+     * string - so a non-default entry is never logged as "openrouter".
+     *
+     * @return void
+     */
+    public function test_resolved_provider_reports_its_config_key_as_provider_name()
+    {
+        config([
+            'translaGenius.default' => 'my-gateway',
+            'translaGenius.providers.my-gateway' => [
+                'driver' => OpenAiCompatibleProvider::class,
+                'key' => 'k',
+                'url' => 'https://gateway.test/v1/chat/completions',
+                'model' => 'm',
+            ],
+        ]);
+
+        \Illuminate\Support\Facades\Http::fake([
+            'gateway.test/*' => \Illuminate\Support\Facades\Http::response([
+                'choices' => [['message' => ['content' => 'مرحبا']]],
+            ]),
+        ]);
+
+        $result = $this->app->make(TranslationProviderInterface::class)
+            ->translate(new \CodingPartners\TranslaGenius\DTOs\TranslationRequest('Hello', 'en', 'ar'));
+
+        $this->assertSame('my-gateway', $result->provider);
+    }
+
+    /**
      * Translator is resolvable and receives whatever provider is bound.
      *
      * @return void
