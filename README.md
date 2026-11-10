@@ -335,23 +335,23 @@ php artisan vendor:publish --tag=translagenius-migrations
 php artisan migrate
 ```
 
-**2. Enable it and (optionally) set per-provider cost rates**, in `config/translaGenius.php`:
+**2. Enable it and (optionally) set cost rates.** Rates belong to each provider's own entry under `providers`, so one provider's settings live in one place:
 
 ```php
-'usage_tracking' => [
-    'enabled' => env('TRANSLATION_USAGE_TRACKING_ENABLED', true),
-
-    'providers' => [
-        // Keyed by the provider identifier a TranslationResult reports
-        // (its `provider` property, e.g. 'openrouter'), not necessarily
-        // the same as a key under the top-level `providers` above.
-        'openrouter' => [
-            'cost_per_1k_prompt_tokens' => 0.0025,
-            'cost_per_1k_completion_tokens' => 0.01,
-        ],
+'providers' => [
+    'openrouter' => [
+        // ... driver, key, url, model ...
+        'cost_per_1k_prompt_tokens' => 0.0025,
+        'cost_per_1k_completion_tokens' => 0.01,
     ],
 ],
+
+'usage_tracking' => [
+    'enabled' => env('TRANSLATION_USAGE_TRACKING_ENABLED', false),
+],
 ```
+
+Each log row's `provider` is the config key that served the translation (with a fallback chain, the member that succeeded), and its cost uses that entry's rates.
 
 A provider with no rate configured (or one whose result doesn't report token counts) gets a `null` `estimated_cost` on its rows - never a `0`, which would falsely claim the translation was free.
 

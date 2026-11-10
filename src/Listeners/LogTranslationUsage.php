@@ -7,8 +7,8 @@ use CodingPartners\TranslaGenius\Models\TranslationUsageLog;
 
 /**
  * Writes one Models\TranslationUsageLog row per Events\TranslationCompleted,
- * with an estimated cost computed from translaGenius.usage_tracking.providers
- * if a rate is configured for the reporting provider.
+ * with an estimated cost computed from the reporting provider's own
+ * translaGenius.providers.{name} entry, if it configures a rate.
  *
  * Only ever registered by TranslaGeniusServiceProvider when
  * translaGenius.usage_tracking.enabled is true - that check happens once,
@@ -54,10 +54,10 @@ class LogTranslationUsage
     }
 
     /**
-     * Compute an estimated cost from translaGenius.usage_tracking.providers,
-     * keyed by $event->result->provider (the identifier the provider itself
-     * reports, not necessarily a key under the top-level `providers`
-     * config). Returns null - never 0 - whenever a definitive number can't
+     * Compute an estimated cost from the cost_per_1k_prompt_tokens /
+     * cost_per_1k_completion_tokens rates on translaGenius.providers.{provider},
+     * where {provider} is $event->result->provider - the config key the
+     * provider was resolved under. Returns null - never 0 - whenever a definitive number can't
      * be computed: no provider reported, no rate configured for it, or a
      * rate is configured for a token count the provider didn't report.
      *
@@ -72,7 +72,7 @@ class LogTranslationUsage
             return null;
         }
 
-        $rates = config("translaGenius.usage_tracking.providers.{$provider}", []);
+        $rates = config("translaGenius.providers.{$provider}", []);
         $promptRate = $rates['cost_per_1k_prompt_tokens'] ?? null;
         $completionRate = $rates['cost_per_1k_completion_tokens'] ?? null;
 
