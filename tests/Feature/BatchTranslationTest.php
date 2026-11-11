@@ -151,6 +151,14 @@ class BatchTranslationTest extends TestCase
         return $out;
     }
 
+    /** Locale => text, ignoring key order (MySQL's JSON type normalizes it). */
+    protected function assertSameTranslations(array $expected, array $actual): void
+    {
+        ksort($expected);
+        ksort($actual);
+        $this->assertSame($expected, $actual);
+    }
+
     protected function requestTypes(): array
     {
         return array_map(fn ($r) => $r['type'] . ' ' . $r['field'] . ' ' . implode(',', $r['locales']), $this->requests);
@@ -314,7 +322,7 @@ class BatchTranslationTest extends TestCase
 
         $this->assertCount(1, Http::recorded(fn ($r) => str_contains($r->url(), 'primary.test')));
         $this->assertCount(1, Http::recorded(fn ($r) => str_contains($r->url(), 'secondary.test')));
-        $this->assertSame(
+        $this->assertSameTranslations(
             ['en' => 'Source name', 'ar' => 'S:ar', 'es' => 'S:es', 'fr' => 'S:fr'],
             TestTranslatableModel::find($model->id)->getTranslations('name')
         );
@@ -349,7 +357,7 @@ class BatchTranslationTest extends TestCase
 
         Http::assertSentCount(1);
         $this->assertSame(['es', 'fr'], $calls);
-        $this->assertSame(
+        $this->assertSameTranslations(
             ['en' => 'Source name', 'ar' => 'S:ar', 'es' => 'P:es', 'fr' => 'P:fr'],
             TestTranslatableModel::find($model->id)->getTranslations('name')
         );
