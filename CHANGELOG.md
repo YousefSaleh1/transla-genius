@@ -2,9 +2,9 @@
 
 All notable changes to `coding-partners/transla-genius` are documented here.
 
-## Unreleased
+## [4.0.0] - Unreleased
 
-A breaking architectural release: the translation backend is now swappable behind an interface, translation payloads are typed DTOs instead of raw arrays/strings, and persistence is a separate, narrowly-scoped class instead of being mixed into the queue job.
+A breaking architectural release: the translation backend is now swappable behind an interface, translation payloads are typed DTOs instead of raw arrays/strings, and persistence is a separate, narrowly-scoped class instead of being mixed into the queue job. See [UPGRADE.md](UPGRADE.md) for the step-by-step upgrade from 3.x.
 
 ### Breaking changes
 
