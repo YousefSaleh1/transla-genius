@@ -31,7 +31,7 @@ class ServiceProviderTest extends TestCase
      */
     public function test_config_file_is_publishable()
     {
-        $this->assertArrayHasKey('translaGenius', config());
+        $this->assertArrayHasKey('translagenius', config());
     }
 
     /**
@@ -52,7 +52,7 @@ class ServiceProviderTest extends TestCase
 
     /**
      * The interface resolves to the driver configured under
-     * translaGenius.providers.{default}, constructed with that provider's
+     * translagenius.providers.{default}, constructed with that provider's
      * config array (see TestCase's fixture: default => openrouter).
      *
      * @return void
@@ -71,8 +71,8 @@ class ServiceProviderTest extends TestCase
     public function test_resolved_provider_reports_its_config_key_as_provider_name()
     {
         config([
-            'translaGenius.default' => 'my-gateway',
-            'translaGenius.providers.my-gateway' => [
+            'translagenius.default' => 'my-gateway',
+            'translagenius.providers.my-gateway' => [
                 'driver' => OpenAiCompatibleProvider::class,
                 'key' => 'k',
                 'url' => 'https://gateway.test/v1/chat/completions',
@@ -95,8 +95,8 @@ class ServiceProviderTest extends TestCase
     public function test_driver_class_that_does_not_exist_has_a_clear_error()
     {
         config([
-            'translaGenius.default' => 'deepl',
-            'translaGenius.providers.deepl' => ['driver' => 'App\\Translation\\DeeplProvider'],
+            'translagenius.default' => 'deepl',
+            'translagenius.providers.deepl' => ['driver' => 'App\\Translation\\DeeplProvider'],
         ]);
 
         $this->expectException(RuntimeException::class);
@@ -108,8 +108,8 @@ class ServiceProviderTest extends TestCase
     public function test_driver_class_not_implementing_the_interface_has_a_clear_error()
     {
         config([
-            'translaGenius.default' => 'broken',
-            'translaGenius.providers.broken' => ['driver' => \stdClass::class],
+            'translagenius.default' => 'broken',
+            'translagenius.providers.broken' => ['driver' => \stdClass::class],
         ]);
 
         $this->expectException(RuntimeException::class);
@@ -136,7 +136,7 @@ class ServiceProviderTest extends TestCase
      */
     public function test_resolving_an_unknown_provider_throws_immediately()
     {
-        config(['translaGenius.default' => 'does-not-exist']);
+        config(['translagenius.default' => 'does-not-exist']);
 
         $this->expectException(RuntimeException::class);
 

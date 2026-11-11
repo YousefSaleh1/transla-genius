@@ -5,7 +5,7 @@ namespace CodingPartners\TranslaGenius\Review;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * Reads translaGenius.review: whether review is on, which model / field /
+ * Reads translagenius.review: whether review is on, which model / field /
  * locale it applies to, what stays visible while a translation is pending,
  * and what a rejection does. Nothing here touches the database.
  */
@@ -18,7 +18,7 @@ class ReviewSettings
 
     public static function enabled(): bool
     {
-        return (bool) (filter_var(config('translaGenius.review.enabled', false), FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? false);
+        return (bool) (filter_var(config('translagenius.review.enabled', false), FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? false);
     }
 
     /**
@@ -33,13 +33,13 @@ class ReviewSettings
             return false;
         }
 
-        $locales = self::list(config('translaGenius.review.locales', []));
+        $locales = self::list(config('translagenius.review.locales', []));
         if ($locales !== [] && !in_array($locale, $locales, true)) {
             return false;
         }
 
-        $models = (array) config('translaGenius.review.models', []);
-        $fields = self::list(config('translaGenius.review.fields', []));
+        $models = (array) config('translagenius.review.models', []);
+        $fields = self::list(config('translagenius.review.fields', []));
 
         if ($models === [] && $fields === []) {
             return true;
@@ -65,7 +65,7 @@ class ReviewSettings
     /** 'keep' (default) or 'clear', for one model/field. */
     public static function whilePending(Model $model, string $field): string
     {
-        foreach ((array) config('translaGenius.review.while_pending_overrides', []) as $class => $override) {
+        foreach ((array) config('translagenius.review.while_pending_overrides', []) as $class => $override) {
             if (!is_string($class) || !$model instanceof $class) {
                 continue;
             }
@@ -79,13 +79,13 @@ class ReviewSettings
             }
         }
 
-        return self::visibility(config('translaGenius.review.while_pending', self::KEEP));
+        return self::visibility(config('translagenius.review.while_pending', self::KEEP));
     }
 
     /** 'leave' (default) or 'retranslate'. */
     public static function onReject(): string
     {
-        return strtolower(trim((string) config('translaGenius.review.on_reject', self::LEAVE))) === self::RETRANSLATE
+        return strtolower(trim((string) config('translagenius.review.on_reject', self::LEAVE))) === self::RETRANSLATE
             ? self::RETRANSLATE
             : self::LEAVE;
     }

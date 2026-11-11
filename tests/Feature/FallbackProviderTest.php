@@ -31,7 +31,7 @@ class FallbackProviderTest extends Orchestra
 
         FakeConfigurableProvider::reset();
 
-        Config::set('translaGenius.supported_languages', ['en', 'ar', 'es']);
+        Config::set('translagenius.supported_languages', ['en', 'ar', 'es']);
 
         $migration = include __DIR__ . '/../database/migrations/2024_01_01_000000_create_test_tables.php';
         $migration->up();
@@ -162,20 +162,20 @@ class FallbackProviderTest extends Orchestra
      */
     public function test_chain_config_key_is_resolved_through_the_service_provider()
     {
-        Config::set('translaGenius.default', 'fallback');
-        Config::set('translaGenius.providers.primary', [
+        Config::set('translagenius.default', 'fallback');
+        Config::set('translagenius.providers.primary', [
             'driver' => FakeConfigurableProvider::class,
             'id' => 'cfg-primary',
             'fail' => true,
             'retryable' => false,
             'status_code' => 401,
         ]);
-        Config::set('translaGenius.providers.secondary', [
+        Config::set('translagenius.providers.secondary', [
             'driver' => FakeConfigurableProvider::class,
             'id' => 'cfg-secondary',
             'prefix' => 'CFG-S:',
         ]);
-        Config::set('translaGenius.providers.fallback', [
+        Config::set('translagenius.providers.fallback', [
             'driver' => FallbackProvider::class,
             'chain' => ['primary', 'secondary'],
         ]);
@@ -199,8 +199,8 @@ class FallbackProviderTest extends Orchestra
 
     public function test_fallback_driver_with_no_chain_configured_throws_a_clear_error()
     {
-        Config::set('translaGenius.default', 'fallback');
-        Config::set('translaGenius.providers.fallback', [
+        Config::set('translagenius.default', 'fallback');
+        Config::set('translagenius.providers.fallback', [
             'driver' => FallbackProvider::class,
         ]);
 
@@ -214,8 +214,8 @@ class FallbackProviderTest extends Orchestra
 
     public function test_fallback_chain_referencing_itself_is_rejected_as_a_cycle()
     {
-        Config::set('translaGenius.default', 'fallback');
-        Config::set('translaGenius.providers.fallback', [
+        Config::set('translagenius.default', 'fallback');
+        Config::set('translagenius.providers.fallback', [
             'driver' => FallbackProvider::class,
             'chain' => ['fallback', 'fallback'],
         ]);

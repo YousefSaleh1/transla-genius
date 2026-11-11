@@ -403,13 +403,13 @@ php artisan translagenius:backfill "App\Models\Post" --force --chunk=500
 
 It always requires either `--force` or an interactive "yes" before dispatching anything - a bare run with no confirmation mechanism satisfied reports the count and stops, dispatching nothing. `{model}` must be a fully-qualified class using the `Translatable` trait; an invalid class, a non-Eloquent class, or a model missing the trait is rejected up front with a clear message rather than failing partway through. Iteration uses `chunkById()` (not `chunk()`) so it stays correct even while jobs it just dispatched are being processed concurrently.
 
-There's no `--locales=` filter: `TranslateFields` always translates into every locale from `translaGenius.supported_languages` (already-translated field/locale pairs are skipped automatically, at no API cost), and that target set isn't parameterized per-dispatch - narrowing it correctly would mean changing `TranslateFields` itself, which this command deliberately doesn't touch.
+There's no `--locales=` filter: `TranslateFields` always translates into every locale from `translagenius.supported_languages` (already-translated field/locale pairs are skipped automatically, at no API cost), and that target set isn't parameterized per-dispatch - narrowing it correctly would mean changing `TranslateFields` itself, which this command deliberately doesn't touch.
 
 ## How It Works
 
 1. **Model Events**: When a model is created, the `Translatable` trait dispatches a `TranslateFields` job to fill every missing translation. When it's updated and a field's source-language text changed, the job re-translates that field: its existing translations are now stale and get overwritten. Any target language set in that same save is kept as written (it was provided along with the new source), and fields whose source didn't change are left alone. If the source changes again before a job finishes, the older job's results are discarded, so the stored translation always matches the latest source. A target someone edits by hand after the source edit is left alone (it's only overwritten while it still holds the old, stale text), and a retried job doesn't re-request languages it already replaced. `translagenius:backfill` only fills missing translations; it never overwrites.
 2. **Translation Job**: The `TranslateFields` job asks `Translator` to translate each missing field/locale pair and hands each result to `TranslationWriter` as soon as it arrives, which saves it under a row lock (only filling gaps, and without firing model events).
-3. **Translator**: `Translator` resolves whichever `TranslationProviderInterface` implementation is configured (`translaGenius.default`) and delegates to it - the job never talks to a specific provider directly.
+3. **Translator**: `Translator` resolves whichever `TranslationProviderInterface` implementation is configured (`translagenius.default`) and delegates to it - the job never talks to a specific provider directly.
 4. **Provider**: The bound provider (`OpenAiCompatibleProvider` by default) communicates with the external API and returns a `TranslationResult`.
 
 ## Custom Translation Providers
@@ -429,7 +429,7 @@ use Illuminate\Support\Facades\Http;
 
 class DeepLProvider implements TranslationProviderInterface
 {
-    // $config is this provider's entry from config/translaGenius.php, plus
+    // $config is this provider's entry from config/translagenius.php, plus
     // `name` (the entry's key), which the package adds for you.
     public function __construct(protected array $config)
     {
@@ -466,7 +466,7 @@ class DeepLProvider implements TranslationProviderInterface
 }
 ```
 
-Register it next to the shipped presets in a published `config/translaGenius.php`:
+Register it next to the shipped presets in a published `config/translagenius.php`:
 
 ```php
 'providers' => [
@@ -511,7 +511,7 @@ TRANSLATION_REVIEW=true
 TRANSLATION_REVIEW_LOCALES=ar,fr
 ```
 
-That reviews every translatable field of every model. To narrow it, use a published `config/translaGenius.php`:
+That reviews every translatable field of every model. To narrow it, use a published `config/translagenius.php`:
 
 ```php
 'review' => [
@@ -809,7 +809,7 @@ Beyond the provider, two more seams are swappable without forking anything:
   }
   ```
   The payload serializes its model as a model identifier (like `SerializesModels`), so a queued job re-reads the record when it runs. Use `Queueable` so `TRANSLATION_QUEUE_CONNECTION` / `TRANSLATION_QUEUE` / after-commit dispatch apply to your job.
-- **Locale resolution** - `SetLocale`, the `Translatable` trait, and the `get_current_locale()`/`get_supported_languages()` helpers all resolve locale through the bound `Contracts\LocaleResolverInterface` (default: `LocaleResolvers\DefaultLocaleResolver`, which reads the request's `Accept-Language` header via `SetLocale` and `translaGenius.supported_languages`). Rebind it in your own service provider for a different strategy (subdomain-based, per-user preference, ...):
+- **Locale resolution** - `SetLocale`, the `Translatable` trait, and the `get_current_locale()`/`get_supported_languages()` helpers all resolve locale through the bound `Contracts\LocaleResolverInterface` (default: `LocaleResolvers\DefaultLocaleResolver`, which reads the request's `Accept-Language` header via `SetLocale` and `translagenius.supported_languages`). Rebind it in your own service provider for a different strategy (subdomain-based, per-user preference, ...):
   ```php
   $this->app->singleton(
       \CodingPartners\TranslaGenius\Contracts\LocaleResolverInterface::class,

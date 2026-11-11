@@ -25,7 +25,7 @@ class CheckCommand extends Command
 {
     protected $signature = 'translagenius:check {--connection= : The database connection to check (defaults to the app default)}';
 
-    protected $description = 'Verify the active database connection supports the JSON queries TranslaGenius needs';
+    protected $description = 'Verify the published config file and that the database connection supports the JSON queries TranslaGenius needs';
 
     /**
      * Run the JSON-support check appropriate to the connection's driver.
@@ -36,18 +36,49 @@ class CheckCommand extends Command
      */
     public function handle(): int
     {
+        $configOk = $this->checkPublishedConfig();
+
         $connection = $this->laravel['db']->connection($this->option('connection'));
         $driver = $connection->getDriverName();
 
         $this->info("Checking connection [{$connection->getName()}] (driver: {$driver})...");
 
-        return match ($driver) {
+        $databaseResult = match ($driver) {
             'sqlite' => $this->checkSqlite($connection),
             'mysql' => $this->checkJsonExtract($connection, 'MySQL/MariaDB'),
             'pgsql' => $this->checkPostgres($connection),
             'sqlsrv' => $this->checkSqlServer($connection),
             default => $this->warnUnknownDriver($driver),
         };
+
+        return $configOk ? $databaseResult : self::FAILURE;
+    }
+
+    /**
+     * Since 4.0 the config file and key are `translagenius` (they were
+     * `translaGenius`). Laravel names a config key after its file, so an app
+     * that still has a published config/translaGenius.php loads it under the
+     * old key - where the package no longer looks - and every setting in it is
+     * silently ignored. Compared by exact filename, because on a
+     * case-insensitive filesystem (macOS by default) both names open the same
+     * file.
+     *
+     * @return bool False when only the old file is present.
+     */
+    protected function checkPublishedConfig(): bool
+    {
+        $directory = $this->laravel->configPath();
+        $files = is_dir($directory) ? scandir($directory) : [];
+
+        if (in_array('translaGenius.php', $files, true) && !in_array('translagenius.php', $files, true)) {
+            $this->error('Found config/translaGenius.php, but TranslaGenius 4.0 reads config/translagenius.php (all lowercase).');
+            $this->line('  Its settings are being ignored. Rename the file to config/translagenius.php and replace');
+            $this->line("  config('translaGenius...') with config('translagenius...') in your own code - see UPGRADE.md.");
+
+            return false;
+        }
+
+        return true;
     }
 
     /**

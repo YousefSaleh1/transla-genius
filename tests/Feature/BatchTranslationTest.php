@@ -62,7 +62,7 @@ class BatchTranslationTest extends TestCase
 
         Sleep::fake();
         Queue::fake();
-        config(['translaGenius.supported_languages' => ['en', 'ar', 'es', 'fr']]);
+        config(['translagenius.supported_languages' => ['en', 'ar', 'es', 'fr']]);
 
         Http::fake(fn (Request $request) => $this->answer($request));
     }
@@ -103,7 +103,7 @@ class BatchTranslationTest extends TestCase
 
     protected function batching(bool $on): void
     {
-        config(['translaGenius.batch.enabled' => $on]);
+        config(['translagenius.batch.enabled' => $on]);
         $this->app->forgetInstance(TranslationProviderInterface::class);
         $this->app->forgetInstance(Translator::class);
         $this->app->forgetInstance(TranslatorInterface::class);
@@ -474,8 +474,8 @@ class BatchTranslationTest extends TestCase
         Event::listen(TranslationCompleted::class, LogTranslationUsage::class);
         Event::listen(\CodingPartners\TranslaGenius\Events\TranslationRequestBilled::class, [LogTranslationUsage::class, 'handleBilled']);
         config([
-            'translaGenius.providers.openrouter.cost_per_1k_prompt_tokens' => 1.0,
-            'translaGenius.providers.openrouter.cost_per_1k_completion_tokens' => 2.0,
+            'translagenius.providers.openrouter.cost_per_1k_prompt_tokens' => 1.0,
+            'translagenius.providers.openrouter.cost_per_1k_completion_tokens' => 2.0,
         ]);
 
         $arrange();
@@ -553,7 +553,7 @@ class BatchTranslationTest extends TestCase
     public function test_batch_request_keeps_instructions_in_system_and_content_in_user()
     {
         $this->batching(true);
-        config(['translaGenius.batch.prompt' => null]);
+        config(['translagenius.batch.prompt' => null]);
         $model = $this->createModel();
 
         $this->runJob($model);
@@ -572,7 +572,7 @@ class BatchTranslationTest extends TestCase
     public function test_custom_batch_prompt_with_placeholders()
     {
         $this->batching(true);
-        config(['translaGenius.providers.openrouter.batch_prompt' => 'B {model}.{field} {source_locale} -> {target_locales}; {target_locale} {unknown}']);
+        config(['translagenius.providers.openrouter.batch_prompt' => 'B {model}.{field} {source_locale} -> {target_locales}; {target_locale} {unknown}']);
         $sent = [];
         $this->override = function (Request $r) use (&$sent) {
             $sent[] = $r['messages'][0]['content'];

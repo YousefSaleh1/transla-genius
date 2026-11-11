@@ -171,8 +171,8 @@ class TranslateFieldsJobTest extends TestCase
     {
         Queue::fake();
         config([
-            'translaGenius.retries.job_tries' => '5',
-            'translaGenius.retries.job_backoff' => ' 5, 15 ,, 60 ',
+            'translagenius.retries.job_tries' => '5',
+            'translagenius.retries.job_backoff' => ' 5, 15 ,, 60 ',
         ]);
 
         $model = TestTranslatableModel::create(['name' => ['en' => 'A'], 'description' => ['en' => 'B']]);
@@ -185,7 +185,7 @@ class TranslateFieldsJobTest extends TestCase
     public function test_empty_job_retry_env_values_fall_back_to_defaults()
     {
         Queue::fake();
-        config(['translaGenius.retries.job_tries' => '', 'translaGenius.retries.job_backoff' => '']);
+        config(['translagenius.retries.job_tries' => '', 'translagenius.retries.job_backoff' => '']);
 
         $model = TestTranslatableModel::create(['name' => ['en' => 'A'], 'description' => ['en' => 'B']]);
         $job = new TranslateFields(new TranslationJobPayload($model, ['name']));
@@ -246,7 +246,7 @@ class TranslateFieldsJobTest extends TestCase
     public function test_retry_after_on_the_last_attempt_is_not_released()
     {
         Queue::fake();
-        config(['translaGenius.retries.job_tries' => 1]);
+        config(['translagenius.retries.job_tries' => 1]);
 
         $model = TestTranslatableModel::create(['name' => ['en' => 'A'], 'description' => ['en' => 'B']]);
 

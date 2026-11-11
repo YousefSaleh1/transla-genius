@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Schema;
 use Orchestra\Testbench\TestCase as Orchestra;
 
 /**
- * Phase 4e, translaGenius.usage_tracking.enabled = true: proves
+ * Phase 4e, translagenius.usage_tracking.enabled = true: proves
  * Listeners\LogTranslationUsage is actually wired up (not just "would
  * write correctly if it ran") and that it writes a real
  * Models\TranslationUsageLog row per Events\TranslationCompleted through
@@ -42,7 +42,7 @@ class UsageTrackingTest extends Orchestra
             'database' => ':memory:',
             'prefix' => '',
         ]);
-        $app['config']->set('translaGenius.usage_tracking.enabled', true);
+        $app['config']->set('translagenius.usage_tracking.enabled', true);
     }
 
     protected function setUp(): void
@@ -51,7 +51,7 @@ class UsageTrackingTest extends Orchestra
 
         FakeConfigurableProvider::reset();
 
-        Config::set('translaGenius.supported_languages', ['en', 'ar', 'es']);
+        Config::set('translagenius.supported_languages', ['en', 'ar', 'es']);
 
         $modelsMigration = include __DIR__ . '/../database/migrations/2024_01_01_000000_create_test_tables.php';
         $modelsMigration->up();
@@ -75,7 +75,7 @@ class UsageTrackingTest extends Orchestra
 
     public function test_completed_translations_write_usage_log_rows_with_computed_cost()
     {
-        Config::set('translaGenius.providers.fake', [
+        Config::set('translagenius.providers.fake', [
             'cost_per_1k_prompt_tokens' => 1.0,
             'cost_per_1k_completion_tokens' => 2.0,
         ]);
@@ -115,7 +115,7 @@ class UsageTrackingTest extends Orchestra
 
     public function test_estimated_cost_is_null_not_zero_when_no_rate_is_configured_for_the_provider()
     {
-        // Deliberately no cost rates on a translaGenius.providers.fake entry.
+        // Deliberately no cost rates on a translagenius.providers.fake entry.
         $this->app->singleton(
             TranslationProviderInterface::class,
             fn () => new FakeConfigurableProvider([
@@ -136,7 +136,7 @@ class UsageTrackingTest extends Orchestra
 
     public function test_estimated_cost_is_null_when_rate_is_configured_but_provider_reports_no_tokens()
     {
-        Config::set('translaGenius.providers.fake', [
+        Config::set('translagenius.providers.fake', [
             'cost_per_1k_prompt_tokens' => 1.0,
             'cost_per_1k_completion_tokens' => 2.0,
         ]);
@@ -160,7 +160,7 @@ class UsageTrackingTest extends Orchestra
 
     public function test_empty_string_rates_from_env_count_as_unconfigured_not_zero()
     {
-        Config::set('translaGenius.providers.fake', [
+        Config::set('translagenius.providers.fake', [
             'cost_per_1k_prompt_tokens' => '',
             'cost_per_1k_completion_tokens' => '',
         ]);

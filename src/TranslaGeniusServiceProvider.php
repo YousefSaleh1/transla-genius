@@ -37,14 +37,14 @@ class TranslaGeniusServiceProvider extends ServiceProvider
      *
      * @throws \RuntimeException When TranslationProviderInterface is
      *         resolved and no provider is configured for
-     *         translaGenius.default (raised lazily, inside the singleton
+     *         translagenius.default (raised lazily, inside the singleton
      *         factory - not at register() call time).
      */
     public function register()
     {
         $this->mergeConfigFrom(
-            __DIR__ . '/config/translaGenius.php',
-            'translaGenius'
+            __DIR__ . '/config/translagenius.php',
+            'translagenius'
         );
 
         // The app's configured locale, captured before anything can change
@@ -54,7 +54,7 @@ class TranslaGeniusServiceProvider extends ServiceProvider
         $this->app->instance('translagenius.configured_locale', $configuredLocale);
 
         $this->app->singleton(TranslationProviderInterface::class, function ($app) {
-            $name = $app->make('config')->get('translaGenius.default');
+            $name = $app->make('config')->get('translagenius.default');
             $this->cacheProfiles = [];
 
             $provider = $this->resolveProvider($app, $name);
@@ -72,7 +72,7 @@ class TranslaGeniusServiceProvider extends ServiceProvider
 
     /**
      * Resolve a TranslationProviderInterface for one entry under
-     * translaGenius.providers, by name.
+     * translagenius.providers, by name.
      *
      * A `driver` of FallbackProvider::class is handled specially: rather
      * than constructing it with the raw config array like any other
@@ -85,12 +85,12 @@ class TranslaGeniusServiceProvider extends ServiceProvider
      * own key added as `name` so the provider can report which entry it is.
      *
      * @param Application $app
-     * @param string $name Key under translaGenius.providers.
+     * @param string $name Key under translagenius.providers.
      * @param array<int, string> $seen Provider names already being
      *        resolved in this call chain, to detect a `chain` that
      *        (directly or indirectly) references itself.
      * @param bool $inChain Whether $name is being resolved as a member of a
-     *        fallback chain. Chain members get translaGenius.retries.fallback_http
+     *        fallback chain. Chain members get translagenius.retries.fallback_http
      *        HTTP retries and never sleep on Retry-After, so failover is fast.
      * @return TranslationProviderInterface
      *
@@ -109,12 +109,12 @@ class TranslaGeniusServiceProvider extends ServiceProvider
         }
 
         $config = $app->make('config');
-        $providerConfig = $config->get("translaGenius.providers.{$name}");
+        $providerConfig = $config->get("translagenius.providers.{$name}");
 
         if (empty($providerConfig) || empty($providerConfig['driver'])) {
             throw new RuntimeException(
                 "TranslaGenius: no provider configured for [{$name}]. "
-                . 'Check the `default` and `providers` keys in config/translaGenius.php.'
+                . 'Check the `default` and `providers` keys in config/translagenius.php.'
             );
         }
 
@@ -166,7 +166,7 @@ class TranslaGeniusServiceProvider extends ServiceProvider
             ));
         }
 
-        $retries = (array) $config->get('translaGenius.retries', []);
+        $retries = (array) $config->get('translagenius.retries', []);
         $retryDefaults = [
             'http_retries' => self::intSetting($retries['http'] ?? null, 1),
             'retry_after_max' => self::intSetting($retries['http_retry_after_max'] ?? null, 10),
@@ -176,16 +176,16 @@ class TranslaGeniusServiceProvider extends ServiceProvider
         // an empty value at either level falls through (to the provider's
         // built-in default if both are empty).
         $ownPrompt = trim((string) ($providerConfig['prompt'] ?? '')) !== '' ? $providerConfig['prompt'] : null;
-        $providerConfig['prompt'] = $ownPrompt ?? $config->get('translaGenius.prompt');
+        $providerConfig['prompt'] = $ownPrompt ?? $config->get('translagenius.prompt');
 
         // Same precedence for batching: an entry's own `batch` / `batch_prompt`
-        // when set, otherwise translaGenius.batch.enabled / .prompt.
+        // when set, otherwise translagenius.batch.enabled / .prompt.
         $ownBatch = $providerConfig['batch'] ?? null;
         $providerConfig['batch'] = ($ownBatch === null || $ownBatch === '')
-            ? $config->get('translaGenius.batch.enabled', false)
+            ? $config->get('translagenius.batch.enabled', false)
             : $ownBatch;
         $ownBatchPrompt = trim((string) ($providerConfig['batch_prompt'] ?? '')) !== '' ? $providerConfig['batch_prompt'] : null;
-        $providerConfig['batch_prompt'] = $ownBatchPrompt ?? $config->get('translaGenius.batch.prompt');
+        $providerConfig['batch_prompt'] = $ownBatchPrompt ?? $config->get('translagenius.batch.prompt');
         $chainOverrides = $inChain
             ? ['http_retries' => self::intSetting($retries['fallback_http'] ?? null, 0), 'retry_after_max' => 0]
             : [];
@@ -277,7 +277,7 @@ class TranslaGeniusServiceProvider extends ServiceProvider
     }
 
     /**
-     * When translaGenius.cache.enabled (TRANSLATION_CACHE) is on, wrap the
+     * When translagenius.cache.enabled (TRANSLATION_CACHE) is on, wrap the
      * resolved provider - a single entry or a whole fallback chain - in a
      * CachingProvider. Off: returned as is, not wrapped at all.
      *
@@ -288,7 +288,7 @@ class TranslaGeniusServiceProvider extends ServiceProvider
      */
     protected function wrapWithCache(Application $app, TranslationProviderInterface $provider, array $profile): TranslationProviderInterface
     {
-        $settings = (array) $app->make('config')->get('translaGenius.cache', []);
+        $settings = (array) $app->make('config')->get('translagenius.cache', []);
         $enabled = filter_var($settings['enabled'] ?? false, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? false;
 
         if (!$enabled) {
@@ -350,11 +350,11 @@ class TranslaGeniusServiceProvider extends ServiceProvider
     {
         // Publish the configuration file to the application's configuration directory.
         $this->publishes([
-            __DIR__ . '/config/translaGenius.php' => config_path('translaGenius.php'),
+            __DIR__ . '/config/translagenius.php' => config_path('translagenius.php'),
         ], 'translagenius-config');
 
         // Publish the usage-log migration - opt-in, same as the feature it
-        // backs (translaGenius.usage_tracking.enabled). Timestamped fresh
+        // backs (translagenius.usage_tracking.enabled). Timestamped fresh
         // at publish time, like any other package-shipped migration stub.
         $this->publishes([
             __DIR__ . '/database/migrations/create_translation_usage_logs_table.php.stub' => database_path(
@@ -381,7 +381,7 @@ class TranslaGeniusServiceProvider extends ServiceProvider
 
     /**
      * Register Listeners\LogTranslationUsage against Events\TranslationCompleted
-     * - but only when translaGenius.usage_tracking.enabled is true. This
+     * - but only when translagenius.usage_tracking.enabled is true. This
      * check happens here, once, at registration time - not inside the
      * listener itself - so that when the feature is off, the listener is
      * never wired up at all (no listener registered, nothing runs, no
@@ -392,7 +392,7 @@ class TranslaGeniusServiceProvider extends ServiceProvider
      */
     protected function registerUsageTrackingListener(): void
     {
-        if (!$this->app['config']->get('translaGenius.usage_tracking.enabled', false)) {
+        if (!$this->app['config']->get('translagenius.usage_tracking.enabled', false)) {
             return;
         }
 

@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Queue;
 use RuntimeException;
 
 /**
- * translaGenius.queue (TRANSLATION_QUEUE_CONNECTION, TRANSLATION_QUEUE,
+ * translagenius.queue (TRANSLATION_QUEUE_CONNECTION, TRANSLATION_QUEUE,
  * TRANSLATION_DISPATCH_AFTER_COMMIT) applied at every dispatch point.
  *
  * Placement is checked with Queue::fake() on the pushed job object. The
@@ -46,7 +46,7 @@ class QueueDispatchTest extends TestCase
     public function test_create_and_update_dispatch_onto_the_configured_connection_and_queue()
     {
         Queue::fake();
-        config(['translaGenius.queue.connection' => 'redis', 'translaGenius.queue.queue' => 'translations']);
+        config(['translagenius.queue.connection' => 'redis', 'translagenius.queue.queue' => 'translations']);
 
         $model = TestTranslatableModel::create(['name' => ['en' => 'Hello'], 'description' => ['en' => 'World']]);
         $model->setTranslation('name', 'en', 'Hello again')->save();
@@ -59,7 +59,7 @@ class QueueDispatchTest extends TestCase
     public function test_empty_queue_settings_leave_the_app_defaults()
     {
         Queue::fake();
-        config(['translaGenius.queue.connection' => '', 'translaGenius.queue.queue' => null]);
+        config(['translagenius.queue.connection' => '', 'translagenius.queue.queue' => null]);
 
         TestTranslatableModel::create(['name' => ['en' => 'Hello'], 'description' => ['en' => 'World']]);
 
@@ -69,7 +69,7 @@ class QueueDispatchTest extends TestCase
     public function test_the_trait_respects_the_job_class_override_with_queue_settings()
     {
         Queue::fake();
-        config(['translaGenius.queue.connection' => 'redis', 'translaGenius.queue.queue' => 'translations']);
+        config(['translagenius.queue.connection' => 'redis', 'translagenius.queue.queue' => 'translations']);
 
         $model = $this->markerModel();
         $model->fill(['name' => ['en' => 'Hello'], 'description' => ['en' => 'World']])->save();
@@ -81,7 +81,7 @@ class QueueDispatchTest extends TestCase
     public function test_backfill_dispatches_the_override_onto_the_configured_connection_and_queue()
     {
         Queue::fake();
-        config(['translaGenius.queue.connection' => 'redis', 'translaGenius.queue.queue' => 'translations']);
+        config(['translagenius.queue.connection' => 'redis', 'translagenius.queue.queue' => 'translations']);
 
         CustomJobTranslatableModel::withoutEvents(fn () => CustomJobTranslatableModel::create([
             'name' => ['en' => 'Hello'],
@@ -98,7 +98,7 @@ class QueueDispatchTest extends TestCase
     public function test_a_custom_job_without_queueable_is_still_dispatched()
     {
         Queue::fake();
-        config(['translaGenius.queue.connection' => 'redis', 'translaGenius.queue.queue' => 'translations']);
+        config(['translagenius.queue.connection' => 'redis', 'translagenius.queue.queue' => 'translations']);
 
         $plainJob = new class (new \CodingPartners\TranslaGenius\DTOs\TranslationJobPayload(new TestTranslatableModel(), [])) implements ShouldQueue, \CodingPartners\TranslaGenius\Contracts\TranslationJob {
             use Dispatchable;
@@ -146,12 +146,12 @@ class QueueDispatchTest extends TestCase
         \Illuminate\Support\Facades\Log::spy();
 
         // Not configured: no warning.
-        config(['translaGenius.queue.connection' => null, 'translaGenius.queue.queue' => null]);
+        config(['translagenius.queue.connection' => null, 'translagenius.queue.queue' => null]);
         \CodingPartners\TranslaGenius\Support\TranslationJobDispatcher::dispatch($plainJobClass, new TestTranslatableModel(), []);
         \Illuminate\Support\Facades\Log::shouldNotHaveReceived('warning');
 
         // Configured: three dispatches, one warning naming the class; all three still dispatched.
-        config(['translaGenius.queue.queue' => 'translations']);
+        config(['translagenius.queue.queue' => 'translations']);
         foreach (range(1, 3) as $i) {
             \CodingPartners\TranslaGenius\Support\TranslationJobDispatcher::dispatch($plainJobClass, new TestTranslatableModel(), []);
         }
@@ -201,7 +201,7 @@ class QueueDispatchTest extends TestCase
      */
     public function test_with_after_commit_off_the_job_runs_inside_the_transaction()
     {
-        config(['translaGenius.queue.after_commit' => false]);
+        config(['translagenius.queue.after_commit' => false]);
         $ranInsideTransaction = null;
 
         DB::transaction(function () use (&$ranInsideTransaction) {

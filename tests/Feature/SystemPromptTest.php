@@ -44,7 +44,7 @@ class SystemPromptTest extends TestCase
     /** Run the real job for the `name` field into `ar` only. */
     protected function translateName(string $text = 'Hello'): void
     {
-        config(['translaGenius.supported_languages' => ['en', 'ar']]);
+        config(['translagenius.supported_languages' => ['en', 'ar']]);
         $this->app->forgetInstance(TranslationProviderInterface::class);
         $this->app->forgetInstance(TranslatorInterface::class);
         $this->app->forgetInstance(\CodingPartners\TranslaGenius\Services\Translator::class);
@@ -64,7 +64,7 @@ class SystemPromptTest extends TestCase
 
     public function test_default_prompt_through_the_container_with_nothing_configured()
     {
-        config(['translaGenius.prompt' => null]);
+        config(['translagenius.prompt' => null]);
 
         $this->translateName();
 
@@ -73,7 +73,7 @@ class SystemPromptTest extends TestCase
 
     public function test_empty_or_blank_prompt_falls_back_to_the_default()
     {
-        config(['translaGenius.prompt' => '   ', 'translaGenius.providers.openrouter.prompt' => '']);
+        config(['translagenius.prompt' => '   ', 'translagenius.providers.openrouter.prompt' => '']);
 
         $this->translateName();
 
@@ -82,7 +82,7 @@ class SystemPromptTest extends TestCase
 
     public function test_placeholders_are_substituted_and_unknown_ones_are_left_untouched()
     {
-        config(['translaGenius.prompt' => 'Translate this {model} {field} from {source_locale} to {target_locale}. Keep {brand} unchanged.']);
+        config(['translagenius.prompt' => 'Translate this {model} {field} from {source_locale} to {target_locale}. Keep {brand} unchanged.']);
 
         $this->translateName();
 
@@ -100,8 +100,8 @@ class SystemPromptTest extends TestCase
     public function test_per_provider_prompt_wins_over_the_package_prompt()
     {
         config([
-            'translaGenius.prompt' => 'GLOBAL {target_locale}',
-            'translaGenius.providers.openrouter.prompt' => 'PROVIDER {target_locale}',
+            'translagenius.prompt' => 'GLOBAL {target_locale}',
+            'translagenius.providers.openrouter.prompt' => 'PROVIDER {target_locale}',
         ]);
 
         $this->translateName();
@@ -115,13 +115,13 @@ class SystemPromptTest extends TestCase
         $_ENV['TRANSLATION_SYSTEM_PROMPT'] = $_SERVER['TRANSLATION_SYSTEM_PROMPT'] = 'Translate to {target_locale}, formally.';
 
         try {
-            $shipped = require __DIR__ . '/../../src/config/translaGenius.php';
+            $shipped = require __DIR__ . '/../../src/config/translagenius.php';
         } finally {
             putenv('TRANSLATION_SYSTEM_PROMPT');
             unset($_ENV['TRANSLATION_SYSTEM_PROMPT'], $_SERVER['TRANSLATION_SYSTEM_PROMPT']);
         }
 
-        config(['translaGenius.prompt' => $shipped['prompt']]);
+        config(['translagenius.prompt' => $shipped['prompt']]);
         $this->translateName();
 
         $this->assertSame(['Translate to ar, formally.'], $this->systemPrompts());
@@ -135,7 +135,7 @@ class SystemPromptTest extends TestCase
      */
     public function test_field_content_stays_in_the_user_message_whatever_the_prompt()
     {
-        config(['translaGenius.prompt' => 'Context: {text} {content} {message} {user} {field}']);
+        config(['translagenius.prompt' => 'Context: {text} {content} {message} {user} {field}']);
 
         $this->translateName('SECRET FIELD CONTENT');
 

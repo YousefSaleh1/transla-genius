@@ -71,7 +71,7 @@ class LivePresetsTest extends Orchestra
 
         putenv("TRANSLATION_PROVIDER={$preset}");
         $_ENV['TRANSLATION_PROVIDER'] = $_SERVER['TRANSLATION_PROVIDER'] = $preset;
-        $this->app['config']->set('translaGenius', require __DIR__ . '/../../src/config/translaGenius.php');
+        $this->app['config']->set('translagenius', require __DIR__ . '/../../src/config/translagenius.php');
         $this->app->forgetInstance(TranslationProviderInterface::class);
 
         Http::record();
@@ -92,7 +92,7 @@ class LivePresetsTest extends Orchestra
 
         // The preset's configured reasoning_effort (default or *_REASONING_EFFORT)
         // really went out, so a passing run also proves the API accepts it.
-        $configuredEffort = trim((string) config("translaGenius.providers.{$preset}.reasoning_effort"));
+        $configuredEffort = trim((string) config("translagenius.providers.{$preset}.reasoning_effort"));
         $this->assertSame(
             $configuredEffort === '' ? null : $configuredEffort,
             $request->data()['reasoning_effort'] ?? null
@@ -101,7 +101,7 @@ class LivePresetsTest extends Orchestra
         fwrite(STDERR, sprintf(
             "\n  [live %s] %s, reasoning_effort %s -> \"%s\" (finish_reason: %s, tokens: %s/%s)\n",
             $preset,
-            config("translaGenius.providers.{$preset}.model"),
+            config("translagenius.providers.{$preset}.model"),
             $configuredEffort === '' ? 'not sent' : $configuredEffort,
             $result->text,
             var_export($response->json('choices.0.finish_reason'), true),
@@ -122,9 +122,9 @@ class LivePresetsTest extends Orchestra
     {
         $this->skipUnlessConfigured($preset, $required);
 
-        $this->app['config']->set('translaGenius', require __DIR__ . '/../../src/config/translaGenius.php');
-        $this->app['config']->set("translaGenius.providers.{$preset}.batch", true);
-        $this->app['config']->set('translaGenius.default', $preset);
+        $this->app['config']->set('translagenius', require __DIR__ . '/../../src/config/translagenius.php');
+        $this->app['config']->set("translagenius.providers.{$preset}.batch", true);
+        $this->app['config']->set('translagenius.default', $preset);
         $this->app->forgetInstance(TranslationProviderInterface::class);
 
         Http::record();
@@ -156,7 +156,7 @@ class LivePresetsTest extends Orchestra
             "\n  [live batch %s] %s%s, response_format %s -> %s (tokens: %s/%s)\n",
             $preset,
             $attempts->count() > 1 ? "attempts: {$statuses}; " : '',
-            config("translaGenius.providers.{$preset}.model"),
+            config("translagenius.providers.{$preset}.model"),
             json_encode($request->data()['response_format']['type'] ?? 'none'),
             json_encode($batch->translations, JSON_UNESCAPED_UNICODE),
             var_export($batch->promptTokens, true),

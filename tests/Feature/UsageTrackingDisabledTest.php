@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Schema;
 use Orchestra\Testbench\TestCase as Orchestra;
 
 /**
- * Phase 4e, translaGenius.usage_tracking left at its default (unset/false):
+ * Phase 4e, translagenius.usage_tracking left at its default (unset/false):
  * proves the feature is a genuine no-op, not just quiet - Listeners\
  * LogTranslationUsage is never registered against Events\TranslationCompleted
  * at all (checked directly on the event dispatcher, not inferred from "no
@@ -36,7 +36,7 @@ class UsageTrackingDisabledTest extends Orchestra
             'database' => ':memory:',
             'prefix' => '',
         ]);
-        // translaGenius.usage_tracking.enabled is intentionally left at
+        // translagenius.usage_tracking.enabled is intentionally left at
         // its shipped default (false) here - not touched at all.
     }
 
@@ -46,7 +46,7 @@ class UsageTrackingDisabledTest extends Orchestra
 
         FakeConfigurableProvider::reset();
 
-        Config::set('translaGenius.supported_languages', ['en', 'ar', 'es']);
+        Config::set('translagenius.supported_languages', ['en', 'ar', 'es']);
 
         $modelsMigration = include __DIR__ . '/../database/migrations/2024_01_01_000000_create_test_tables.php';
         $modelsMigration->up();
@@ -65,7 +65,7 @@ class UsageTrackingDisabledTest extends Orchestra
 
     public function test_usage_tracking_config_defaults_to_disabled()
     {
-        $this->assertFalse(config('translaGenius.usage_tracking.enabled'));
+        $this->assertFalse(config('translagenius.usage_tracking.enabled'));
     }
 
     public function test_listener_is_not_registered_when_usage_tracking_is_disabled()

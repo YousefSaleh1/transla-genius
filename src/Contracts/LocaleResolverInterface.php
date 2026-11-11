@@ -5,7 +5,7 @@ namespace CodingPartners\TranslaGenius\Contracts;
 /**
  * The seam for how "current locale" and "supported locales" are
  * determined. The default implementation (DefaultLocaleResolver) reads the
- * current app locale and the translaGenius.supported_languages config -
+ * current app locale and the translagenius.supported_languages config -
  * exactly what get_current_locale()/get_supported_languages() and
  * SetLocale did directly before this existed. A consumer wanting a
  * different resolution strategy (subdomain-based, per-user preference,

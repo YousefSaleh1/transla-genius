@@ -42,8 +42,8 @@ class ShippedPresetUsageTrackingTest extends Orchestra
             $_ENV[$key] = $_SERVER[$key] = $value;
         }
 
-        $app['config']->set('translaGenius', require __DIR__ . '/../../src/config/translaGenius.php');
-        $app['config']->set('translaGenius.supported_languages', ['en', 'ar']);
+        $app['config']->set('translagenius', require __DIR__ . '/../../src/config/translagenius.php');
+        $app['config']->set('translagenius.supported_languages', ['en', 'ar']);
         $app['config']->set('database.default', 'testbench');
         $app['config']->set('database.connections.testbench', [
             'driver' => 'sqlite',

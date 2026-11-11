@@ -27,7 +27,7 @@ use Illuminate\Support\Str;
  * TranslationProviderInterface for why the contract itself stays neutral.
  *
  * Configured entirely through the array passed to the constructor (see
- * translaGenius.providers.openrouter in config/translaGenius.php) rather
+ * translagenius.providers.openrouter in config/translagenius.php) rather
  * than reading the global config() facade directly - makes this class
  * constructible and testable with a plain array, no app config needed.
  */
@@ -116,7 +116,7 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
     protected int $timeout;
 
     /**
-     * @var string|null The translaGenius.providers key this instance was
+     * @var string|null The translagenius.providers key this instance was
      *      resolved under (e.g. "gemini"), reported on every TranslationResult.
      */
     protected ?string $name;
@@ -153,8 +153,8 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
 
     /**
      * @param array{name?: string, key?: string, url?: string, model?: string, temperature?: float|null, max_tokens?: int|null, timeout?: int, auth_header?: string, headers?: array<string, string>, token_limit_param?: string, http_retries?: int, retry_after_max?: int, prompt?: string|null, reasoning_effort?: string|null, body?: array<string, mixed>} $config
-     *        Provider configuration array - one translaGenius.providers.* entry
-     *        from config/translaGenius.php. `name` is injected by the service
+     *        Provider configuration array - one translagenius.providers.* entry
+     *        from config/translagenius.php. `name` is injected by the service
      *        provider (the entry's config key). Every key is optional; missing
      *        key/url are caught explicitly in translate() rather than left
      *        to fail as an opaque HTTP error.

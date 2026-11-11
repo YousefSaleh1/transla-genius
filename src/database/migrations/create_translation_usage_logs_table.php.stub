@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * Backs Models\TranslationUsageLog / Listeners\LogTranslationUsage - one row
- * per Events\TranslationCompleted when translaGenius.usage_tracking.enabled
+ * per Events\TranslationCompleted when translagenius.usage_tracking.enabled
  * is true. Plain relational columns only (no JSON) - unlike the package's
  * own translatable-field storage, nothing here needs driver-specific
  * JSON-path handling, so this sidesteps that portability concern entirely.

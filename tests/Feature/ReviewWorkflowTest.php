@@ -58,7 +58,7 @@ class ReviewWorkflowTest extends TestCase
         (include __DIR__ . '/../../src/database/migrations/create_translation_reviews_table.php.stub')->up();
 
         config([
-            'translaGenius.review' => [
+            'translagenius.review' => [
                 'enabled' => true,
                 'models' => [],
                 'fields' => [],
@@ -227,7 +227,7 @@ class ReviewWorkflowTest extends TestCase
 
     public function test_on_reject_retranslate_requests_a_fresh_translation_automatically()
     {
-        config(['translaGenius.review.on_reject' => 'retranslate']);
+        config(['translagenius.review.on_reject' => 'retranslate']);
         $model = $this->createRecord();
         $this->takeRequests();
 
@@ -281,7 +281,7 @@ class ReviewWorkflowTest extends TestCase
 
     public function test_visibility_clear_removes_the_stale_text_until_approval()
     {
-        config(['translaGenius.review.while_pending' => 'clear']);
+        config(['translagenius.review.while_pending' => 'clear']);
         $model = $this->publishedRecord();
 
         $model->setTranslation('name', 'en', 'B')->save();
@@ -295,7 +295,7 @@ class ReviewWorkflowTest extends TestCase
 
     public function test_visibility_can_be_overridden_per_model_field()
     {
-        config(['translaGenius.review.while_pending_overrides' => [TestTranslatableModel::class => ['description' => 'clear']]]);
+        config(['translagenius.review.while_pending_overrides' => [TestTranslatableModel::class => ['description' => 'clear']]]);
         $model = $this->publishedRecord();
 
         $model->setTranslation('name', 'en', 'B');
@@ -368,7 +368,7 @@ class ReviewWorkflowTest extends TestCase
 
     protected function useCache(): void
     {
-        config(['cache.default' => 'array', 'translaGenius.cache' => ['enabled' => true, 'store' => 'array', 'ttl' => 3600]]);
+        config(['cache.default' => 'array', 'translagenius.cache' => ['enabled' => true, 'store' => 'array', 'ttl' => 3600]]);
         Cache::store('array')->flush();
         $this->reresolve();
     }
@@ -431,7 +431,7 @@ class ReviewWorkflowTest extends TestCase
 
     public function test_review_locales_reviews_only_the_listed_locales()
     {
-        config(['translaGenius.review.locales' => 'ar']);
+        config(['translagenius.review.locales' => 'ar']);
 
         $model = $this->createRecord();
 
@@ -441,14 +441,14 @@ class ReviewWorkflowTest extends TestCase
 
     public function test_review_models_and_fields_scope_what_is_reviewed()
     {
-        config(['translaGenius.review.models' => [TestTranslatableModel::class => ['description']]]);
+        config(['translagenius.review.models' => [TestTranslatableModel::class => ['description']]]);
 
         $model = $this->createRecord();
 
         $this->assertSame(['ar' => 'A|ar', 'en' => 'A', 'es' => 'A|es'], $this->stored($model));
         $this->assertSame(['description'], TranslationReview::pending()->distinct()->pluck('field')->all());
 
-        config(['translaGenius.review.models' => [], 'translaGenius.review.fields' => ['name']]);
+        config(['translagenius.review.models' => [], 'translagenius.review.fields' => ['name']]);
         $other = $this->createRecord('N', 'M');
         $this->assertSame(['ar' => 'M|ar', 'en' => 'M', 'es' => 'M|es'], $this->stored($other, 'description'));
         $this->assertSame(2, TranslationReview::query()->for($other)->field('name')->pending()->count());
@@ -458,7 +458,7 @@ class ReviewWorkflowTest extends TestCase
 
     protected function requestsFor(bool $review, callable $arrange): array
     {
-        config(['translaGenius.review.enabled' => $review]);
+        config(['translagenius.review.enabled' => $review]);
         $arrange();
         $this->reresolve();
         $this->requests = [];
@@ -470,7 +470,7 @@ class ReviewWorkflowTest extends TestCase
 
     public function test_batching_sends_the_same_requests_with_review_on_or_off()
     {
-        $batching = fn () => config(['translaGenius.batch.enabled' => true]);
+        $batching = fn () => config(['translagenius.batch.enabled' => true]);
 
         $off = $this->requestsFor(false, $batching);
         $on = $this->requestsFor(true, $batching);
@@ -484,10 +484,10 @@ class ReviewWorkflowTest extends TestCase
     {
         $chain = function () {
             config([
-                'translaGenius.providers.primary' => ['driver' => OpenAiCompatibleProvider::class, 'key' => 'k', 'url' => 'https://primary.test/v1', 'model' => 'm'],
-                'translaGenius.providers.secondary' => ['driver' => OpenAiCompatibleProvider::class, 'key' => 'k', 'url' => 'https://secondary.test/v1', 'model' => 'm'],
-                'translaGenius.providers.resilient' => ['driver' => FallbackProvider::class, 'chain' => ['primary', 'secondary']],
-                'translaGenius.default' => 'resilient',
+                'translagenius.providers.primary' => ['driver' => OpenAiCompatibleProvider::class, 'key' => 'k', 'url' => 'https://primary.test/v1', 'model' => 'm'],
+                'translagenius.providers.secondary' => ['driver' => OpenAiCompatibleProvider::class, 'key' => 'k', 'url' => 'https://secondary.test/v1', 'model' => 'm'],
+                'translagenius.providers.resilient' => ['driver' => FallbackProvider::class, 'chain' => ['primary', 'secondary']],
+                'translagenius.default' => 'resilient',
             ]);
             $this->failingHosts['primary.test'] = 503;
         };
@@ -579,7 +579,7 @@ class ReviewWorkflowTest extends TestCase
 
     public function test_with_review_off_the_review_table_is_never_touched()
     {
-        config(['translaGenius.review.enabled' => false]);
+        config(['translagenius.review.enabled' => false]);
         Schema::dropIfExists('translation_reviews'); // not even needed
 
         DB::enableQueryLog();

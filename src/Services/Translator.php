@@ -14,12 +14,12 @@ use CodingPartners\TranslaGenius\DTOs\TranslationResult;
 /**
  * Default TranslatorInterface implementation: resolves to whichever
  * TranslationProviderInterface implementation is bound (see
- * translaGenius.default / translaGenius.providers.* and
+ * translagenius.default / translagenius.providers.* and
  * TranslaGeniusServiceProvider) and delegates.
  *
  * TranslateFields and the TranslaGenius facade depend on TranslatorInterface,
  * not this class - swapping providers means rebinding
- * TranslationProviderInterface (or changing translaGenius.default);
+ * TranslationProviderInterface (or changing translagenius.default);
  * replacing translation-resolution itself entirely (caching, fallback
  * chaining, ...) means rebinding TranslatorInterface to a different
  * implementation - neither touches the job or the Translatable trait.
@@ -31,7 +31,7 @@ class Translator implements BatchTranslatorInterface
     /**
      * @param TranslationProviderInterface $provider The backend to delegate
      *        translate() calls to - whichever implementation is bound (see
-     *        translaGenius.default / translaGenius.providers.*).
+     *        translagenius.default / translagenius.providers.*).
      */
     public function __construct(protected TranslationProviderInterface $provider)
     {

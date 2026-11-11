@@ -54,7 +54,7 @@ class TestCase extends Orchestra
         $this->createDatabaseIfNotExists();
 
         // Set default package configuration
-        Config::set('translaGenius', [
+        Config::set('translagenius', [
             'supported_languages' => ['en', 'ar', 'es'],
             'default' => 'openrouter',
             'providers' => [

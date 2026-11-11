@@ -38,4 +38,28 @@ class CheckCommandTest extends Orchestra
     {
         $this->assertTrue($this->app->make('Illuminate\Contracts\Console\Kernel')->all()['translagenius:check'] !== null);
     }
+
+    public function test_check_command_reports_a_config_file_published_under_the_old_name()
+    {
+        $directory = sys_get_temp_dir() . '/translagenius-check-' . uniqid();
+        mkdir($directory);
+        file_put_contents("{$directory}/translaGenius.php", "<?php return [];\n");
+        $this->app->useConfigPath($directory);
+
+        try {
+            $this->artisan('translagenius:check')
+                ->expectsOutputToContain('Found config/translaGenius.php')
+                ->expectsOutputToContain('Rename the file to config/translagenius.php')
+                ->assertFailed();
+
+            // Renamed: the check passes again.
+            rename("{$directory}/translaGenius.php", "{$directory}/translagenius.php");
+            $this->artisan('translagenius:check')
+                ->doesntExpectOutputToContain('Found config/translaGenius.php')
+                ->assertSuccessful();
+        } finally {
+            array_map('unlink', glob("{$directory}/*.php"));
+            rmdir($directory);
+        }
+    }
 }

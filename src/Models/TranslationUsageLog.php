@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 /**
  * One row per successfully completed translation
  * (Events\TranslationCompleted), written by Listeners\LogTranslationUsage
- * when translaGenius.usage_tracking.enabled is true.
+ * when translagenius.usage_tracking.enabled is true.
  *
  * This is genuinely public API surface, not an internal implementation
  * detail: query it directly from your own application code to build
@@ -16,7 +16,7 @@ use Illuminate\Database\Eloquent\Model;
  * you to query.
  *
  * `estimated_cost` is null whenever a rate wasn't configured for the
- * reporting provider (see translaGenius.providers.{name}.cost_per_1k_*) or the
+ * reporting provider (see translagenius.providers.{name}.cost_per_1k_*) or the
  * provider didn't report the token counts a configured rate needs - never
  * a misleading `0`. Filter it out explicitly (`whereNotNull('estimated_cost')`)
  * before summing/averaging cost, so unrated rows don't silently read as free.

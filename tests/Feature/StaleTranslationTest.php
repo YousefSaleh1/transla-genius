@@ -197,7 +197,7 @@ class StaleTranslationTest extends TestCase
 
     public function test_re_translation_with_batching_on()
     {
-        config(['translaGenius.batch.enabled' => true]);
+        config(['translagenius.batch.enabled' => true]);
         $this->reresolve();
         $model = $this->createTranslated();
 
@@ -209,7 +209,7 @@ class StaleTranslationTest extends TestCase
 
     public function test_re_translation_with_the_cache_on()
     {
-        config(['cache.default' => 'array', 'translaGenius.cache' => ['enabled' => true, 'store' => 'array', 'ttl' => 3600]]);
+        config(['cache.default' => 'array', 'translagenius.cache' => ['enabled' => true, 'store' => 'array', 'ttl' => 3600]]);
         Cache::store('array')->flush();
         $this->reresolve();
         $model = $this->createTranslated();
@@ -326,7 +326,7 @@ class StaleTranslationTest extends TestCase
 
     public function test_target_snapshots_with_batching_on()
     {
-        config(['translaGenius.batch.enabled' => true, 'translaGenius.supported_languages' => ['en', 'ar', 'es', 'fr']]);
+        config(['translagenius.batch.enabled' => true, 'translagenius.supported_languages' => ['en', 'ar', 'es', 'fr']]);
         $this->reresolve();
         $model = $this->createTranslated();
         $job = $this->queuedRetranslation($model, 'B');
@@ -345,7 +345,7 @@ class StaleTranslationTest extends TestCase
 
     public function test_target_snapshots_with_the_cache_on()
     {
-        config(['cache.default' => 'array', 'translaGenius.cache' => ['enabled' => true, 'store' => 'array', 'ttl' => 3600]]);
+        config(['cache.default' => 'array', 'translagenius.cache' => ['enabled' => true, 'store' => 'array', 'ttl' => 3600]]);
         Cache::store('array')->flush();
         $this->reresolve();
 

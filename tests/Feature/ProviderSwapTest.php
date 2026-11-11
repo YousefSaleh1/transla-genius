@@ -43,7 +43,7 @@ class ProviderSwapTest extends Orchestra
     {
         parent::setUp();
 
-        Config::set('translaGenius.supported_languages', ['en', 'ar', 'es']);
+        Config::set('translagenius.supported_languages', ['en', 'ar', 'es']);
 
         // The only line in this file that knows FakeTranslationProvider
         // exists. Nothing else - job, trait, Translator - is touched or

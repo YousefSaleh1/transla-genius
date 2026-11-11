@@ -36,7 +36,7 @@ class SourceLocaleTest extends TestCase
         parent::setUp();
 
         Sleep::fake();
-        config(['translaGenius.supported_languages' => ['en', 'ar', 'es']]);
+        config(['translagenius.supported_languages' => ['en', 'ar', 'es']]);
 
         Http::fake(function (Request $request) {
             preg_match('/from (\w+) to (\w+)\./', $request['messages'][0]['content'], $m);
@@ -118,7 +118,7 @@ class SourceLocaleTest extends TestCase
 
     public function test_translation_source_locale_wins_over_the_request_locale()
     {
-        config(['translaGenius.source_locale' => 'es']);
+        config(['translagenius.source_locale' => 'es']);
 
         // The request is in Arabic, but content is always authored in Spanish.
         $model = $this->createInRequestLocale('ar', [
@@ -166,12 +166,12 @@ class SourceLocaleTest extends TestCase
         Queue::fake();
         TestTranslatableModel::withoutEvents(fn () => TestTranslatableModel::create(['name' => ['es' => 'Hola'], 'description' => ['es' => 'x']]));
 
-        config(['translaGenius.source_locale' => 'es']);
+        config(['translagenius.source_locale' => 'es']);
         $this->artisan('translagenius:backfill', ['model' => TestTranslatableModel::class, '--force' => true])
             ->expectsOutputToContain('Source locale: es;')
             ->assertSuccessful();
 
-        config(['translaGenius.source_locale' => null]);
+        config(['translagenius.source_locale' => null]);
         $this->artisan('translagenius:backfill', ['model' => TestTranslatableModel::class, '--dry-run' => true])
             ->expectsOutputToContain('Source locale: en;')
             ->assertSuccessful();
@@ -232,7 +232,7 @@ class SourceLocaleTest extends TestCase
         $this->assertSame(['en->ar Hello'], $this->requests);
 
         $this->requests = [];
-        config(['translaGenius.source_locale' => 'es']);
+        config(['translagenius.source_locale' => 'es']);
         $model->refresh()->forgetTranslation('name', 'ar');
         TestTranslatableModel::withoutEvents(fn () => $model->save());
         (new TranslateFields(new TranslationJobPayload($model->fresh(), ['name'])))->handle($this->app->make(TranslatorInterface::class), new TranslationWriter());

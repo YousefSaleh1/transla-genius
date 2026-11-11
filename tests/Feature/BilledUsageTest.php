@@ -55,7 +55,7 @@ class BilledUsageTest extends Orchestra
         $app['config']->set('database.default', 'testbench');
         $app['config']->set('database.connections.testbench', ['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']);
         $app['config']->set('cache.default', 'array');
-        $app['config']->set('translaGenius.usage_tracking.enabled', true);
+        $app['config']->set('translagenius.usage_tracking.enabled', true);
     }
 
     protected function setUp(): void
@@ -79,15 +79,15 @@ class BilledUsageTest extends Orchestra
         ];
 
         config([
-            'translaGenius.supported_languages' => ['en', 'ar', 'es', 'fr'],
-            'translaGenius.providers' => [
+            'translagenius.supported_languages' => ['en', 'ar', 'es', 'fr'],
+            'translagenius.providers' => [
                 'primary' => $member('primary.test'),
                 'secondary' => $member('secondary.test'),
                 'chain' => ['driver' => FallbackProvider::class, 'chain' => ['primary', 'secondary']],
             ],
-            'translaGenius.default' => 'primary',
-            'translaGenius.batch.enabled' => false,
-            'translaGenius.cache' => ['enabled' => false],
+            'translagenius.default' => 'primary',
+            'translagenius.batch.enabled' => false,
+            'translagenius.cache' => ['enabled' => false],
         ]);
 
         Http::fake(fn (Request $request) => $this->answer($request));
@@ -213,7 +213,7 @@ class BilledUsageTest extends Orchestra
 
     public function test_a_truncated_batch_outside_a_chain()
     {
-        config(['translaGenius.batch.enabled' => true]);
+        config(['translagenius.batch.enabled' => true]);
         $this->reresolve();
         $this->behaviour['primary.test'] = fn (Request $r, bool $isBatch) => $isBatch
             ? ['content' => '{"ar": "x', 'finish_reason' => 'length']
@@ -228,7 +228,7 @@ class BilledUsageTest extends Orchestra
 
     public function test_a_chain_whose_primary_is_billed_but_truncated_and_whose_secondary_succeeds()
     {
-        config(['translaGenius.default' => 'chain']);
+        config(['translagenius.default' => 'chain']);
         $this->reresolve();
         $this->behaviour['primary.test'] = fn () => ['content' => 'half', 'finish_reason' => 'length'];
 
@@ -242,7 +242,7 @@ class BilledUsageTest extends Orchestra
 
     public function test_a_chain_whose_primary_batch_is_truncated_and_whose_secondary_batch_succeeds()
     {
-        config(['translaGenius.default' => 'chain', 'translaGenius.batch.enabled' => true]);
+        config(['translagenius.default' => 'chain', 'translagenius.batch.enabled' => true]);
         $this->reresolve();
         $this->behaviour['primary.test'] = fn (Request $r, bool $isBatch) => $isBatch
             ? ['content' => '{"ar": "x', 'finish_reason' => 'length']
@@ -257,7 +257,7 @@ class BilledUsageTest extends Orchestra
 
     public function test_an_unparseable_batch()
     {
-        config(['translaGenius.batch.enabled' => true]);
+        config(['translagenius.batch.enabled' => true]);
         $this->reresolve();
         $this->behaviour['primary.test'] = fn (Request $r, bool $isBatch) => $isBatch ? ['content' => 'Sure! Here you go.'] : [];
 
@@ -314,7 +314,7 @@ class BilledUsageTest extends Orchestra
 
     public function test_runs_with_cache_hits()
     {
-        config(['translaGenius.cache' => ['enabled' => true, 'store' => 'array', 'ttl' => 3600]]);
+        config(['translagenius.cache' => ['enabled' => true, 'store' => 'array', 'ttl' => 3600]]);
         $this->reresolve();
 
         $this->runJob()->assertNotFailed();
@@ -329,8 +329,8 @@ class BilledUsageTest extends Orchestra
     public function test_runs_with_cache_hits_and_a_truncated_batch()
     {
         config([
-            'translaGenius.cache' => ['enabled' => true, 'store' => 'array', 'ttl' => 3600],
-            'translaGenius.batch.enabled' => true,
+            'translagenius.cache' => ['enabled' => true, 'store' => 'array', 'ttl' => 3600],
+            'translagenius.batch.enabled' => true,
         ]);
         $this->reresolve();
         $this->runJob(['en' => 'Hello'])->assertNotFailed(); // batch: caches ar/es/fr

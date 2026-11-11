@@ -18,9 +18,9 @@ Constraints carried over from the existing package:
 
 ## 1. Activation
 
-**Global switch**: `TRANSLATION_REVIEW=false` by default (`translaGenius.review.enabled`).
+**Global switch**: `TRANSLATION_REVIEW=false` by default (`translagenius.review.enabled`).
 
-**What is reviewed** (config only, in a published `config/translaGenius.php`):
+**What is reviewed** (config only, in a published `config/translagenius.php`):
 
 ```php
 'review' => [

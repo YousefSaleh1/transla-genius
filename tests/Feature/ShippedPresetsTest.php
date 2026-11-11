@@ -12,7 +12,7 @@ use Orchestra\Testbench\TestCase as Orchestra;
 
 /**
  * Exercises the config file the package actually ships
- * (src/config/translaGenius.php), driven only by environment variables -
+ * (src/config/translagenius.php), driven only by environment variables -
  * the "zero-code" path. Each test sets env vars, reloads the shipped
  * config, and resolves the provider fresh from the container.
  */
@@ -49,7 +49,7 @@ class ShippedPresetsTest extends Orchestra
             $_ENV[$key] = $_SERVER[$key] = $value;
         }
 
-        $this->app['config']->set('translaGenius', require __DIR__ . '/../../src/config/translaGenius.php');
+        $this->app['config']->set('translagenius', require __DIR__ . '/../../src/config/translagenius.php');
         $this->app->forgetInstance(TranslationProviderInterface::class);
     }
 
@@ -151,7 +151,7 @@ class ShippedPresetsTest extends Orchestra
         $this->fakeEndpoints();
         $this->withEnv(['TRANSLATION_API_KEY' => 'legacy-key', 'TRANSLATION_MODEL' => 'openai/gpt-4o-mini']);
 
-        $this->assertSame('openrouter', config('translaGenius.default'));
+        $this->assertSame('openrouter', config('translagenius.default'));
         $result = $this->translate();
 
         $this->assertSame('openrouter', $result->provider);

@@ -31,8 +31,8 @@ use InvalidArgumentException;
  * unusable (bad key, expired quota) is a non-retryable failure, and that's
  * precisely when falling through to B matters most.
  *
- * Constructed via config - see translaGenius.providers.*.driver /
- * translaGenius.providers.*.chain and TranslaGeniusServiceProvider - rather
+ * Constructed via config - see translagenius.providers.*.driver /
+ * translagenius.providers.*.chain and TranslaGeniusServiceProvider - rather
  * than ever being instantiated directly outside that resolution path.
  *
  * @see \CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface

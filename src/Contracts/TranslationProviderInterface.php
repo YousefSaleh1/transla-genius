@@ -17,8 +17,8 @@ use CodingPartners\TranslaGenius\DTOs\TranslationResult;
  * an LLM at all (DeepL, Google Translate) implements this exactly as easily
  * as one that is.
  *
- * Register a custom implementation via config - see translaGenius.providers
- * in config/translaGenius.php - no code changes to this package required.
+ * Register a custom implementation via config - see translagenius.providers
+ * in config/translagenius.php - no code changes to this package required.
  */
 interface TranslationProviderInterface
 {

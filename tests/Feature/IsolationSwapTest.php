@@ -50,7 +50,7 @@ class IsolationSwapTest extends Orchestra
     {
         parent::setUp();
 
-        Config::set('translaGenius.supported_languages', ['en', 'ar', 'es']);
+        Config::set('translagenius.supported_languages', ['en', 'ar', 'es']);
 
         $migration = include __DIR__ . '/../database/migrations/2024_01_01_000000_create_test_tables.php';
         $migration->up();

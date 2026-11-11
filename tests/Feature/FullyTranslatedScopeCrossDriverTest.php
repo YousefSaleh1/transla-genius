@@ -43,7 +43,7 @@ class FullyTranslatedScopeCrossDriverTest extends Orchestra
     {
         parent::setUp();
 
-        Config::set('translaGenius', [
+        Config::set('translagenius', [
             'supported_languages' => ['en', 'ar', 'es'],
             'default' => 'openrouter',
             'providers' => [

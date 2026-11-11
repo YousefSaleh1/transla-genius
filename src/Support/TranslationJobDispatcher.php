@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * Dispatches a translation job with the package's queue settings applied
- * (translaGenius.queue: connection, queue, after_commit). Used by every
+ * (translagenius.queue: connection, queue, after_commit). Used by every
  * dispatch point - the Translatable trait's create/update hooks and
  * `translagenius:backfill` - so they behave the same way.
  *
@@ -48,7 +48,7 @@ final class TranslationJobDispatcher
         }
 
         $job = new $jobClass(new TranslationJobPayload($model, $fields, $sourceLocale, $retranslate, $options));
-        $settings = (array) config('translaGenius.queue', []);
+        $settings = (array) config('translagenius.queue', []);
 
         $connection = $settings['connection'] ?? null;
         $queue = $settings['queue'] ?? null;
@@ -88,7 +88,7 @@ final class TranslationJobDispatcher
      */
     public static function sourceLocale(): string
     {
-        $fixed = trim((string) config('translaGenius.source_locale'));
+        $fixed = trim((string) config('translagenius.source_locale'));
 
         return $fixed !== '' ? $fixed : get_current_locale();
     }
@@ -104,7 +104,7 @@ final class TranslationJobDispatcher
      */
     public static function defaultSourceLocale(): string
     {
-        $fixed = trim((string) config('translaGenius.source_locale'));
+        $fixed = trim((string) config('translagenius.source_locale'));
 
         if ($fixed !== '') {
             return $fixed;

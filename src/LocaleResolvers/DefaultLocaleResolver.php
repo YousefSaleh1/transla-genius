@@ -7,7 +7,7 @@ use CodingPartners\TranslaGenius\Contracts\LocaleResolverInterface;
 /**
  * The resolution strategy this package always used before
  * LocaleResolverInterface existed: the current Laravel app locale, and
- * whatever translaGenius.supported_languages is configured to. This is the
+ * whatever translagenius.supported_languages is configured to. This is the
  * single place that config key is read from - SetLocale and the
  * get_current_locale()/get_supported_languages() helpers all go through
  * this (via the bound interface) rather than reading config() themselves.
@@ -27,12 +27,12 @@ class DefaultLocaleResolver implements LocaleResolverInterface
 
     /**
      * Every locale the package is configured to support, read from
-     * translaGenius.supported_languages.
+     * translagenius.supported_languages.
      *
      * @return array<int, string>
      */
     public function supportedLocales(): array
     {
-        return config('translaGenius.supported_languages', ['en']);
+        return config('translagenius.supported_languages', ['en']);
     }
 }

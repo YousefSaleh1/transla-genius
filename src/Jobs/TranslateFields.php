@@ -96,7 +96,7 @@ class TranslateFields implements ShouldQueue, TranslationJob
 
     /**
      * Number of attempts before the job is considered permanently failed
-     * (translaGenius.retries.job_tries / TRANSLATION_JOB_TRIES, default 3),
+     * (translagenius.retries.job_tries / TRANSLATION_JOB_TRIES, default 3),
      * set at construction so it's captured in the queued payload. Transient
      * failures (timeouts, rate limits, 5xx) use these up via backoff();
      * non-retryable failures (bad config, 4xx other than 429, truncation)
@@ -107,7 +107,7 @@ class TranslateFields implements ShouldQueue, TranslationJob
     public $tries = 3;
 
     /**
-     * Delay (seconds) before each retry, from translaGenius.retries.job_backoff
+     * Delay (seconds) before each retry, from translagenius.retries.job_backoff
      * (TRANSLATION_JOB_BACKOFF, comma-separated; default "10,30"): a short
      * initial wait, then a longer one. Translation-API failures are typically
      * either resolved within seconds or not at all. A 429 with a long
@@ -117,7 +117,7 @@ class TranslateFields implements ShouldQueue, TranslationJob
      */
     public function backoff(): array
     {
-        $configured = config('translaGenius.retries.job_backoff', '10,30');
+        $configured = config('translagenius.retries.job_backoff', '10,30');
         $values = is_array($configured) ? $configured : explode(',', (string) $configured);
 
         $delays = array_values(array_map(
@@ -144,7 +144,7 @@ class TranslateFields implements ShouldQueue, TranslationJob
         $this->sourceLocale = $payload->sourceLocale;
         $this->options = $payload->options;
         $this->tries = max(1, \CodingPartners\TranslaGenius\TranslaGeniusServiceProvider::intSetting(
-            config('translaGenius.retries.job_tries'),
+            config('translagenius.retries.job_tries'),
             3
         ));
     }

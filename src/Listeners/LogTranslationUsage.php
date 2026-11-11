@@ -9,10 +9,10 @@ use CodingPartners\TranslaGenius\Models\TranslationUsageLog;
 /**
  * Writes one Models\TranslationUsageLog row per Events\TranslationCompleted,
  * with an estimated cost computed from the reporting provider's own
- * translaGenius.providers.{name} entry, if it configures a rate.
+ * translagenius.providers.{name} entry, if it configures a rate.
  *
  * Only ever registered by TranslaGeniusServiceProvider when
- * translaGenius.usage_tracking.enabled is true - that check happens once,
+ * translagenius.usage_tracking.enabled is true - that check happens once,
  * at listener-registration time in the service provider, not on every
  * event here, so this class itself has no "am I enabled?" branch at all;
  * if it's running, it's supposed to be.
@@ -86,7 +86,7 @@ class LogTranslationUsage
 
     /**
      * Estimated cost from the cost_per_1k_prompt_tokens /
-     * cost_per_1k_completion_tokens rates on translaGenius.providers.{provider}
+     * cost_per_1k_completion_tokens rates on translagenius.providers.{provider}
      * - the config key the provider was resolved under. Returns null - never
      * 0 - whenever a definitive number can't be computed: no provider
      * reported, no rate configured for it, or a rate is configured for a
@@ -100,7 +100,7 @@ class LogTranslationUsage
             return null;
         }
 
-        $rates = config("translaGenius.providers.{$provider}", []);
+        $rates = config("translagenius.providers.{$provider}", []);
         // An empty string (e.g. `OPENAI_COST_PER_1K_PROMPT_TOKENS=` in .env)
         // means "not configured", not a rate of 0.
         $promptRate = ($rates['cost_per_1k_prompt_tokens'] ?? '') === '' ? null : $rates['cost_per_1k_prompt_tokens'];
