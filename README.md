@@ -160,6 +160,36 @@ Turn batching on or off for one preset with `OPENAI_BATCH`, `GEMINI_BATCH`, ... 
 
 A custom provider that only implements `TranslationProviderInterface` keeps working: it gets one call per language. To batch, implement `Contracts\BatchTranslationProviderInterface` too. In a fallback chain, members that can batch are tried in order for the batch, and the first that answers wins, even with only some languages. Members that can't batch are skipped for the batch but still serve the one-language requests, which go through the whole chain, primary first. If no member manages a batch, every language goes through the chain one at a time.
 
+### Translation Cache
+
+```env
+TRANSLATION_CACHE=true
+TRANSLATION_CACHE_STORE=redis
+TRANSLATION_CACHE_TTL=2592000
+```
+
+With the cache on, the same source text translated with the same setup is requested once and then served from Laravel's cache, across every record and model. It helps wherever text repeats: shared boilerplate ("Free shipping on orders over $50", warranty and returns blurbs), product variants that share a name or description, imported catalogues with duplicate rows, and re-running `translagenius:backfill`. That's different from the change detection the package already does. That check only avoids re-translating *one record* when a save didn't change its source text; the cache avoids paying again for text that *another* record already had translated.
+
+It needs no other setup: it wraps whichever provider is configured, including a fallback chain. It's off by default.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `TRANSLATION_CACHE` | `false` | Turn the cache on. |
+| `TRANSLATION_CACHE_STORE` | app default | A store from `config/cache.php` (`redis`, `database`, ...). |
+| `TRANSLATION_CACHE_TTL` | `2592000` (30 days) | Seconds to keep an entry; `0` keeps entries forever. |
+
+The default TTL is bounded on purpose: in a shared Redis or database cache, entries don't pile up forever, and translations are refreshed now and then even if a provider quietly changes a model behind the same ID.
+
+**What counts as "the same setup".** The cache key covers the source text, both languages, the provider, and everything in its configuration that can change the output: the model, URL, system and batch prompt templates, temperature, `reasoning_effort`, `body` and response format. Changing any of them starts fresh entries. API keys, timeouts, retries, token limits and cost rates don't affect the key. The field name and model name are part of the key only when a prompt uses `{field}` or `{model}` (or for a custom, non-OpenAI-compatible driver, which might use them in code); otherwise the same text is shared across fields and models.
+
+**What gets cached.** Only successful translations. A failed request, a reply cut off at the token limit, or an invalid language value from a batch is never stored. In a fallback chain, only results from the primary provider are cached. A translation a backup provider produced during an outage is saved on its record as usual, but not reused for other records, so the next identical text after the primary recovers gets the primary's output.
+
+**Events and usage.** A cache hit still fires `TranslationStarted` and `TranslationCompleted` (the translation did complete), and its `TranslationResult` has `cached === true`, no token counts, and no `requestId`. In the usage log a hit is a row with `cached = true` and null tokens and cost, so `TranslationUsageLog::where('cached', true)->count()` shows your hit rate while `SUM()`s still equal what the provider billed.
+
+**Clearing it.** Entries are ordinary cache entries under the `translagenius:v1:` prefix. `php artisan cache:clear` (or clearing the configured store) removes them along with the rest of that store; changing any setting in the key, or a future package version bumping the `v1` segment, makes old entries miss and expire on their own. There's no dedicated clear command: Laravel's cache can't delete by prefix on every driver, and the cases above haven't needed one. If you want to clear only translations, give them their own store with `TRANSLATION_CACHE_STORE` and clear that.
+
+**Privacy.** Cached values are translated field content: product copy, and whatever else your translatable fields hold. They live in your cache store under a hashed key, readable by anything with access to that store. On a shared Redis or `database` cache, that means other applications and anyone with access to that Redis instance or cache table. Treat it like the translated data itself: if your fields can contain personal or confidential text, use a store with the same access controls as your database (or a dedicated one), or leave the cache off.
+
 ### Queue Settings
 
 Translation jobs go to your app's default queue connection and queue unless you say otherwise:
@@ -474,7 +504,7 @@ Event::listen(function (TranslationFailed $event) {
 });
 ```
 
-Both events fire exactly once per field/language pair, batching or not. With batching, `TranslationStarted` fires for every language of the batch just before the batch request, and isn't repeated if a language then needs a request of its own. Each `TranslationCompleted` carries a `TranslationResult` with that language's text and the `requestId` of the request that produced it. When one request produced several pairs, only the first of those results carries the request's `promptTokens`/`completionTokens`; the rest have null.
+Both events fire exactly once per field/language pair, batching or not, and also when the translation came from the cache (`$event->result->cached === true`, with no token counts). With batching, `TranslationStarted` fires for every language of the batch just before the batch request, and isn't repeated if a language then needs a request of its own. Each `TranslationCompleted` carries a `TranslationResult` with that language's text and the `requestId` of the request that produced it. When one request produced several pairs, only the first of those results carries the request's `promptTokens`/`completionTokens`; the rest have null.
 
 The `TranslationCompleted` example above is what "Usage & Cost Tracking" below does out of the box (with cost estimation and a queryable model) - write your own listener like this only if you need something it doesn't cover, e.g. your own table shape or per-tenant billing logic.
 
@@ -540,6 +570,8 @@ TranslationUsageLog::selectRaw('provider, sum(prompt_tokens) as prompt, sum(comp
 ```
 
 With batching, one request translates several languages and yields several rows. They share a `request_id`, and the request's tokens and cost are stored on exactly one of them (the first pair it completed); the others have null tokens and cost, so a plain `SUM()` equals what the provider billed. If a batch reply couldn't be used at all, its billed tokens are added to the field's first row from the one-language requests that followed. Every row has a `request_id`, so `groupBy('request_id')` gives per-request totals.
+
+Translation-cache hits are logged too, as rows with `cached = true` and null tokens and cost: nothing was billed for them. Sums still equal what the provider billed, and the share of cached rows is your hit rate.
 
 Only successful translations (`TranslationCompleted`) are logged - not `TranslationFailed`. This feature is scoped to usage/cost, and a failed attempt has no token counts or cost to report; if you also want failure-rate visibility, listen to `TranslationFailed` yourself (see "Lifecycle Events" above) rather than expecting it in this table.
 

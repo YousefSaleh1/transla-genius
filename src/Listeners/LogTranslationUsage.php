@@ -51,6 +51,7 @@ class LogTranslationUsage
             'completion_tokens' => $event->result->completionTokens,
             'estimated_cost' => $this->estimateCost($event),
             'request_id' => $event->result->requestId,
+            'cached' => $event->result->cached,
         ]);
     }
 

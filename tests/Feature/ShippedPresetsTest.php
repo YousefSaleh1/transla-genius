@@ -422,4 +422,24 @@ class ShippedPresetsTest extends Orchestra
 
         Http::assertSent(fn (Request $r) => !array_key_exists('response_format', $r->data()));
     }
+
+    public function test_translation_cache_env_wraps_the_resolved_provider_or_chain()
+    {
+        $this->withEnv(['TRANSLATION_PROVIDER' => 'gemini', 'GEMINI_API_KEY' => 'k']);
+        $this->assertSame(\CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider::class, get_class($this->app->make(TranslationProviderInterface::class)));
+
+        $this->withEnv(['TRANSLATION_CACHE' => 'true']);
+        $provider = $this->app->make(TranslationProviderInterface::class);
+        $this->assertInstanceOf(\CodingPartners\TranslaGenius\Providers\CachingProvider::class, $provider);
+        $this->assertInstanceOf(\CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider::class, $provider->inner());
+
+        $this->withEnv([
+            'TRANSLATION_PROVIDER' => 'fallback',
+            'TRANSLATION_FALLBACK_CHAIN' => 'openai,gemini',
+            'OPENAI_API_KEY' => 'k',
+        ]);
+        $provider = $this->app->make(TranslationProviderInterface::class);
+        $this->assertInstanceOf(\CodingPartners\TranslaGenius\Providers\CachingProvider::class, $provider);
+        $this->assertInstanceOf(\CodingPartners\TranslaGenius\Providers\FallbackProvider::class, $provider->inner());
+    }
 }

@@ -241,6 +241,34 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Translation Cache
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, identical source text translated with an identical setup
+    | is requested once and then served from Laravel's cache, across every
+    | record and model. Wraps whichever provider is configured, including a
+    | fallback chain - nothing else to set up. Off by default.
+    |
+    | The key covers the text, both locales, the provider and everything in
+    | its config that can change the output (model, URL, prompt templates,
+    | temperature, reasoning_effort, body, response format). Failures,
+    | truncated replies and invalid batch values are never cached, and in a
+    | fallback chain only results from the primary are.
+    |
+    |   store  Cache store name; empty = the app's default store.
+    |   ttl    Seconds to keep an entry. Default 2592000 (30 days); 0 = forever.
+    |
+    | Cached values are translated field content, stored in that cache store.
+    |
+    */
+    'cache' => [
+        'enabled' => env('TRANSLATION_CACHE', false),
+        'store' => env('TRANSLATION_CACHE_STORE'),
+        'ttl' => env('TRANSLATION_CACHE_TTL', 2592000),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Queue
     |--------------------------------------------------------------------------
     |

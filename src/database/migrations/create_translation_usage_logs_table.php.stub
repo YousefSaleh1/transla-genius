@@ -34,6 +34,9 @@ return new class extends Migration
             // batch request). Only one of those rows carries the request's
             // token counts and cost; the others are null.
             $table->string('request_id', 64)->nullable();
+            // Served from the translation cache: no request, so no tokens or
+            // cost. Keeps the hit rate visible without inflating SUM()s.
+            $table->boolean('cached')->default(false);
             $table->timestamps();
 
             $table->index(['model_class', 'model_id']);

@@ -316,8 +316,11 @@ class TranslateFields implements ShouldQueue
                     continue;
                 }
 
-                $result = $batch->resultFor($locale, !$tokensAttributed);
-                $tokensAttributed = true;
+                // The request's tokens go to the first pair it actually
+                // produced; a pair served from the cache never carries any.
+                $carriesTokens = !$tokensAttributed && !$batch->isCached($locale);
+                $result = $batch->resultFor($locale, $carriesTokens);
+                $tokensAttributed = $tokensAttributed || $carriesTokens;
 
                 $this->savePair($writer, $field, $currentLocale, $locale, $result);
                 $saved++;
@@ -391,6 +394,7 @@ class TranslateFields implements ShouldQueue
             promptTokens: $add($result->promptTokens, $promptTokens),
             completionTokens: $add($result->completionTokens, $completionTokens),
             requestId: $result->requestId,
+            cached: $result->cached,
         );
     }
 

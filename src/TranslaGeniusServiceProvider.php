@@ -10,7 +10,9 @@ use CodingPartners\TranslaGenius\Contracts\TranslatorInterface;
 use CodingPartners\TranslaGenius\Events\TranslationCompleted;
 use CodingPartners\TranslaGenius\Listeners\LogTranslationUsage;
 use CodingPartners\TranslaGenius\LocaleResolvers\DefaultLocaleResolver;
+use CodingPartners\TranslaGenius\Providers\CachingProvider;
 use CodingPartners\TranslaGenius\Providers\FallbackProvider;
+use CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider;
 use CodingPartners\TranslaGenius\Services\Translator;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
@@ -47,8 +49,11 @@ class TranslaGeniusServiceProvider extends ServiceProvider
 
         $this->app->singleton(TranslationProviderInterface::class, function ($app) {
             $name = $app->make('config')->get('translaGenius.default');
+            $this->cacheProfiles = [];
 
-            return $this->resolveProvider($app, $name);
+            $provider = $this->resolveProvider($app, $name);
+
+            return $this->wrapWithCache($app, $provider, $this->cacheProfiles[$name]);
         });
 
         $this->app->singleton(Translator::class);
@@ -121,6 +126,15 @@ class TranslaGeniusServiceProvider extends ServiceProvider
                 $chain
             );
 
+            $memberProfiles = array_map(fn (string $member) => $this->cacheProfiles[$member], $chain);
+            $this->cacheProfiles[$name] = [
+                'fingerprint' => ['fallback' => array_column($memberProfiles, 'fingerprint')],
+                'uses_field' => in_array(true, array_column($memberProfiles, 'uses_field'), true),
+                'uses_model' => in_array(true, array_column($memberProfiles, 'uses_model'), true),
+                'primary' => $memberProfiles[0]['primary'],
+                'is_chain' => true,
+            ];
+
             return new FallbackProvider($resolvedChain);
         }
 
@@ -168,9 +182,123 @@ class TranslaGeniusServiceProvider extends ServiceProvider
             ? ['http_retries' => self::intSetting($retries['fallback_http'] ?? null, 0), 'retry_after_max' => 0]
             : [];
 
-        return $app->make($driver, [
-            'config' => array_merge($retryDefaults, $providerConfig, $chainOverrides, ['name' => $name]),
-        ]);
+        $finalConfig = array_merge($retryDefaults, $providerConfig, $chainOverrides, ['name' => $name]);
+        $this->cacheProfiles[$name] = $this->cacheProfile($driver, $finalConfig);
+
+        return $app->make($driver, ['config' => $finalConfig]);
+    }
+
+    /**
+     * Per resolved entry, what CachingProvider needs to key and store
+     * results: see cacheProfile(). Filled by resolveProvider().
+     *
+     * @var array<string, array<string, mixed>>
+     */
+    protected array $cacheProfiles = [];
+
+    /**
+     * The output-affecting part of one provider entry, for the cache key.
+     *
+     * In: driver, name, url, model, temperature, reasoning_effort, body,
+     * batch_response_format and the effective single/batch prompt templates
+     * (the built-in defaults when unset, so an upgrade that changes them
+     * invalidates too). Out: secrets and headers, timeouts and retries, token
+     * limits (a truncated reply is never cached), the batch on/off switch
+     * (single and batch results share a key per locale) and cost rates.
+     * Values are normalized so "0.3" from .env and 0.3 from config agree.
+     *
+     * {field}/{model} are part of the key only if a template uses them; for a
+     * driver other than OpenAiCompatibleProvider, whose prompts can't be
+     * inspected, they always are.
+     *
+     * @param string $driver
+     * @param array<string, mixed> $config The entry as passed to the driver.
+     * @return array<string, mixed>
+     */
+    protected function cacheProfile(string $driver, array $config): array
+    {
+        $isOpenAiCompatible = is_a($driver, OpenAiCompatibleProvider::class, true);
+        $prompt = self::normalize($config['prompt'] ?? null) ?? ($isOpenAiCompatible ? OpenAiCompatibleProvider::DEFAULT_PROMPT : null);
+        $batchPrompt = self::normalize($config['batch_prompt'] ?? null) ?? ($isOpenAiCompatible ? OpenAiCompatibleProvider::DEFAULT_BATCH_PROMPT : null);
+        $templates = $prompt . "\n" . $batchPrompt;
+
+        $fingerprint = ['driver' => $driver, 'name' => $config['name']];
+        foreach (['url', 'model', 'temperature', 'reasoning_effort', 'batch_response_format'] as $key) {
+            $fingerprint[$key] = self::normalize($config[$key] ?? null);
+        }
+        $fingerprint['body'] = self::normalize((array) ($config['body'] ?? []));
+        $fingerprint['prompt'] = $prompt;
+        $fingerprint['batch_prompt'] = $batchPrompt;
+
+        return [
+            'fingerprint' => $fingerprint,
+            'uses_field' => !$isOpenAiCompatible || str_contains($templates, '{field}'),
+            'uses_model' => !$isOpenAiCompatible || str_contains($templates, '{model}'),
+            'primary' => $config['name'],
+            'is_chain' => false,
+        ];
+    }
+
+    /**
+     * Comparable form of a config value: '' and whitespace become null,
+     * numeric strings become numbers, arrays are key-sorted recursively.
+     */
+    protected static function normalize(mixed $value): mixed
+    {
+        if (is_array($value)) {
+            ksort($value);
+
+            return array_map(fn ($item) => self::normalize($item), $value);
+        }
+
+        if (is_string($value)) {
+            $value = trim($value);
+
+            if ($value === '') {
+                return null;
+            }
+
+            return is_numeric($value) ? (string) (float) $value : $value;
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return (string) (float) $value;
+        }
+
+        return $value;
+    }
+
+    /**
+     * When translaGenius.cache.enabled (TRANSLATION_CACHE) is on, wrap the
+     * resolved provider - a single entry or a whole fallback chain - in a
+     * CachingProvider. Off: returned as is, not wrapped at all.
+     *
+     * @param Application $app
+     * @param TranslationProviderInterface $provider
+     * @param array<string, mixed> $profile From cacheProfile() / the chain branch.
+     * @return TranslationProviderInterface
+     */
+    protected function wrapWithCache(Application $app, TranslationProviderInterface $provider, array $profile): TranslationProviderInterface
+    {
+        $settings = (array) $app->make('config')->get('translaGenius.cache', []);
+        $enabled = filter_var($settings['enabled'] ?? false, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? false;
+
+        if (!$enabled) {
+            return $provider;
+        }
+
+        $store = trim((string) ($settings['store'] ?? ''));
+        $ttl = self::intSetting($settings['ttl'] ?? null, 2592000);
+
+        return new CachingProvider(
+            inner: $provider,
+            cache: $app->make('cache')->store($store === '' ? null : $store),
+            ttl: $ttl === 0 ? null : $ttl,
+            fingerprint: hash('sha256', json_encode($profile['fingerprint'], JSON_UNESCAPED_UNICODE)),
+            keyByField: $profile['uses_field'],
+            keyByModel: $profile['uses_model'],
+            cacheableProvider: $profile['is_chain'] ? $profile['primary'] : null,
+        );
     }
 
     /**

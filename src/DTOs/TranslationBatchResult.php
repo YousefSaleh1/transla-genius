@@ -23,6 +23,8 @@ final readonly class TranslationBatchResult
      *        nothing was taken from it. The caller translates every locale one
      *        at a time instead (smaller replies), or a fallback chain tries
      *        its next member. Token counts are still what the request billed.
+     * @param array<int, string> $cachedLocales Locales served from the cache
+     *        (no request; the token counts never cover them).
      */
     public function __construct(
         public array $translations,
@@ -31,7 +33,14 @@ final readonly class TranslationBatchResult
         public ?int $completionTokens = null,
         public ?string $requestId = null,
         public bool $truncated = false,
+        public array $cachedLocales = [],
     ) {
+    }
+
+    /** Whether $locale's translation came from the cache rather than a request. */
+    public function isCached(string $locale): bool
+    {
+        return in_array($locale, $this->cachedLocales, true);
     }
 
     /** A batch nothing could be taken from (e.g. no member could batch). */
@@ -51,12 +60,15 @@ final readonly class TranslationBatchResult
      */
     public function resultFor(string $locale, bool $withTokens): TranslationResult
     {
+        $cached = $this->isCached($locale);
+
         return new TranslationResult(
             text: $this->translations[$locale],
             provider: $this->provider,
-            promptTokens: $withTokens ? $this->promptTokens : null,
-            completionTokens: $withTokens ? $this->completionTokens : null,
-            requestId: $this->requestId,
+            promptTokens: $withTokens && !$cached ? $this->promptTokens : null,
+            completionTokens: $withTokens && !$cached ? $this->completionTokens : null,
+            requestId: $cached ? null : $this->requestId,
+            cached: $cached,
         );
     }
 

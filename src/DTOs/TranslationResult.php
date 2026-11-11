@@ -35,6 +35,8 @@ final readonly class TranslationResult
      *
      * @param string|null $requestId Identifies the API request this result
      *        came from. Every pair translated by one batch request shares it.
+     * @param bool $cached Served from the translation cache: no request was
+     *        made, so there are no tokens to report (see CachingProvider).
      *
      * @throws \InvalidArgumentException If $text is empty or all whitespace.
      */
@@ -44,6 +46,7 @@ final readonly class TranslationResult
         public ?int $promptTokens = null,
         public ?int $completionTokens = null,
         public ?string $requestId = null,
+        public bool $cached = false,
     ) {
         if (trim($text) === '') {
             throw new InvalidArgumentException(
