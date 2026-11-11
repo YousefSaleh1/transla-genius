@@ -785,7 +785,7 @@ Product::notFullyTranslated()->get();          // at least one field is missing 
 Product::pendingReview('name', 'ar')->get();   // translations awaiting review; both arguments optional
 ```
 
-`fullyTranslated()` and `notFullyTranslated()` take an optional source locale; the targets are every other supported language. They use the query builder's JSON path syntax, which Laravel compiles for each database.
+`fullyTranslated()` and `notFullyTranslated()` take an optional source locale; the targets are every other supported language. They use the job's rule for a missing translation: a target that is null, an empty string, or whitespace only (space, tab, newline, carriage return, vertical tab) counts as missing, on all five databases, so `translagenius:backfill` finds and repairs it. The one difference from the job's rule: a value made only of NUL characters counts as translated in SQL.
 
 ### Translating arbitrary text
 

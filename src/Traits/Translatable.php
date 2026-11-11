@@ -6,6 +6,7 @@ use CodingPartners\TranslaGenius\Contracts\HasTranslatableAttributes;
 use CodingPartners\TranslaGenius\Contracts\TranslationJob;
 use CodingPartners\TranslaGenius\Jobs\TranslateFields;
 use CodingPartners\TranslaGenius\Models\TranslationReview;
+use CodingPartners\TranslaGenius\Support\BlankJsonValue;
 use CodingPartners\TranslaGenius\Support\KeyCast;
 use CodingPartners\TranslaGenius\Support\Locales;
 use CodingPartners\TranslaGenius\Support\ModelEvents;
@@ -191,7 +192,9 @@ trait Translatable
         foreach ($translatableFields as $field) {
             $query->where(function ($q) use ($field, $targetLanguages) {
                 foreach ($targetLanguages as $language) {
+                    // Present: not null, and not blank (Support\Text::isBlank()).
                     $q->whereNotNull("{$field}->{$language}");
+                    BlankJsonValue::where($q, "{$field}->{$language}", blank: false);
                 }
             });
         }
@@ -235,7 +238,9 @@ trait Translatable
             foreach ($translatableFields as $field) {
                 $outer->orWhere(function ($inner) use ($field, $targetLanguages) {
                     foreach ($targetLanguages as $language) {
+                        // Missing: null, or blank (Support\Text::isBlank()).
                         $inner->orWhereNull("{$field}->{$language}");
+                        BlankJsonValue::where($inner, "{$field}->{$language}", blank: true, boolean: 'or');
                     }
                 });
             }
