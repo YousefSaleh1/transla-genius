@@ -236,9 +236,11 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
             throw new TranslationFailedException(
                 'AI model returned an empty or invalid response',
                 statusCode: $response->status(),
-                // The same request gets the same kind of reply; a fallback
-                // chain still moves on to its next member.
-                retryable: false
+                // Usually a passing provider hiccup (DeepSeek documents empty
+                // json_object replies), so the queue tries the job again. Not
+                // retried in-request: the provider did answer. A fallback
+                // chain still moves on to its next member first.
+                retryable: true
             );
         }
 

@@ -50,7 +50,7 @@ class BlankAndZeroTranslationTest extends TestCase
         return new OpenAiCompatibleProvider(['key' => 'k', 'url' => "https://{$host}/v1/chat/completions", 'model' => 'm', 'name' => $host, 'http_retries' => 0]);
     }
 
-    public function test_whitespace_output_is_a_non_retryable_translation_failure_billed_as_unusable()
+    public function test_whitespace_output_is_a_retryable_translation_failure_billed_as_unusable()
     {
         $this->replies['primary.test'] = "  \n\t";
         $billed = [];
@@ -62,9 +62,10 @@ class BlankAndZeroTranslationTest extends TestCase
             $this->provider('primary.test')->translate(new TranslationRequest('Hello', 'en', 'ar'));
             $this->fail('Expected TranslationFailedException.');
         } catch (TranslationFailedException $e) {
-            $this->assertFalse($e->isRetryable());
+            $this->assertTrue($e->isRetryable());
         }
 
+        Http::assertSentCount(1);
         $this->assertSame([TranslationRequestBilled::UNUSABLE], $billed);
     }
 

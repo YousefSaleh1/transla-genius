@@ -111,8 +111,8 @@ class OpenAiCompatibleProviderTest extends TestCase
         }
     }
 
-    /** A blank reply is a failure, and resending the same request won't fix it. */
-    public function test_throws_non_retryable_exception_on_empty_content()
+    /** A blank reply is a failure the queue retries (no in-request retry). */
+    public function test_throws_retryable_exception_on_empty_content()
     {
         Http::fake(['test-api-url.com' => Http::response(['choices' => []], 200)]);
         $provider = new OpenAiCompatibleProvider($this->config());
@@ -121,7 +121,8 @@ class OpenAiCompatibleProviderTest extends TestCase
             $provider->translate(new TranslationRequest('Hello', 'en', 'ar'));
             $this->fail('Expected TranslationFailedException was not thrown.');
         } catch (TranslationFailedException $e) {
-            $this->assertFalse($e->isRetryable());
+            $this->assertTrue($e->isRetryable());
+            Http::assertSentCount(1);
         }
     }
 

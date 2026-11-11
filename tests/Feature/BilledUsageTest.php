@@ -423,4 +423,56 @@ class BilledUsageTest extends Orchestra
         $this->assertSame(['discarded primary ar'], $this->unusedRows());
         $this->assertSame(0, TranslationUsageLog::where('outcome', 'translated')->count());
     }
+
+    /**
+     * A blank reply is usually a passing provider hiccup: it fails the job
+     * attempt as retryable (no HTTP retry, the provider did answer), and the
+     * next attempt translates. Both requests are billed.
+     */
+    public function test_a_blank_reply_is_retried_by_the_queue()
+    {
+        $replies = ["  \n", 'Hola'];
+        $this->behaviour['primary.test'] = function () use (&$replies) {
+            return ['content' => array_shift($replies) ?? 'unexpected'];
+        };
+        config(['translagenius.supported_languages' => ['en', 'es']]);
+
+        $model = TestTranslatableModel::create(['name' => ['en' => 'Hello'], 'description' => ['en' => '']]);
+
+        // Attempt 1: the blank reply fails the attempt, retryably.
+        $first = (new TranslateFields(new TranslationJobPayload($model, ['name'], 'en')))->withFakeQueueInteractions();
+        try {
+            $first->handle($this->app->make(TranslatorInterface::class), new TranslationWriter);
+            $this->fail('Expected the retryable failure to propagate to the queue.');
+        } catch (TranslationFailedException $e) {
+            $this->assertTrue($e->isRetryable());
+        }
+        $first->assertNotFailed();
+        $this->assertCount(1, $this->billed, 'No HTTP-level retry of a blank reply.');
+
+        // Attempt 2: the queue runs the job again.
+        $second = (new TranslateFields(new TranslationJobPayload($model, ['name'], 'en')))->withFakeQueueInteractions();
+        $second->handle($this->app->make(TranslatorInterface::class), new TranslationWriter);
+        $second->assertNotFailed();
+
+        $this->assertSame('Hola', TestTranslatableModel::find($model->id)->getTranslation('name', 'es', false));
+        $this->assertCount(2, $this->billed);
+        $this->assertLogMatchesBilling();
+        $this->assertSame(['unusable primary es'], $this->unusedRows());
+        $this->assertSame(1, TranslationUsageLog::where('outcome', 'translated')->count());
+    }
+
+    /** In a chain, a blank reply still moves on to the next member. */
+    public function test_a_blank_reply_in_a_chain_moves_to_the_secondary()
+    {
+        config(['translagenius.default' => 'chain', 'translagenius.supported_languages' => ['en', 'es']]);
+        $this->reresolve();
+        $this->behaviour['primary.test'] = fn () => ['content' => ' '];
+
+        $this->runJob()->assertNotFailed();
+
+        $this->assertSame('secondary.test:es', TestTranslatableModel::first()->getTranslation('name', 'es', false));
+        $this->assertLogMatchesBilling();
+        $this->assertSame(['unusable primary es'], $this->unusedRows());
+    }
 }
