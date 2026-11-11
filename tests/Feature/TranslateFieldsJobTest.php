@@ -194,6 +194,29 @@ class TranslateFieldsJobTest extends TestCase
     }
 
     /**
+     * A truncated translation (finish_reason "length") fails the job at
+     * once - no queue retry, nothing saved - through the same non-retryable
+     * path as a 401, so failed() and the TranslationFailed event follow.
+     */
+    public function test_truncated_translation_fails_the_job_and_saves_nothing()
+    {
+        Queue::fake();
+        \Illuminate\Support\Facades\Http::fake(['test-api-url.com' => \Illuminate\Support\Facades\Http::response([
+            'choices' => [['message' => ['content' => 'half a transl'], 'finish_reason' => 'length']],
+        ])]);
+
+        $model = TestTranslatableModel::create(['name' => ['en' => 'A long name'], 'description' => ['en' => 'B']]);
+
+        $job = (new TranslateFields($model, ['name']))->withFakeQueueInteractions();
+        $job->handle($this->app->make(TranslatorInterface::class), $this->writer());
+
+        $job->assertFailedWith(TranslationFailedException::class);
+        $job->assertNotReleased();
+        \Illuminate\Support\Facades\Http::assertSentCount(1);
+        $this->assertArrayNotHasKey('ar', $model->fresh()->getTranslations('name'));
+    }
+
+    /**
      * A 429 whose Retry-After was too long to wait in-request is released
      * back to the queue for exactly that delay.
      */

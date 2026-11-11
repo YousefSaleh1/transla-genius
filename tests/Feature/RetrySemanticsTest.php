@@ -166,4 +166,38 @@ class RetrySemanticsTest extends TestCase
         $this->assertSame(2, $calls);
         $this->assertTrue($e->isRetryable());
     }
+
+    public function test_truncated_response_is_a_non_retryable_failure()
+    {
+        Http::fake(['api.test/*' => Http::response([
+            'choices' => [['message' => ['content' => 'half a transl'], 'finish_reason' => 'length']],
+        ])]);
+
+        $e = $this->translateExpectingFailure($this->provider(['max_tokens' => 50]));
+
+        Http::assertSentCount(1);
+        $this->assertFalse($e->isRetryable());
+        $this->assertStringContainsString('truncated', $e->getMessage());
+        $this->assertStringContainsString('TRANSLATION_MAX_TOKENS', $e->getMessage());
+    }
+
+    public function test_truncated_primary_falls_through_to_the_secondary_in_a_chain()
+    {
+        Http::fake([
+            'primary.test/*' => Http::response(['choices' => [['message' => ['content' => 'half'], 'finish_reason' => 'length']]]),
+            'secondary.test/*' => Http::response(['choices' => [['message' => ['content' => 'whole'], 'finish_reason' => 'stop']]]),
+        ]);
+
+        $chain = new \CodingPartners\TranslaGenius\Providers\FallbackProvider([
+            $this->provider(['name' => 'primary', 'url' => 'https://primary.test/v1/chat/completions']),
+            $this->provider(['name' => 'secondary', 'url' => 'https://secondary.test/v1/chat/completions']),
+        ]);
+
+        $result = $chain->translate(new TranslationRequest('Hello', 'en', 'ar'));
+
+        $this->assertSame('whole', $result->text);
+        $this->assertSame('secondary', $result->provider);
+        $this->assertCount(1, Http::recorded(fn ($r) => str_contains($r->url(), 'primary.test')));
+        $this->assertCount(1, Http::recorded(fn ($r) => str_contains($r->url(), 'secondary.test')));
+    }
 }

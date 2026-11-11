@@ -87,7 +87,7 @@ class ShippedPresetsTest extends Orchestra
         Http::assertSent(fn (Request $r) => $r->url() === 'https://api.openai.com/v1/chat/completions'
             && $r->header('Authorization') === ['Bearer sk-openai']
             && $r['model'] === 'gpt-6-luna'
-            && $r['max_completion_tokens'] === 200
+            && !isset($r['max_completion_tokens'])
             && !isset($r['max_tokens']));
     }
 
@@ -103,7 +103,7 @@ class ShippedPresetsTest extends Orchestra
         Http::assertSent(fn (Request $r) => $r->url() === 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'
             && $r->header('Authorization') === ['Bearer g-key']
             && $r['model'] === 'gemini-3.5-flash-lite'
-            && $r['max_tokens'] === 200);
+            && !isset($r['max_tokens']));
     }
 
     public function test_custom_preset_uses_the_generic_translation_env_vars()
@@ -158,7 +158,7 @@ class ShippedPresetsTest extends Orchestra
         Http::assertSent(fn (Request $r) => $r->url() === 'https://openrouter.ai/api/v1/chat/completions'
             && $r->header('Authorization') === ['Bearer legacy-key']
             && $r['model'] === 'openai/gpt-4o-mini'
-            && $r['max_tokens'] === 200
+            && !isset($r['max_tokens'])
             && !$r->hasHeader('HTTP-Referer'));
     }
 
@@ -266,5 +266,27 @@ class ShippedPresetsTest extends Orchestra
         $this->expectExceptionMessage('provider chain forms a cycle: fallback -> fallback');
 
         $this->app->make(TranslationProviderInterface::class);
+    }
+
+    public function test_explicit_max_tokens_env_is_sent_in_each_presets_own_field()
+    {
+        $this->fakeEndpoints();
+        $this->withEnv(['TRANSLATION_PROVIDER' => 'openai', 'OPENAI_API_KEY' => 'k', 'TRANSLATION_MAX_TOKENS' => '800']);
+        $this->translate();
+        Http::assertSent(fn (Request $r) => $r['max_completion_tokens'] === 800 && !isset($r['max_tokens']));
+
+        $this->withEnv(['TRANSLATION_PROVIDER' => 'gemini', 'GEMINI_API_KEY' => 'k']);
+        $this->translate();
+        Http::assertSent(fn (Request $r) => str_contains($r->url(), 'googleapis') && $r['max_tokens'] === 800);
+    }
+
+    public function test_empty_max_tokens_env_sends_no_limit()
+    {
+        $this->fakeEndpoints();
+        $this->withEnv(['TRANSLATION_PROVIDER' => 'gemini', 'GEMINI_API_KEY' => 'k', 'TRANSLATION_MAX_TOKENS' => '']);
+
+        $this->translate();
+
+        Http::assertSent(fn (Request $r) => !isset($r['max_tokens']) && !isset($r['max_completion_tokens']));
     }
 }

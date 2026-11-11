@@ -42,8 +42,12 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
     /** @var float Sampling temperature passed through to the API. */
     protected float $temperature;
 
-    /** @var int Maximum tokens the API may generate for the response. */
-    protected int $maxTokens;
+    /**
+     * @var int|null Output token limit, or null (the default) to send no
+     *      limit and use the provider's own default. A finish_reason of
+     *      "length" is treated as a failure either way - see translate().
+     */
+    protected ?int $maxTokens;
 
     /** @var int HTTP request timeout, in seconds. */
     protected int $timeout;
@@ -85,7 +89,7 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
     protected int $retryAfterMax;
 
     /**
-     * @param array{name?: string, key?: string, url?: string, model?: string, temperature?: float, max_tokens?: int, timeout?: int, auth_header?: string, headers?: array<string, string>, token_limit_param?: string, http_retries?: int, retry_after_max?: int} $config
+     * @param array{name?: string, key?: string, url?: string, model?: string, temperature?: float, max_tokens?: int|null, timeout?: int, auth_header?: string, headers?: array<string, string>, token_limit_param?: string, http_retries?: int, retry_after_max?: int} $config
      *        Provider configuration array - one translaGenius.providers.* entry
      *        from config/translaGenius.php. `name` is injected by the service
      *        provider (the entry's config key). Every key is optional; missing
@@ -98,7 +102,7 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
         $this->apiUrl = (string) ($config['url'] ?? '');
         $this->model = (string) ($config['model'] ?? '');
         $this->temperature = (float) ($config['temperature'] ?? 0.3);
-        $this->maxTokens = (int) ($config['max_tokens'] ?? 200);
+        $this->maxTokens = ($config['max_tokens'] ?? '') === '' ? null : max(1, (int) $config['max_tokens']);
         $this->timeout = (int) ($config['timeout'] ?? 10);
         $this->name = isset($config['name']) ? (string) $config['name'] : null;
         $this->authHeader = (string) ($config['auth_header'] ?? 'Authorization') ?: 'Authorization';
@@ -210,6 +214,24 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
 
         $content = $response->json('choices.0.message.content');
 
+        // Checked before the empty-content case: a model that spends its whole
+        // budget (reasoning tokens count too) returns little or no content
+        // with "length", and that is the actionable cause. Retrying with the
+        // same limit gives the same result, so this is not retryable - and as
+        // a TranslationFailedException a fallback chain still moves on.
+        if ($response->json('choices.0.finish_reason') === 'length') {
+            Log::warning('OpenAiCompatibleProvider: translation truncated at the output token limit', [
+                'max_tokens' => $this->maxTokens,
+            ]);
+
+            throw new TranslationFailedException(
+                'Translation was truncated: the provider stopped at its output token limit (finish_reason "length"). '
+                . 'Raise TRANSLATION_MAX_TOKENS, or leave it unset to use the provider\'s own limit.',
+                statusCode: $response->status(),
+                retryable: false
+            );
+        }
+
         if (empty($content)) {
             Log::warning('OpenAiCompatibleProvider: API returned empty or invalid content', [
                 'status' => $response->status(),
@@ -241,15 +263,20 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
      */
     protected function requestBody(TranslationRequest $request, string $systemPrompt): array
     {
-        return [
+        $body = [
             'model' => $this->model,
             'messages' => [
                 ['role' => 'system', 'content' => $systemPrompt],
                 ['role' => 'user', 'content' => $request->text],
             ],
             'temperature' => $this->temperature,
-            $this->tokenLimitParam => $this->maxTokens,
         ];
+
+        if ($this->maxTokens !== null) {
+            $body[$this->tokenLimitParam] = $this->maxTokens;
+        }
+
+        return $body;
     }
 
     /**

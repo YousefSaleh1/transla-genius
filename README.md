@@ -53,7 +53,9 @@ The package ships ready-made presets for common OpenAI-compatible services. Each
 | `mistral` | `MISTRAL_API_KEY` | `MISTRAL_MODEL`, `MISTRAL_API_URL` | `mistral-small-latest` |
 | `custom` | `TRANSLATION_API_URL`, `TRANSLATION_MODEL` | `TRANSLATION_API_KEY`, `TRANSLATION_AUTH_HEADER`, `TRANSLATION_TOKEN_LIMIT_PARAM` | none |
 
-Settings shared by every preset: `TRANSLATION_API_TIMEOUT` (seconds, default 10), `TRANSLATION_TEMPERATURE` (default 0.3), `TRANSLATION_MAX_TOKENS` (default 200). Usage-tracking cost rates are per preset: `OPENAI_COST_PER_1K_PROMPT_TOKENS` / `OPENAI_COST_PER_1K_COMPLETION_TOKENS`, and the same pattern for `OPENROUTER_`, `GEMINI_`, `DEEPSEEK_` and `MISTRAL_`; `custom` uses `TRANSLATION_COST_PER_1K_*`.
+Settings shared by every preset: `TRANSLATION_API_TIMEOUT` (seconds, default 10), `TRANSLATION_TEMPERATURE` (default 0.3), `TRANSLATION_MAX_TOKENS` (default unset; see below). Usage-tracking cost rates are per preset: `OPENAI_COST_PER_1K_PROMPT_TOKENS` / `OPENAI_COST_PER_1K_COMPLETION_TOKENS`, and the same pattern for `OPENROUTER_`, `GEMINI_`, `DEEPSEEK_` and `MISTRAL_`; `custom` uses `TRANSLATION_COST_PER_1K_*`.
+
+**Output token limit.** `TRANSLATION_MAX_TOKENS` is unset by default, so no limit is sent and each provider's own default applies. A translation's length follows its input, so cost stays bounded by what you send, and a fixed limit is easy to hit: several default models reason before answering, and reasoning tokens count toward the limit (OpenAI and Gemini both document this). If a response does stop at the limit (`finish_reason` `length`), the translation fails instead of saving half a sentence. It isn't retried, since the same limit gives the same result, and a fallback chain moves on to its next provider. Set `TRANSLATION_MAX_TOKENS` to cap output explicitly.
 
 Default models are a starting point, checked against each provider's documentation when they were chosen. Providers retire models over time; set the `*_MODEL` variable to pin the one you want. `mistral-small-latest` is an alias that Mistral may move to a newer model (and price) without notice.
 
@@ -122,7 +124,7 @@ One provider entry, with every setting it understands:
     'model' => env('GEMINI_MODEL', 'gemini-3.5-flash-lite'),
     'timeout' => env('TRANSLATION_API_TIMEOUT', 10),
     'temperature' => env('TRANSLATION_TEMPERATURE', 0.3),
-    'max_tokens' => env('TRANSLATION_MAX_TOKENS', 200),
+    'max_tokens' => env('TRANSLATION_MAX_TOKENS'),   // unset: provider default
     'token_limit_param' => 'max_tokens',   // or 'max_completion_tokens'
     'auth_header' => 'Authorization',      // or e.g. 'api-key'
     'headers' => [],                       // extra request headers
