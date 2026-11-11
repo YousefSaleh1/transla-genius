@@ -354,13 +354,13 @@ class BilledUsageTest extends Orchestra
         $model = TestTranslatableModel::create(['name' => ['en' => 'Hello'], 'description' => ['en' => '']]);
         $failingWriter = new class extends TranslationWriter
         {
-            public function apply(Model $model, array $translations, array $sourceSnapshots = []): int
+            public function fillMissing(Model $model, string $field, string $locale, string $text, array $source): string
             {
-                if (isset($translations['name']['es'])) {
+                if ($field === 'name' && $locale === 'es') {
                     throw new \RuntimeException('database went away');
                 }
 
-                return parent::apply($model, $translations, $sourceSnapshots);
+                return parent::fillMissing($model, $field, $locale, $text, $source);
             }
         };
 

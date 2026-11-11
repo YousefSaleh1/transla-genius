@@ -493,6 +493,11 @@ class TranslateFields implements ShouldQueue, TranslationJob
     /**
      * Save one pair, then announce it.
      *
+     * Filling a gap, the write only lands if the stored source still equals
+     * $sourceText (TranslationWriter::fillMissing()): a translation of text
+     * that was edited meanwhile is discarded, and the edit's own job fills
+     * the target from the new text.
+     *
      * For a re-translation ($snapshot), the write only lands if the stored
      * source still matches and the stored target still holds its stale value
      * (TranslationWriter::applyRetranslation()). Returns true when saved; null
@@ -531,8 +536,18 @@ class TranslateFields implements ShouldQueue, TranslationJob
                     $staleValue,
                 );
             } elseif ($snapshot === null) {
-                $writer->apply($this->model, [$field => [$targetLocale => $result->text]]);
-                $outcome = TranslationWriter::WRITTEN;
+                // Filling a gap: written only while the stored source is still
+                // the text this was translated from.
+                $outcome = $writer->fillMissing(
+                    $this->model,
+                    $field,
+                    $targetLocale,
+                    $result->text,
+                    ['locale' => $sourceLocale, 'text' => (string) $sourceText],
+                );
+                if ($outcome === TranslationWriter::TARGET_CHANGED) {
+                    $outcome = TranslationWriter::WRITTEN;
+                }
             } else {
                 $outcome = $writer->applyRetranslation(
                     $this->model,
@@ -551,30 +566,28 @@ class TranslateFields implements ShouldQueue, TranslationJob
             throw $e;
         }
 
-        if ($snapshot !== null || $pendingReview) {
-            if ($outcome !== TranslationWriter::WRITTEN) {
-                $this->reportUnused($result, TranslationRequestBilled::DISCARDED, $field, $sourceLocale, $targetLocale);
+        if ($outcome !== TranslationWriter::WRITTEN) {
+            $this->reportUnused($result, TranslationRequestBilled::DISCARDED, $field, $sourceLocale, $targetLocale);
 
-                if ($outcome === TranslationWriter::TARGET_CHANGED) {
-                    Log::info('Keeping a target that changed since the source edit (already re-translated, or edited by hand)', [
-                        'model_class' => get_class($this->model),
-                        'model_id' => $this->model->getKey(),
-                        'field' => $field,
-                        'locale' => $targetLocale,
-                    ]);
-
-                    // Only this pair is skipped; the rest of the field goes on.
-                    return null;
-                }
-
-                Log::info('TranslationWriter: discarding a re-translation; the source text changed again', [
+            if ($outcome === TranslationWriter::TARGET_CHANGED) {
+                Log::info('Keeping a target that changed since the source edit (already re-translated, or edited by hand)', [
                     'model_class' => get_class($this->model),
                     'model_id' => $this->model->getKey(),
                     'field' => $field,
+                    'locale' => $targetLocale,
                 ]);
 
-                return false;
+                // Only this pair is skipped; the rest of the field goes on.
+                return null;
             }
+
+            Log::info('TranslateFields: discarding a translation; the source text changed while it was being made', [
+                'model_class' => get_class($this->model),
+                'model_id' => $this->model->getKey(),
+                'field' => $field,
+            ]);
+
+            return false;
         }
 
         TranslationCompleted::dispatch(

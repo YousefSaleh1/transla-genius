@@ -126,6 +126,50 @@ class TranslationWriter
     public const MISSING = 'missing';
 
     /**
+     * Fill one missing target, under the row lock, only if:
+     *
+     * - the stored source text still equals $source['text'], the text it was
+     *   translated from (else the source was edited while this translation
+     *   was being made, and the edit's own job will translate the new text:
+     *   SOURCE_CHANGED). Writing it anyway would store the old text's
+     *   translation where the edit's job sees a value it didn't expect, and
+     *   keeps as a hand edit; and
+     * - the target is still empty (else something filled it meanwhile:
+     *   TARGET_CHANGED). An existing translation is never overwritten.
+     *
+     * @param  Model&HasTranslatableAttributes  $model
+     * @param  string  $locale  Target locale.
+     * @param  string  $text  The translation.
+     * @param  array{locale: string, text: string}  $source  The source it was made from.
+     * @return string One of WRITTEN, SOURCE_CHANGED, TARGET_CHANGED, MISSING.
+     */
+    public function fillMissing(Model $model, string $field, string $locale, string $text, array $source): string
+    {
+        return DB::transaction(function () use ($model, $field, $locale, $text, $source) {
+            $locked = $model->newQuery()->lockForUpdate()->whereKey($model->getKey())->first();
+
+            if (! $locked) {
+                return self::MISSING;
+            }
+
+            if ($locked->getTranslation($field, $source['locale'], false) !== $source['text']) {
+                return self::SOURCE_CHANGED;
+            }
+
+            if (! empty($locked->getTranslation($field, $locale, false))) {
+                return self::TARGET_CHANGED;
+            }
+
+            $locked->withoutEvents(function () use ($locked, $field, $locale, $text) {
+                $locked->setTranslation($field, $locale, $text);
+                $locked->save();
+            });
+
+            return self::WRITTEN;
+        });
+    }
+
+    /**
      * Overwrite one stale target of a re-translation, under the row lock, only
      * if both snapshots still hold:
      *
