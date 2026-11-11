@@ -10,9 +10,6 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
-    # SQL Server has not had a green run yet. Remove this once it has.
-    continue-on-error: ${{ matrix.db == 'sqlsrv' }}
-
     strategy:
       fail-fast: false
       matrix:
