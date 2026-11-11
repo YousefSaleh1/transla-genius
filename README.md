@@ -158,7 +158,7 @@ Schema::create('products', function (Blueprint $table) {
 });
 ```
 
-**4. Set the request locale.** The `SetLocale` middleware sets the app locale from the `Accept-Language` header, choosing the first language that is in `supported_languages`. Register it in `bootstrap/app.php`:
+**4. Set the request locale.** The `SetLocale` middleware sets the app locale from the `Accept-Language` header. It reads the header per RFC 9110: the highest q-value wins (ties in header order), `q=0` excludes a language, and `*` means any. Configured locales match in any case and are set exactly as configured, and a region tag such as `fr-CA` falls back to `fr` when only `fr` is configured. With no match, the first entry in `supported_languages` is used. Register it in `bootstrap/app.php`:
 
 ```php
 use CodingPartners\TranslaGenius\Middleware\SetLocale;
