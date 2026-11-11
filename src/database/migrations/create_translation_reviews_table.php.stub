@@ -1,0 +1,67 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+/**
+ * Review/approval workflow (TRANSLATION_REVIEW): one row per AI translation
+ * awaiting, or having had, a human decision. Only needed when review is
+ * enabled. Plain columns only, portable across MySQL, MariaDB, PostgreSQL,
+ * SQLite and SQL Server.
+ */
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('translation_reviews', function (Blueprint $table) {
+            $table->id();
+
+            // The record the translation belongs to. A string id fits
+            // integer, UUID and ULID keys alike.
+            $table->string('translatable_type');
+            $table->string('translatable_id', 64);
+            $table->string('field');
+            $table->string('locale', 16);
+
+            // pending | approved | rejected | superseded
+            $table->string('status', 20)->default('pending');
+
+            // The AI translation as produced, and what was published if a
+            // reviewer edited it (null = published as produced).
+            $table->text('text');
+            $table->text('approved_text')->nullable();
+
+            // What it was translated from. The hash is compared under the
+            // record's lock before publishing.
+            $table->string('source_locale', 16);
+            $table->text('source_text');
+            $table->string('source_hash', 64);
+
+            // The published value of field/locale when this row was produced
+            // ('' when there was none). Publishing refuses to overwrite a
+            // value that has changed since - a hand edit - unless forced.
+            $table->text('published_snapshot')->nullable();
+
+            $table->string('provider')->nullable();
+            $table->string('request_id', 64)->nullable();
+            $table->boolean('cached')->default(false);
+
+            $table->string('reviewer_type')->nullable();
+            $table->string('reviewer_id', 64)->nullable();
+            $table->timestamp('reviewed_at')->nullable();
+            $table->text('note')->nullable();
+
+            $table->timestamps();
+
+            $table->index(['translatable_type', 'translatable_id', 'field', 'locale'], 'translation_reviews_owner_index');
+            $table->index(['status', 'created_at']);
+            $table->index('request_id');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('translation_reviews');
+    }
+};
