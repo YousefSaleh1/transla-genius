@@ -1,65 +1,217 @@
-# TranslaGenius Package
+# TranslaGenius
 
-The TranslaGenius package is a Laravel package designed to automatically translate fields in your Eloquent models using an external translation API. It supports multiple languages and provides flexible translation management.
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/coding-partners/transla-genius.svg)](https://packagist.org/packages/coding-partners/transla-genius)
+[![Total Downloads](https://img.shields.io/packagist/dt/coding-partners/transla-genius.svg)](https://packagist.org/packages/coding-partners/transla-genius)
+[![Tests](https://github.com/YousefSaleh1/transla-genius/actions/workflows/tests.yml/badge.svg)](https://github.com/YousefSaleh1/transla-genius/actions/workflows/tests.yml)
+[![PHP](https://img.shields.io/badge/php-%5E8.3-777bb4.svg)](composer.json)
+[![Laravel](https://img.shields.io/badge/laravel-12.x%20%7C%2013.x-ff2d20.svg)](composer.json)
+[![License](https://img.shields.io/packagist/l/coding-partners/transla-genius.svg)](LICENSE)
 
-## Features
+TranslaGenius translates the translatable attributes of your Eloquent models automatically. When a record is saved, a queued job sends each missing field and language to an AI translation provider and stores the results with [spatie/laravel-translatable](https://github.com/spatie/laravel-translatable).
 
-- Multi-language support (configurable)
-- Automatic field translation
-- Queue-based translation processing
-- Switch between AI providers (OpenAI, Gemini, OpenRouter, DeepSeek, Mistral, or any OpenAI-compatible endpoint) with `.env` only
-- Comprehensive scope filters
-- Lifecycle events for translation start/completion/failure
-- Provider fallback/chaining for resilience against a single backend's outage
-- Cost-safe Artisan command to backfill translations on existing records
-- Opt-in usage/cost tracking, queryable via a plain Eloquent model
+It works with any API that speaks the OpenAI chat-completions format. Presets for OpenRouter, OpenAI, Gemini, DeepSeek and Mistral are included, and you can plug in any other API, such as DeepL, with one class.
+
+## Highlights
+
+- **Automatic and queued.** Creating a record fills every missing language. Editing the source text re-translates the other languages. Jobs dispatch after the database transaction commits.
+- **Provider choice from `.env`.** Switch presets, or chain several for failover, without touching code or config.
+- **Fills only what is missing.** Each field/language pair is saved as soon as it is translated, so a retried job never pays twice for work that already succeeded.
+- **Safe with concurrent edits.** Writes happen under a row lock and check snapshots, so a stale job never overwrites a newer edit or a hand-corrected translation.
+- **Optional extras, all off by default:** per-field batching, a translation cache, usage and cost tracking, and a human review workflow.
+- **Hooks for your own code:** lifecycle events, a custom provider interface, custom job classes and a swappable locale resolver.
+
+## Table of contents
+
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Quick start](#quick-start)
+- [How it works](#how-it-works)
+- [Configuration](#configuration)
+  - [Providers and presets](#providers-and-presets)
+  - [Switching providers](#switching-providers)
+  - [Fallback chains](#fallback-chains)
+  - [Any other OpenAI-compatible endpoint](#any-other-openai-compatible-endpoint)
+  - [Source language](#source-language)
+  - [Queue](#queue)
+  - [System prompt](#system-prompt)
+  - [Reasoning effort and extra request fields](#reasoning-effort-and-extra-request-fields)
+  - [Output limit and temperature](#output-limit-and-temperature)
+  - [Retries and rate limits](#retries-and-rate-limits)
+- [Features in depth](#features-in-depth)
+  - [Batching](#batching)
+  - [Translation cache](#translation-cache)
+  - [Usage and cost tracking](#usage-and-cost-tracking)
+  - [Review workflow](#review-workflow)
+  - [Events](#events)
+  - [Query scopes](#query-scopes)
+  - [Translating arbitrary text](#translating-arbitrary-text)
+- [Artisan commands](#artisan-commands)
+- [Extending](#extending)
+  - [A custom provider (DeepL)](#a-custom-provider-deepl)
+  - [Custom jobs](#custom-jobs)
+  - [Locale resolver](#locale-resolver)
+- [Environment variable reference](#environment-variable-reference)
+- [Testing](#testing)
+- [Troubleshooting and FAQ](#troubleshooting-and-faq)
+- [Upgrading](#upgrading)
+- [Changelog](#changelog)
+- [Contributing](#contributing)
+- [Security](#security)
+- [License](#license)
+- [Credits](#credits)
+
+## Requirements
+
+- PHP 8.3 or later
+- Laravel 12 or 13
+- A queue worker (or the `sync` queue for local development)
+- An API key for one of the supported providers
+
+| Database | Minimum version | Tested in CI |
+|---|---|---|
+| MySQL | 5.7 | 8.0 |
+| MariaDB | 10.3 | 10.6 |
+| PostgreSQL | 10 | 16 |
+| SQL Server | 2017 | 2022 |
+| SQLite | 3.38, or 3.26 built with JSON1 | the PHP build's bundled version |
+
+The minimums are Laravel's own, except SQLite: the package's scopes need SQLite's JSON functions, which are built in only from 3.38. Run `php artisan translagenius:check` to confirm your connection supports what the package needs.
+
+<details>
+<summary>Database notes</summary>
+
+- **SQLite.** Before 3.38, JSON functions were an optional extension, and some PHP builds (older Debian and Ubuntu images, some Windows builds) shipped without them. Without them, the first save fails with `no such function: json_extract`. `translagenius:check` detects this. `lockForUpdate()` compiles to nothing on SQLite; writes are still safe because SQLite serializes all writers at the file level.
+- **MySQL and MariaDB.** The row lock that protects concurrent writes needs the InnoDB engine. On a MyISAM table the lock does nothing.
+- **PostgreSQL.** `$table->json()` creates a `json` column, not `jsonb`. Translation storage and the scopes work either way; switch to `jsonb` yourself if you need indexed JSON queries.
+
+</details>
 
 ## Installation
-
-Requires PHP 8.3+ and Laravel 12.x or 13.x. These are the versions CI tests against.
-
-To install the package, you can use Composer:
 
 ```bash
 composer require coding-partners/transla-genius
 ```
 
-## Configuration
+The service provider and the `TranslaGenius` facade alias are registered through Laravel's package discovery.
 
-You don't need to write code or edit config to choose a translation provider: everything below is driven by `.env`. Publishing the config file is optional, for when you want to change supported languages or a preset's defaults:
+Publishing the config file is optional. You need it to change `supported_languages` or a preset's defaults:
 
 ```bash
-php artisan vendor:publish --provider="CodingPartners\TranslaGenius\TranslaGeniusServiceProvider" --tag="translagenius-config"
+php artisan vendor:publish --tag=translagenius-config
 ```
 
-The languages to translate between live in `supported_languages` (the first is the default):
+This creates `config/translagenius.php`. The optional usage-log and review tables have their own migrations; see [Usage and cost tracking](#usage-and-cost-tracking) and [Review workflow](#review-workflow).
+
+## Quick start
+
+**1. Set the languages.** In `config/translagenius.php`, the first entry is the default locale:
 
 ```php
-'supported_languages' => ['en', 'ar', 'es', 'fr'],
+'supported_languages' => ['en', 'ar', 'fr'],
 ```
 
-> **Upgrading from 3.x?** The config shape changed - see [CHANGELOG.md](CHANGELOG.md) for the migration notes.
-
-### Source Language
-
-Translations are made *from* one language, the source, into every other language in `supported_languages`. Which language is the source is decided once, **when the translation job is dispatched**, and travels with the job. It is never decided inside the queue worker, whose own locale (normally `config('app.locale')`) has nothing to do with the request that saved the record.
-
-| Where the job comes from | Source language |
-|---|---|
-| Creating or updating a record | `TRANSLATION_SOURCE_LOCALE` if set; otherwise the request's locale at save time (what the `SetLocale` middleware, or your own code, set with `app()->setLocale()`) |
-| `translagenius:backfill` (no request) | `--source=`; otherwise `TRANSLATION_SOURCE_LOCALE`; otherwise `app.locale`. The command prints the one it uses and names it in the confirmation prompt. |
-| A job queued by an older version (no source recorded) | `TRANSLATION_SOURCE_LOCALE`; otherwise `app.locale` as configured. Never the worker's current locale. |
+**2. Set a provider key** in `.env`. The default preset is OpenRouter:
 
 ```env
-# Content is always written in Arabic, whatever locale the request is in:
-TRANSLATION_SOURCE_LOCALE=ar
+OPENROUTER_API_KEY=your-key
 ```
 
-Set `TRANSLATION_SOURCE_LOCALE` if your content is always authored in one language: it then wins over the request locale. Leave it empty if people author in the language they're browsing in. If a field has no text in the source language, it isn't translated. If it does have text in another language, a warning names the model, id, field and source locale, because that usually means the content was saved under a different locale than you expected. A field that's empty in every language (an optional description, say) is skipped silently.
+**3. Add the trait to a model** and list its translatable attributes:
 
-### Choosing a Provider
+```php
+use CodingPartners\TranslaGenius\Traits\Translatable;
+use Illuminate\Database\Eloquent\Model;
 
-The package ships ready-made presets for common OpenAI-compatible services. Each one reads its own environment variables and defaults to the service's official endpoint.
+class Product extends Model
+{
+    use Translatable;
+
+    protected $fillable = ['price', 'name', 'description'];
+
+    public $translatable = ['name', 'description'];
+}
+```
+
+Translatable columns are `json` columns:
+
+```php
+Schema::create('products', function (Blueprint $table) {
+    $table->id();
+    $table->decimal('price');
+    $table->json('name');
+    $table->json('description');
+    $table->timestamps();
+});
+```
+
+**4. Set the request locale.** The `SetLocale` middleware sets the app locale from the `Accept-Language` header, choosing the first language that is in `supported_languages`. Register it in `bootstrap/app.php`:
+
+```php
+use CodingPartners\TranslaGenius\Middleware\SetLocale;
+use Illuminate\Foundation\Application;
+use Illuminate\Foundation\Configuration\Middleware;
+
+return Application::configure(basePath: dirname(__DIR__))
+    // ->withRouting(...), ->withExceptions(...) as before
+    ->withMiddleware(function (Middleware $middleware) {
+        $middleware->api(prepend: [SetLocale::class]);
+    })
+    ->create();
+```
+
+**5. Run a queue worker:**
+
+```bash
+php artisan queue:work
+```
+
+Now save a record in the request's language:
+
+```bash
+curl -X POST https://your-app.test/api/products \
+  -H "Accept-Language: en" -H "Content-Type: application/json" \
+  -d '{"name": "Desk lamp", "description": "Adjustable LED desk lamp", "price": 40}'
+```
+
+```php
+Product::create($request->only('price', 'name', 'description'));
+```
+
+The job translates `name` and `description` from English into Arabic and French. Run `php artisan translagenius:check` once to verify the setup.
+
+## How it works
+
+```mermaid
+flowchart TD
+    A["Model saved<br/>(created / updated)"] --> B["Translatable trait<br/>which fields and locales need work"]
+    B --> C["TranslationJobDispatcher<br/>captures the source locale,<br/>applies queue settings, after commit"]
+    C --> Q[("Queue")]
+    Q --> J["TranslateFields job"]
+    J --> T["Translator"]
+    T --> K{"Cache on?"}
+    K -- hit --> J
+    K -- miss / off --> P["Provider<br/>(preset, custom, or fallback chain)"]
+    P --> API(["Translation API"])
+    J -- review off --> W["TranslationWriter<br/>row lock and snapshot checks"]
+    J -- review on --> R["ReviewManager<br/>pending review"]
+    W --> DB[("Model's JSON columns")]
+    R --> RT[("translation_reviews")]
+    J -. events .-> E["TranslationStarted / Completed / Failed"]
+```
+
+1. **Create.** The `created` listener dispatches a job for every translatable field. The job fills each missing field/language pair and never overwrites an existing translation.
+2. **Update.** When a field's text in the source language changes, its other languages are stale. The job re-translates and overwrites them, except any language set in the same save, which is kept as written. A language edited by hand after the source edit is not overwritten, and if the source changes again before the job finishes, the older job's results are discarded. Fields whose source didn't change are left alone.
+3. **Dispatch.** The source locale is recorded when the job is dispatched, not inside the worker. The job is queued on the configured connection and queue, after the surrounding transaction commits.
+4. **Translate.** The job asks the `Translator` for each missing pair. The `Translator` uses the configured provider, through the cache when it is on.
+5. **Save.** Each result is saved as soon as it arrives, under a row lock, without firing model events. With the review workflow on, it is stored as a pending review instead.
+
+## Configuration
+
+Everything in this section can be set from `.env`. The [environment variable reference](#environment-variable-reference) lists every variable with its default.
+
+### Providers and presets
+
+Each preset reads its own variables and defaults to the service's official endpoint.
 
 | Preset | Required | Optional | Default model |
 |---|---|---|---|
@@ -67,33 +219,31 @@ The package ships ready-made presets for common OpenAI-compatible services. Each
 | `openai` | `OPENAI_API_KEY` | `OPENAI_MODEL`, `OPENAI_API_URL` | `gpt-6-luna` |
 | `gemini` | `GEMINI_API_KEY` | `GEMINI_MODEL`, `GEMINI_API_URL` | `gemini-3.5-flash-lite` |
 | `deepseek` | `DEEPSEEK_API_KEY` | `DEEPSEEK_MODEL`, `DEEPSEEK_API_URL` | `deepseek-flash` |
-| `mistral` | `MISTRAL_API_KEY` | `MISTRAL_MODEL`, `MISTRAL_API_URL` | `mistral-small-latest` (an alias; Mistral's docs don't say which model it currently points to) |
+| `mistral` | `MISTRAL_API_KEY` | `MISTRAL_MODEL`, `MISTRAL_API_URL` | `mistral-small-latest` |
 | `custom` | `TRANSLATION_API_URL`, `TRANSLATION_MODEL` | `TRANSLATION_API_KEY`, `TRANSLATION_AUTH_HEADER`, `TRANSLATION_TOKEN_LIMIT_PARAM` | none |
 
-Settings shared by every preset: `TRANSLATION_API_TIMEOUT` (seconds, default 10), `TRANSLATION_TEMPERATURE` (default 0.3 on `openrouter`; unset, and so not sent, on every other preset), `TRANSLATION_MAX_TOKENS` (default unset; see below). Usage-tracking cost rates are per preset: `OPENAI_COST_PER_1K_PROMPT_TOKENS` / `OPENAI_COST_PER_1K_COMPLETION_TOKENS`, and the same pattern for `OPENROUTER_`, `GEMINI_`, `DEEPSEEK_` and `MISTRAL_`; `custom` uses `TRANSLATION_COST_PER_1K_*`.
+Every preset also reads `TRANSLATION_API_TIMEOUT` (seconds, default 10), `TRANSLATION_TEMPERATURE` and `TRANSLATION_MAX_TOKENS`; see [Output limit and temperature](#output-limit-and-temperature).
 
-**Output token limit.** `TRANSLATION_MAX_TOKENS` is unset by default, so no limit is sent and each provider's own default applies. A translation's length follows its input, so cost stays bounded by what you send, and a fixed limit is easy to hit: several default models reason before answering, and reasoning tokens count toward the limit (OpenAI and Gemini both document this). If a response does stop at the limit (`finish_reason` `length`), the translation fails instead of saving half a sentence. It isn't retried, since the same limit gives the same result, and a fallback chain moves on to its next provider. Set `TRANSLATION_MAX_TOKENS` to cap output explicitly.
+The default models were checked against each provider's documentation when they were chosen. Providers retire and replace models, so set the `*_MODEL` variable to pin the one you want. `mistral-small-latest` is an alias: Mistral may move it to a newer model, and price, without notice.
 
-**Temperature.** Only `openrouter` sends a temperature by default (0.3, as before). The other presets' default models reason before answering, and their docs either don't document `temperature` for them or say it has no effect while thinking (DeepSeek), so leaving it out lets each model use its own default. Setting `TRANSLATION_TEMPERATURE` sends it to whichever preset is active; an empty value sends nothing.
+`gpt-6-luna` is the cheapest text model on OpenAI's [models page](https://developers.openai.com/api/docs/models), and every model listed there reasons before answering. That is why the `openai` preset sends no temperature or token limit by default and sets `reasoning_effort` to `none`.
 
-**`openai` default model.** `gpt-6-luna` is the cheapest text model on OpenAI's [models page](https://developers.openai.com/api/docs/models) ($0.10 / $0.50 per 1M input/output tokens), and every model listed there is a reasoning model. Its [model page](https://developers.openai.com/api/docs/models/gpt-6-luna) gives `medium` as the default reasoning effort, and per the [Chat Completions reference](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create) reasoning tokens count toward `max_completion_tokens` and are billed as output. That's why the preset sends neither a temperature nor a token limit by default, and asks for `reasoning_effort` `none` (see [Reasoning Effort](#reasoning-effort)).
+### Switching providers
 
-Default models are a starting point, checked against each provider's documentation when they were chosen. Providers retire models over time; set the `*_MODEL` variable to pin the one you want. `mistral-small-latest` is an alias that Mistral may move to a newer model (and price) without notice.
-
-### Switching Providers with `.env` Only
-
-Set the preset name and its key. Nothing else changes:
+Set the preset name and its key:
 
 ```env
 TRANSLATION_PROVIDER=gemini
 GEMINI_API_KEY=your-gemini-key
 ```
 
-Existing setups keep working: `TRANSLATION_PROVIDER` still defaults to `openrouter`, and that preset still reads `TRANSLATION_API_KEY`, `TRANSLATION_API_URL` and `TRANSLATION_MODEL` when its own `OPENROUTER_*` variables aren't set. Those legacy names also drive `custom`, so if you use both presets together (for example in a fallback chain), set `OPENROUTER_API_KEY` and friends explicitly for OpenRouter.
+`TRANSLATION_PROVIDER` defaults to `openrouter`. That preset falls back to the legacy `TRANSLATION_API_KEY`, `TRANSLATION_API_URL` and `TRANSLATION_MODEL` when its `OPENROUTER_*` variables are unset. The `custom` preset reads the same legacy names, so if you use both presets (in a fallback chain, say), set the `OPENROUTER_*` variables explicitly.
 
-### Fallback with `.env` Only
+Each result's `TranslationResult->provider`, and its usage-log row, records the preset name, for example `gemini`.
 
-To fail over from one provider to another, point `TRANSLATION_PROVIDER` at the shipped `fallback` entry and list the presets to try, in order:
+### Fallback chains
+
+To fail over from one provider to another, select the shipped `fallback` entry and list presets in order:
 
 ```env
 TRANSLATION_PROVIDER=fallback
@@ -102,157 +252,32 @@ OPENAI_API_KEY=your-openai-key
 GEMINI_API_KEY=your-gemini-key
 ```
 
-The first provider to succeed wins; later ones aren't called. Names are trimmed and empty items ignored, and the chain needs at least 2 entries. A missing chain, a chain that references itself, or an unknown name fails at resolution time with an error naming the problem. See [Provider Fallback / Chaining](#provider-fallback--chaining) for how failures are handled.
+The first provider to succeed wins, and later ones are not called. The chain moves on after any failure, including non-retryable ones such as a bad key or an exhausted quota, because that is the case a fallback exists for. If every member fails, `Exceptions\AllProvidersFailedException` is thrown; it extends `TranslationFailedException`, and `getFailures()` returns each member's failure.
 
-### Reasoning Effort
-
-Several default models reason before they answer. That costs money and latency that translation doesn't need, and the reasoning tokens count toward the output limit. Each preset has its own variable for the Chat Completions `reasoning_effort` field. It's sent only when set; an empty value sends nothing.
-
-| Preset | Variable | Default | What the provider documents |
-|---|---|---|---|
-| `openai` | `OPENAI_REASONING_EFFORT` | `none` | The [Chat Completions reference](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create) accepts `reasoning_effort` (default `medium`), and the [`gpt-6-luna` page](https://developers.openai.com/api/docs/models/gpt-6-luna) lists `none` among its supported efforts. |
-| `deepseek` | `DEEPSEEK_REASONING_EFFORT` | `none` | The [chat completion reference](https://api-docs.deepseek.com/api/create-chat-completion) lists `none`, `low`, `high`, `max` for `deepseek-flash`; `none` disables thinking mode. |
-| `gemini` | `GEMINI_REASONING_EFFORT` | not sent | The [OpenAI-compatibility page](https://aistudio.google.com/docs/openai) maps `reasoning_effort`, but its table doesn't cover Gemini 3.5 Flash-Lite, so no default is set. |
-| `mistral` | `MISTRAL_REASONING_EFFORT` | not sent | Mistral's [reasoning guide](https://docs.mistral.ai/inference/conversations/reasoning) documents `none` and `high` for Mistral Small 4 (`mistral-small-2603`), but doesn't say that `mistral-small-latest` points to it. |
-| `openrouter` | `OPENROUTER_REASONING_EFFORT` | not sent | The [API reference](https://openrouter.ai/docs/api-reference/chat-completion) accepts `reasoning_effort`, but the default `openai/gpt-4o` isn't documented as a reasoning model. |
-| `custom` | `TRANSLATION_REASONING_EFFORT` | not sent | Depends on your endpoint. |
-
-### Extra Request Fields
-
-For any other provider-specific parameter, a provider entry in a published config can set `body`, which is merged into the request:
+The chain needs at least 2 names. A missing chain, a chain that includes itself, or an unknown name fails when the provider is resolved, with an error naming the problem. In a published config you can define more chains, with `chain` as an array:
 
 ```php
-'deepseek' => [
-    // ...
-    'body' => ['top_p' => 0.9, 'seed' => 42],
+'resilient' => [
+    'driver' => \CodingPartners\TranslaGenius\Providers\FallbackProvider::class,
+    'chain' => ['openai', 'deepl'],
 ],
 ```
 
-`body` can't set `model`, `messages` or `stream`: those are always set by the package (the system/user message split is a safety boundary, and a streamed reply couldn't be read), and are dropped with a log warning. The API key travels in a header, out of `body`'s reach. A configured `temperature`, token limit or `reasoning_effort` takes precedence over the same field in `body`.
+### Any other OpenAI-compatible endpoint
 
-### System Prompt
-
-The OpenAI-compatible presets tell the model what to do with a system prompt. To change it without code, set `TRANSLATION_SYSTEM_PROMPT`; longer prompts belong in a published config, as `prompt` (package-wide) or as `prompt` on one provider entry (which wins over the package-wide one). An empty value falls back to the built-in prompt:
-
-```env
-TRANSLATION_SYSTEM_PROMPT="Translate this {model} {field} from {source_locale} to {target_locale}. Keep brand names unchanged. Reply with only the translation."
-```
-
-| Placeholder | Filled with |
-|---|---|
-| `{source_locale}` | the source locale, e.g. `en` |
-| `{target_locale}` | the target locale, e.g. `ar` |
-| `{field}` | the attribute being translated, e.g. `name` (empty when translating via the facade) |
-| `{model}` | the model's class basename, e.g. `Product` (empty when translating via the facade) |
-
-Anything else in braces is left as written. Field context noticeably helps: a product `name` and a product `description` call for different wording.
-
-The prompt is only ever sent as the `system` message, and the text being translated is only ever sent as the `user` message. Only the four placeholders above are substituted, and none of them is the field's content, so no prompt can move content into the system role.
-
-### Batching
-
-By default every field and target language is its own request: 2 translatable fields and 5 target languages is 10 requests per save, each resending the system prompt. With batching on, all the missing languages of one field go in a single request that asks for a JSON object keyed by language code, so the same save is 2 requests.
-
-```env
-TRANSLATION_BATCH=true
-```
-
-It's off by default for now. The tradeoff:
-
-- **For:** far fewer requests, and the prompt and source text are sent once per field instead of once per language.
-- **Against:** each reply is bigger, which raises the odds of hitting an output limit, and you depend on the model returning well-formed JSON.
-
-To limit the second risk, a reply is checked strictly. Only the requested language codes are taken, each must be a non-empty string, and anything else in the reply is ignored. A language that's missing or invalid is then requested on its own, and a reply that isn't a JSON object at all sends the whole field one language at a time. A batch reply cut off at the token limit is treated the same way: the field's languages are requested one at a time, since each of those replies is much smaller, and the truncated request's tokens are logged on the first of them. In a fallback chain, a truncated batch hands over to the next member that can batch first. (A *single-language* reply cut off at the limit still fails the translation, as retrying the same request can't help; see `TRANSLATION_MAX_TOKENS`.) Each language is saved as soon as it's valid, so nothing from a batch is lost if a later request fails. A field missing only one language is sent as a normal single request, and fields are never combined into one request.
-
-Where a provider documents a JSON response mode for the preset's default model, batch requests use it:
-
-| Preset | `response_format` | Source |
-|---|---|---|
-| `openai` | `json_schema` (strict, requiring exactly the requested languages) | [Chat Completions reference](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create); the [`gpt-6-luna` page](https://developers.openai.com/api/docs/models/gpt-6-luna) lists Structured Outputs |
-| `deepseek` | `json_object` | [Chat completion reference](https://api-docs.deepseek.com/api/create-chat-completion) and [JSON Output guide](https://api-docs.deepseek.com/guides/json_mode), which uses `deepseek-flash` and requires the word "json" in the prompt (the batch prompt includes it) |
-| `gemini`, `mistral`, `openrouter` | none: the prompt alone | Their docs describe JSON output generally or per model, but not for these default models |
-| `custom` | `TRANSLATION_BATCH_RESPONSE_FORMAT` (`json_schema`, `json_object`, or unset) | Your endpoint |
-
-Turn batching on or off for one preset with `OPENAI_BATCH`, `GEMINI_BATCH`, ... (`TRANSLATION_CUSTOM_BATCH` for `custom`), or `batch` on a provider entry. The batch prompt is configurable like the single one, through `TRANSLATION_BATCH_PROMPT` or `batch_prompt` on an entry. It uses the same placeholder rules, with `{target_locales}` (comma-separated, e.g. `ar, es, fr`) instead of `{target_locale}`. Instructions stay in the `system` message and the field's text in the `user` message.
-
-A custom provider that only implements `TranslationProviderInterface` keeps working: it gets one call per language. To batch, implement `Contracts\BatchTranslationProviderInterface` too. In a fallback chain, members that can batch are tried in order for the batch, and the first that answers wins, even with only some languages. Members that can't batch are skipped for the batch but still serve the one-language requests, which go through the whole chain, primary first. If no member manages a batch, every language goes through the chain one at a time.
-
-### Translation Cache
-
-```env
-TRANSLATION_CACHE=true
-TRANSLATION_CACHE_STORE=redis
-TRANSLATION_CACHE_TTL=2592000
-```
-
-With the cache on, the same source text translated with the same setup is requested once and then served from Laravel's cache, across every record and model. It helps wherever text repeats: shared boilerplate ("Free shipping on orders over $50", warranty and returns blurbs), product variants that share a name or description, imported catalogues with duplicate rows, and re-running `translagenius:backfill`. That's different from the change detection the package already does. That check only avoids re-translating *one record* when a save didn't change its source text; the cache avoids paying again for text that *another* record already had translated.
-
-It needs no other setup: it wraps whichever provider is configured, including a fallback chain. It's off by default.
-
-| Variable | Default | What it does |
-|---|---|---|
-| `TRANSLATION_CACHE` | `false` | Turn the cache on. |
-| `TRANSLATION_CACHE_STORE` | app default | A store from `config/cache.php` (`redis`, `database`, ...). |
-| `TRANSLATION_CACHE_TTL` | `2592000` (30 days) | Seconds to keep an entry; `0` keeps entries forever. |
-
-The default TTL is bounded on purpose: in a shared Redis or database cache, entries don't pile up forever, and translations are refreshed now and then even if a provider quietly changes a model behind the same ID.
-
-**What counts as "the same setup".** The cache key covers the source text, both languages, the provider, and everything in its configuration that can change the output: the model, URL, system and batch prompt templates, temperature, `reasoning_effort`, `body` and response format. Changing any of them starts fresh entries. API keys, timeouts, retries, token limits and cost rates don't affect the key. The field name and model name are part of the key only when a prompt uses `{field}` or `{model}` (or for a custom, non-OpenAI-compatible driver, which might use them in code); otherwise the same text is shared across fields and models.
-
-**What gets cached.** Only successful translations. A failed request, a reply cut off at the token limit, or an invalid language value from a batch is never stored. In a fallback chain, only results from the primary provider are cached. A translation a backup provider produced during an outage is saved on its record as usual, but not reused for other records, so the next identical text after the primary recovers gets the primary's output.
-
-**Events and usage.** A cache hit still fires `TranslationStarted` and `TranslationCompleted` (the translation did complete), and its `TranslationResult` has `cached === true`, no token counts, and no `requestId`. In the usage log a hit is a row with `cached = true` and null tokens and cost, so `TranslationUsageLog::where('cached', true)->count()` shows your hit rate while `SUM()`s still equal what the provider billed.
-
-**Clearing it.** Entries are ordinary cache entries under the `translagenius:v1:` prefix. `php artisan cache:clear` (or clearing the configured store) removes them along with the rest of that store; changing any setting in the key, or a future package version bumping the `v1` segment, makes old entries miss and expire on their own. There's no dedicated clear command: Laravel's cache can't delete by prefix on every driver, and the cases above haven't needed one. If you want to clear only translations, give them their own store with `TRANSLATION_CACHE_STORE` and clear that.
-
-**Privacy.** Cached values are translated field content: product copy, and whatever else your translatable fields hold. They live in your cache store under a hashed key, readable by anything with access to that store. On a shared Redis or `database` cache, that means other applications and anyone with access to that Redis instance or cache table. Treat it like the translated data itself: if your fields can contain personal or confidential text, use a store with the same access controls as your database (or a dedicated one), or leave the cache off.
-
-### Queue Settings
-
-Translation jobs go to your app's default queue connection and queue unless you say otherwise:
-
-```env
-TRANSLATION_QUEUE_CONNECTION=redis
-TRANSLATION_QUEUE=translations
-TRANSLATION_DISPATCH_AFTER_COMMIT=true
-```
-
-These apply everywhere a job is dispatched: when a model is created or updated, and from `translagenius:backfill`. That includes a custom job from `translationJobClass()`, as long as it uses Laravel's `Queueable` trait (a job without it is still dispatched, on the app's defaults).
-
-`TRANSLATION_DISPATCH_AFTER_COMMIT` (default `true`) holds the job until the surrounding database transaction commits, and drops it if the transaction rolls back. Without it, a model created inside a transaction can be picked up by a worker before the commit, when the row isn't visible yet, or translated even though it was rolled back. Set it to `false` to fall back to your queue connection's own `after_commit` setting.
-
-### Retries and Rate Limits
-
-Failed calls are retried in two layers, each configurable from `.env`:
-
-| Variable | Default | What it does |
-|---|---|---|
-| `TRANSLATION_HTTP_RETRIES` | `1` | Quick in-request retries (200ms-1s apart) for connection errors, 429 and 5xx. |
-| `TRANSLATION_HTTP_RETRY_AFTER_MAX` | `10` | A 429 whose `Retry-After` is at most this many seconds is waited out in-request. A longer one ends the attempt, and the queued job is released for exactly that delay. |
-| `TRANSLATION_FALLBACK_HTTP_RETRIES` | `0` | HTTP retries for providers inside a fallback chain. The next provider is the retry, so failover isn't delayed. |
-| `TRANSLATION_JOB_TRIES` | `3` | Queue attempts for the translation job. |
-| `TRANSLATION_JOB_BACKOFF` | `10,30` | Seconds between queue attempts (comma-separated). |
-
-4xx responses other than 429 (bad key, bad request, unknown model) are never retried at any layer: the job fails on the first response. So does a truncated single-language translation (see `TRANSLATION_MAX_TOKENS`); a truncated batch falls back to single-language requests instead (see Batching).
-
-**Worst case** for one field and locale is `(TRANSLATION_HTTP_RETRIES + 1) x TRANSLATION_JOB_TRIES` requests: **6** with the defaults, for a provider that keeps returning 5xx. In a fallback chain, each job attempt sends one request per chain member, so a two-provider chain is at most `2 x TRANSLATION_JOB_TRIES` = 6 as well. Each field/locale pair is saved as soon as it's translated, so a retried job only requests the pairs that are still missing: work that succeeded before a failure is never paid for twice. While a job is in flight, or after one fails, a partly translated record shows up in `notFullyTranslated()` (and not in `fullyTranslated()`), so `translagenius:backfill` can pick it up later.
-
-### Any Other OpenAI-Compatible Endpoint
-
-The `custom` preset covers any service or self-hosted gateway that speaks the OpenAI chat-completions format (Ollama, vLLM, LiteLLM, a corporate proxy, ...). Set the **full** chat-completions URL:
+The `custom` preset covers any service or self-hosted gateway with an OpenAI-compatible chat-completions API, such as Ollama, vLLM, LiteLLM or a company proxy. Set the full chat-completions URL:
 
 ```env
 TRANSLATION_PROVIDER=custom
 TRANSLATION_API_URL=http://localhost:11434/v1/chat/completions
 TRANSLATION_MODEL=llama3.1
-TRANSLATION_API_KEY=anything-or-empty-if-your-gateway-ignores-it
+TRANSLATION_API_KEY=your-key-or-empty
 ```
 
-By default the key is sent as `Authorization: Bearer <key>`. For a service that takes the key in a different header, name it with `TRANSLATION_AUTH_HEADER` and the raw key is sent there instead. Azure OpenAI's key-based auth, for example, documents an `api-key` header (`TRANSLATION_AUTH_HEADER=api-key`); this has not been tested against a live Azure resource. If a service rejects `max_tokens`, set `TRANSLATION_TOKEN_LIMIT_PARAM=max_completion_tokens`.
+The key is sent as `Authorization: Bearer <key>`. For a service that expects the key in another header, name that header in `TRANSLATION_AUTH_HEADER` and the raw key is sent there. Azure OpenAI's key-based authentication, for example, documents an `api-key` header; this has not been tested against a live Azure resource. If a service rejects `max_tokens`, set `TRANSLATION_TOKEN_LIMIT_PARAM=max_completion_tokens`.
 
-In a published config, any OpenAI-compatible entry also accepts a `headers` array of extra request headers (null or empty values are dropped). The `openrouter` preset uses it for OpenRouter's optional `HTTP-Referer` / `X-OpenRouter-Title` attribution headers, set via `OPENROUTER_SITE_URL` / `OPENROUTER_APP_NAME`.
-
-One provider entry, with every setting it understands:
+<details>
+<summary>Every setting a provider entry accepts</summary>
 
 ```php
 'gemini' => [
@@ -261,247 +286,265 @@ One provider entry, with every setting it understands:
     'url' => env('GEMINI_API_URL', 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'),
     'model' => env('GEMINI_MODEL', 'gemini-3.5-flash-lite'),
     'timeout' => env('TRANSLATION_API_TIMEOUT', 10),
-    'temperature' => env('TRANSLATION_TEMPERATURE', 0.3),
-    'max_tokens' => env('TRANSLATION_MAX_TOKENS'),   // unset: provider default
-    'token_limit_param' => 'max_tokens',   // or 'max_completion_tokens'
-    'auth_header' => 'Authorization',      // or e.g. 'api-key'
-    'headers' => [],                       // extra request headers
+    'temperature' => env('TRANSLATION_TEMPERATURE'),    // empty: not sent
+    'max_tokens' => env('TRANSLATION_MAX_TOKENS'),      // empty: provider default
+    'token_limit_param' => 'max_tokens',                // or 'max_completion_tokens'
+    'auth_header' => 'Authorization',                   // or e.g. 'api-key'
+    'headers' => [],                                    // extra request headers; empty values are dropped
+    'reasoning_effort' => env('GEMINI_REASONING_EFFORT'),
+    'body' => [],                                       // extra request-body fields
+    'prompt' => null,                                   // overrides the package-wide prompt
+    'batch' => env('GEMINI_BATCH'),                     // overrides TRANSLATION_BATCH
+    'batch_prompt' => null,
+    'batch_response_format' => null,                    // 'json_schema', 'json_object' or null
     'cost_per_1k_prompt_tokens' => env('GEMINI_COST_PER_1K_PROMPT_TOKENS'),
     'cost_per_1k_completion_tokens' => env('GEMINI_COST_PER_1K_COMPLETION_TOKENS'),
 ],
 ```
 
-Each translation's `TranslationResult->provider` (and its usage-log row) records the entry's key - `gemini` here.
+The `openrouter` preset uses `headers` for OpenRouter's optional `HTTP-Referer` and `X-OpenRouter-Title` attribution headers, set with `OPENROUTER_SITE_URL` and `OPENROUTER_APP_NAME`.
 
-### APIs That Aren't OpenAI-Compatible
+</details>
 
-`.env` alone can't reach an API with a different request shape, such as DeepL, AWS Translate or Azure Translator. Those need a small class implementing `TranslationProviderInterface` - see [Custom Translation Providers](#custom-translation-providers).
+For an API with a different request shape, such as DeepL, AWS Translate or Azure Translator, see [A custom provider (DeepL)](#a-custom-provider-deepl).
 
-## Usage
+### Source language
 
-### Step 1: Include the `Translatable` Trait in Your Model
+Translations go from one language, the source, into every other language in `supported_languages`. The source is decided when the job is dispatched and travels with the job. It is never read inside the queue worker, whose locale has nothing to do with the request that saved the record.
 
-To enable automatic translation for your model, include the `Translatable` trait in your Eloquent model:
+| Where the job comes from | Source language |
+|---|---|
+| Creating or updating a record | `TRANSLATION_SOURCE_LOCALE` if set, otherwise the request's locale at save time (what `SetLocale` or your own code set with `app()->setLocale()`) |
+| `translagenius:backfill` | `--source=`, otherwise `TRANSLATION_SOURCE_LOCALE`, otherwise `app.locale`. The command prints the one it uses. |
+| A job queued by an earlier version, which carries no source | `TRANSLATION_SOURCE_LOCALE`, otherwise `app.locale` as configured, never the worker's current locale |
+
+```env
+# Content is always written in Arabic, whatever the request locale:
+TRANSLATION_SOURCE_LOCALE=ar
+```
+
+Set `TRANSLATION_SOURCE_LOCALE` if your content is always written in one language. Leave it empty if people write in the language they are browsing in.
+
+A field with no text in the source language is not translated. If it has text in another language, a warning names the model, id, field and source locale, because that usually means the content was saved under a different locale than you expected. A field that is empty in every language, such as an optional description, is skipped without a warning.
+
+### Queue
+
+Jobs go to the app's default queue connection and queue unless you set them:
+
+```env
+TRANSLATION_QUEUE_CONNECTION=redis
+TRANSLATION_QUEUE=translations
+TRANSLATION_DISPATCH_AFTER_COMMIT=true
+```
+
+These apply to every dispatch: model create and update, `translagenius:backfill` and the review workflow. A [custom job](#custom-jobs) gets them only if it uses Laravel's `Queueable` trait. Otherwise it is dispatched on the app's defaults, and a warning naming the class is logged once per process.
+
+`TRANSLATION_DISPATCH_AFTER_COMMIT` (default `true`) holds the job until the surrounding database transaction commits, and drops it on rollback. Without it, a worker can pick up a job for a row that is not committed yet, or translate a record that was rolled back. Set it to `false` to use your queue connection's own `after_commit` setting.
+
+### System prompt
+
+The OpenAI-compatible presets send instructions as a system prompt. Set `TRANSLATION_SYSTEM_PROMPT` to replace the built-in one. Longer prompts belong in a published config, as `prompt` (package-wide) or `prompt` on one provider entry, which wins. An empty value uses the built-in prompt.
+
+```env
+TRANSLATION_SYSTEM_PROMPT="Translate this {model} {field} from {source_locale} to {target_locale}. Keep brand names unchanged. Reply with only the translation."
+```
+
+| Placeholder | Replaced with |
+|---|---|
+| `{source_locale}` | the source locale, for example `en` |
+| `{target_locale}` | the target locale, for example `ar` |
+| `{field}` | the attribute being translated, for example `name`; empty when translating through the facade |
+| `{model}` | the model's class basename, for example `Product`; empty when translating through the facade |
+
+Anything else in braces is left as written. Field context helps the model: a product `name` and a product `description` call for different wording.
+
+The prompt is only ever sent as the `system` message, and the text being translated only ever as the `user` message. None of the placeholders is the field's content, so no prompt can move content into the system role.
+
+### Reasoning effort and extra request fields
+
+Several default models reason before answering. That costs money and time a translation doesn't need, and the reasoning tokens count toward the output limit. Each preset has a variable for the Chat Completions `reasoning_effort` field, sent only when it is set:
+
+| Preset | Variable | Default |
+|---|---|---|
+| `openai` | `OPENAI_REASONING_EFFORT` | `none` |
+| `deepseek` | `DEEPSEEK_REASONING_EFFORT` | `none` |
+| `gemini` | `GEMINI_REASONING_EFFORT` | not sent |
+| `mistral` | `MISTRAL_REASONING_EFFORT` | not sent |
+| `openrouter` | `OPENROUTER_REASONING_EFFORT` | not sent |
+| `custom` | `TRANSLATION_REASONING_EFFORT` | not sent |
+
+<details>
+<summary>What each provider documents</summary>
+
+- **OpenAI:** the [Chat Completions reference](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create) accepts `reasoning_effort` (default `medium`), and the [`gpt-6-luna` page](https://developers.openai.com/api/docs/models/gpt-6-luna) lists `none` among its supported values.
+- **DeepSeek:** the [chat completion reference](https://api-docs.deepseek.com/api/create-chat-completion) lists `none`, `low`, `high` and `max` for `deepseek-flash`; `none` disables thinking mode.
+- **Gemini:** the [OpenAI compatibility page](https://aistudio.google.com/docs/openai) maps `reasoning_effort`, but its table doesn't cover Gemini 3.5 Flash-Lite, so no default is set.
+- **Mistral:** the [reasoning guide](https://docs.mistral.ai/inference/conversations/reasoning) documents `none` and `high` for Mistral Small 4 (`mistral-small-2603`), but doesn't say that `mistral-small-latest` points to it.
+- **OpenRouter:** the [API reference](https://openrouter.ai/docs/api-reference/chat-completion) accepts `reasoning_effort`, but `openai/gpt-4o` isn't documented as a reasoning model.
+
+</details>
+
+For any other provider-specific parameter, set `body` on a provider entry in a published config. It is merged into the request:
 
 ```php
-use CodingPartners\TranslaGenius\Traits\Translatable;
-
-class Post extends Model
-{
-    use Translatable;
-
-    // Define the fields that should be translated
-    public $translatable = [
-        'title',
-        'content',
-    ];
-}
-```
-
-### Step 2: Update Your Migration
-
-Ensure that the fields you want to translate are of type `json` in your migration:
-
-```php
-Schema::create('posts', function (Blueprint $table) {
-    $table->id();
-    $table->json('title');
-    $table->json('content');
-    $table->timestamps();
-});
-```
-
-### Database Requirements
-
-TranslaGenius targets Laravel's five first-party-supported relational databases: MariaDB 10.3+, MySQL 5.7+, PostgreSQL 10.0+, SQLite 3.26.0+, and SQL Server 2017+. The `fullyTranslated` scope and the translatable columns rely on each database's JSON path functions, which are unconditionally available on MySQL, MariaDB, PostgreSQL, and SQL Server at those floors - but **not** on SQLite:
-
-- **SQLite's actual requirement is 3.38.0+, or an earlier 3.26.0+ build with JSON1 explicitly compiled in** - Laravel's own bare 3.26.0+ floor is not sufficient on its own for this package. JSON functions were an optional SQLite extension before 3.38.0 (2022), and several real-world PHP distributions (older Debian/Ubuntu base images, some bundled Windows builds) shipped without it, producing a cryptic `no such function: json_extract` error the first time a model saves. Run `php artisan translagenius:check` after installing to verify your connection supports what this package needs - it checks all four SQL-based drivers, but SQLite is the one where the answer genuinely isn't guaranteed by version number alone.
-- **MySQL/MariaDB**: the row-level locking `TranslateFields` uses to protect against concurrent-update races requires the InnoDB storage engine. On a table using the legacy MyISAM engine, the lock is silently a no-op (MyISAM has no row-level locking at all). This is the practical default for any MySQL/MariaDB app - not something you need to configure - but worth knowing if you're running against an unusually old or custom-configured install.
-- **PostgreSQL**: `$table->json()` migrations create a plain `json` column, not `jsonb` - correctness of `fullyTranslated` and translation storage is unaffected either way, but if you need indexed/containment JSON queries at scale, consider migrating your translatable columns to `jsonb` yourself (not a default this package imposes).
-- **SQLite locking note**: `lockForUpdate()` compiles to nothing on SQLite (`SQLiteGrammar::compileLock()` is unconditionally empty) - the concurrent-write protection still holds there, but because SQLite serializes all writers at the database-file/WAL level regardless of query-level lock hints, not because of an explicit row lock.
-
-### Step 3: Middleware Setup
-
-To automatically set the locale based on the request, you can include the `SetLocale` middleware in your `bootstrap/app.php`:
-
-```php
-use CodingPartners\TranslaGenius\Middleware\SetLocale;
-
-->withMiddleware(function (Middleware $middleware) {
-
-    $middleware->api(prepend: [
-
-        SetLocale::class,
-
-    ]);
-
-})
-```
-
-### Step 4: Making Requests
-
-When making requests to your application, you can set the `Accept-Language` header to specify the desired language:
-
-```bash
-curl -X GET http://yourapp.com/api/posts -H "Accept-Language: en"
-```
-
-This will set the locale to English (`en`), which means the default language of the system is now English. When you add a new record, you should send the fields in English, and the package will automatically translate them into Arabic.
-
-### Step 5: Running the Queue
-
-The translation process is handled by a job that is dispatched when a model is created or updated. To ensure that the translations are processed, you need to run the queue worker:
-
-```bash
-php artisan queue:work
-```
-
-This will process the `TranslateFields` job and perform the translations in the background.
-
-### Example of Using the `fullyTranslated` Scope
-
-The `Translatable` trait provides a `fullyTranslated` scope that allows you to filter models that are fully translated in the Supported Languages.
-
-```php
-$posts = Post::fullyTranslated()->get();
-```
-
-This scope checks if all translatable fields have a translation in the Supported Languages. It ensures that only records with complete translations are returned, which is useful for ensuring data consistency and completeness.
-
-The exact inverse, `notFullyTranslated`, is what powers the backfill command below - `Post::notFullyTranslated()->get()` returns every record missing at least one field/locale.
-
-### Translating Arbitrary Text
-
-To translate text outside the automatic model-save flow, use the `TranslaGenius` facade. Laravel's package discovery registers it under the global alias `TranslaGenius`, or you can import it directly:
-
-```php
-use CodingPartners\TranslaGenius\Facades\TranslaGenius;
-
-$result = TranslaGenius::translate('Hello', 'en', 'ar');
-$result->text; // the translated string
-```
-
-The facade resolves `Contracts\TranslatorInterface` from the container, so it uses whichever provider (or fallback chain) is configured. It throws `Exceptions\TranslationFailedException` on failure.
-
-## Backfilling Existing Records
-
-`php artisan translagenius:backfill {model}` finds existing records that aren't fully translated and dispatches the same `TranslateFields` job for them that a normal create/update would - useful after adding a new translatable field or a new supported language, or after a period where the queue worker wasn't running.
-
-```bash
-# Preview only - reports the count, dispatches nothing.
-php artisan translagenius:backfill "App\Models\Post" --dry-run
-
-# Interactive: shows the count and estimated API calls, then prompts to confirm.
-php artisan translagenius:backfill "App\Models\Post"
-
-# Non-interactive/CI use - skips the prompt.
-php artisan translagenius:backfill "App\Models\Post" --force
-
-# Tune how many records are loaded per chunk (default 100).
-php artisan translagenius:backfill "App\Models\Post" --force --chunk=500
-```
-
-It always requires either `--force` or an interactive "yes" before dispatching anything - a bare run with no confirmation mechanism satisfied reports the count and stops, dispatching nothing. `{model}` must be a fully-qualified class using the `Translatable` trait; an invalid class, a non-Eloquent class, or a model missing the trait is rejected up front with a clear message rather than failing partway through. Iteration uses `chunkById()` (not `chunk()`) so it stays correct even while jobs it just dispatched are being processed concurrently.
-
-There's no `--locales=` filter: `TranslateFields` always translates into every locale from `translagenius.supported_languages` (already-translated field/locale pairs are skipped automatically, at no API cost), and that target set isn't parameterized per-dispatch - narrowing it correctly would mean changing `TranslateFields` itself, which this command deliberately doesn't touch.
-
-## How It Works
-
-1. **Model Events**: When a model is created, the `Translatable` trait dispatches a `TranslateFields` job to fill every missing translation. When it's updated and a field's source-language text changed, the job re-translates that field: its existing translations are now stale and get overwritten. Any target language set in that same save is kept as written (it was provided along with the new source), and fields whose source didn't change are left alone. If the source changes again before a job finishes, the older job's results are discarded, so the stored translation always matches the latest source. A target someone edits by hand after the source edit is left alone (it's only overwritten while it still holds the old, stale text), and a retried job doesn't re-request languages it already replaced. `translagenius:backfill` only fills missing translations; it never overwrites.
-2. **Translation Job**: The `TranslateFields` job asks `Translator` to translate each missing field/locale pair and hands each result to `TranslationWriter` as soon as it arrives, which saves it under a row lock (only filling gaps, and without firing model events).
-3. **Translator**: `Translator` resolves whichever `TranslationProviderInterface` implementation is configured (`translagenius.default`) and delegates to it - the job never talks to a specific provider directly.
-4. **Provider**: The bound provider (`OpenAiCompatibleProvider` by default) communicates with the external API and returns a `TranslationResult`.
-
-## Custom Translation Providers
-
-For a translation API that doesn't speak the OpenAI chat-completions format, write a class implementing `TranslationProviderInterface` and register it as a provider entry. The `Translatable` trait, the job, fallback chains and usage tracking all work with it unchanged.
-
-A DeepL provider, as a worked example (endpoint and fields per DeepL's [Translate text](https://developers.deepl.com/api-reference/translate/request-translation) reference):
-
-```php
-namespace App\Translation;
-
-use CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface;
-use CodingPartners\TranslaGenius\DTOs\TranslationRequest;
-use CodingPartners\TranslaGenius\DTOs\TranslationResult;
-use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
-use Illuminate\Support\Facades\Http;
-
-class DeepLProvider implements TranslationProviderInterface
-{
-    // $config is this provider's entry from config/translagenius.php, plus
-    // `name` (the entry's key), which the package adds for you.
-    public function __construct(protected array $config)
-    {
-    }
-
-    public function translate(TranslationRequest $request): TranslationResult
-    {
-        $response = Http::withHeaders([
-            'Authorization' => 'DeepL-Auth-Key ' . $this->config['key'],
-        ])->timeout(10)->post($this->config['url'], [
-            'text' => [$request->text],
-            'source_lang' => strtoupper($request->sourceLocale),
-            'target_lang' => strtoupper($request->targetLocale),
-        ]);
-
-        if ($response->failed()) {
-            throw new TranslationFailedException(
-                "DeepL request failed with status {$response->status()}",
-                statusCode: $response->status(),
-                // Permanent failures (bad key) shouldn't be retried; rate
-                // limits and server errors should.
-                retryable: $response->status() === 429 || $response->serverError(),
-            );
-        }
-
-        $text = $response->json('translations.0.text');
-
-        if (empty($text)) {
-            throw new TranslationFailedException('DeepL returned no translation', retryable: true);
-        }
-
-        return new TranslationResult(text: $text, provider: $this->config['name'] ?? 'deepl');
-    }
-}
-```
-
-Register it next to the shipped presets in a published `config/translagenius.php`:
-
-```php
-'providers' => [
-    // ... shipped presets ...
-    'deepl' => [
-        'driver' => \App\Translation\DeepLProvider::class,
-        'key' => env('DEEPL_API_KEY'),
-        'url' => env('DEEPL_API_URL', 'https://api.deepl.com/v2/translate'), // api-free.deepl.com on the Free plan
-    ],
+'deepseek' => [
+    // ...
+    'body' => ['top_p' => 0.9, 'seed' => 42],
 ],
 ```
 
-From then on it's selectable like any preset: `TRANSLATION_PROVIDER=deepl`, or as a member of `TRANSLATION_FALLBACK_CHAIN`. If `driver` names a class that doesn't exist, or one that doesn't implement `TranslationProviderInterface`, resolution fails immediately with an error naming the provider key and the class. Locale codes are passed through as configured in `supported_languages`; map them if your API expects a different format (DeepL distinguishes `EN-GB`/`EN-US` targets, for example).
+`body` can't set `model`, `messages` or `stream`; those are dropped with a log warning. A configured temperature, token limit or `reasoning_effort` takes precedence over the same field in `body`. The API key travels in a header, out of `body`'s reach.
 
-## Provider Fallback / Chaining
+### Output limit and temperature
 
-`Providers\FallbackProvider` wraps an ordered list of other providers: it tries each in turn and returns the first success, so a primary outage doesn't take translation down with it. The shipped `fallback` entry is driven by `TRANSLATION_FALLBACK_CHAIN` (see [Fallback with `.env` Only](#fallback-with-env-only)); in a published config you can also define your own, with `chain` as an array:
+**Output limit.** `TRANSLATION_MAX_TOKENS` is unset by default, so no limit is sent and each provider's own default applies. A translation's length follows its input, so the cost stays bounded by what you send, while a fixed limit is easy to hit: reasoning tokens count toward it (OpenAI and Gemini both document this). If a reply stops at the limit (`finish_reason` `length`), the translation fails instead of saving half a sentence. It isn't retried, since the same limit gives the same result, and a fallback chain moves on to its next member. Set `TRANSLATION_MAX_TOKENS` to cap output.
 
-```php
-'resilient' => [
-    'driver' => \CodingPartners\TranslaGenius\Providers\FallbackProvider::class,
-    'chain' => ['openai', 'deepl'], // any provider names, tried in this order
-],
+**Temperature.** Only `openrouter` sends a temperature by default (0.3). The other presets' default models reason before answering, and their documentation either doesn't cover `temperature` for them or says it has no effect while thinking (DeepSeek), so the package leaves it to the model. Setting `TRANSLATION_TEMPERATURE` sends it on whichever preset is active.
+
+### Retries and rate limits
+
+Failed calls are retried at two levels:
+
+| Variable | Default | Effect |
+|---|---|---|
+| `TRANSLATION_HTTP_RETRIES` | `1` | Quick retries within the request (200 ms to 1 s apart) for connection errors, 429 and 5xx. |
+| `TRANSLATION_HTTP_RETRY_AFTER_MAX` | `10` | A 429 whose `Retry-After` is at most this many seconds is waited out. A longer one ends the attempt, and the job is released for exactly that delay. |
+| `TRANSLATION_FALLBACK_HTTP_RETRIES` | `0` | HTTP retries for members of a fallback chain. The next member is the retry, so failover is immediate. |
+| `TRANSLATION_JOB_TRIES` | `3` | Queue attempts for the job. |
+| `TRANSLATION_JOB_BACKOFF` | `10,30` | Seconds between queue attempts, comma-separated. |
+
+4xx responses other than 429 (a bad key, a bad request, an unknown model) are never retried: the job fails on the first response. So does a reply cut off at the output limit.
+
+**Worst case.** One field/language pair costs at most `(TRANSLATION_HTTP_RETRIES + 1) × TRANSLATION_JOB_TRIES` requests: 6 with the defaults, against a provider that keeps returning 5xx. In a fallback chain, each attempt sends one request per member, so a two-member chain also costs at most `2 × 3 = 6`. A retried job requests only the pairs that are still missing.
+
+When the job gives up, it fails to the queue's `failed_jobs` table and fires `Events\TranslationFailed`. A partly translated record shows up in `notFullyTranslated()`, so `translagenius:backfill` can pick it up later.
+
+## Features in depth
+
+### Batching
+
+By default each field and target language is one request: 2 fields and 5 target languages make 10 requests per save. With batching on, all missing languages of one field go in a single request that asks for a JSON object keyed by language code, so the same save makes 2 requests.
+
+```env
+TRANSLATION_BATCH=true
 ```
 
-Each name in `chain` is resolved the normal way (through its own `driver`/config entry), so a chain can mix any providers - built-in or your own - with no special-casing required from them. Falls through to the next provider on *any* translation failure from the current one, not only a retryable one - an unusable primary (bad key, exhausted quota) is exactly the case a fallback exists for, and that's typically a non-retryable failure. If every provider in the chain fails, `Exceptions\AllProvidersFailedException` (a `TranslationFailedException` subclass, so it's handled by `TranslateFields` exactly like any other translation failure) is thrown with each provider's individual failure attached via `getFailures()`, for diagnosing which one(s) actually broke.
+It is off by default. The tradeoff:
 
-## Review Workflow
+- **For:** far fewer requests, and the prompt and source text are sent once per field instead of once per language.
+- **Against:** each reply is longer, which makes hitting an output limit more likely, and you depend on the model returning well-formed JSON.
 
-AI translations can wait for a human before they go live. With review on, a produced translation is stored as a **pending review** instead of being written to the model's translatable column, and it's published only when someone approves it. The package provides the storage, the rules and an API; the review screen and who may approve are your app's.
+Replies are checked strictly. Only the requested language codes are taken, each must be a non-empty string, and anything else is ignored. A missing or invalid language is requested again on its own. A reply that isn't a JSON object, or one cut off at the output limit, sends the field one language at a time. Each language is saved as soon as it is valid. A field missing only one language is sent as a normal single request, and fields are never combined into one request.
 
-### Turning it on
+Turn batching on or off for one preset with `OPENAI_BATCH`, `GEMINI_BATCH` and so on (`TRANSLATION_CUSTOM_BATCH` for `custom`). The batch prompt is configurable through `TRANSLATION_BATCH_PROMPT` or `batch_prompt` on an entry, with `{target_locales}` (for example `ar, es, fr`) in place of `{target_locale}`.
+
+<details>
+<summary>JSON response modes used for batch requests</summary>
+
+| Preset | `response_format` | Source |
+|---|---|---|
+| `openai` | `json_schema`, strict, requiring exactly the requested languages | [Chat Completions reference](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create); the [`gpt-6-luna` page](https://developers.openai.com/api/docs/models/gpt-6-luna) lists Structured Outputs |
+| `deepseek` | `json_object` | [Chat completion reference](https://api-docs.deepseek.com/api/create-chat-completion) and [JSON Output guide](https://api-docs.deepseek.com/guides/json_mode), which requires the word "json" in the prompt (the batch prompt includes it) |
+| `gemini`, `mistral`, `openrouter` | none, the prompt alone | Their docs describe JSON output generally or per model, but not for these default models |
+| `custom` | `TRANSLATION_BATCH_RESPONSE_FORMAT`: `json_schema`, `json_object`, or unset | Your endpoint |
+
+</details>
+
+A custom provider that only implements `TranslationProviderInterface` keeps working, one request per language. To batch, implement `Contracts\BatchTranslationProviderInterface` too. In a fallback chain, the members that can batch are tried in order for the batch; members that can't are skipped for it but still serve single-language requests.
+
+### Translation cache
+
+```env
+TRANSLATION_CACHE=true
+TRANSLATION_CACHE_STORE=redis
+TRANSLATION_CACHE_TTL=2592000
+```
+
+With the cache on, the same source text translated with the same setup is requested once and then served from Laravel's cache, across every record and model. It helps wherever text repeats: shared boilerplate such as shipping or warranty notes, product variants with the same name, imported catalogues with duplicate rows, and repeated backfill runs. It wraps whichever provider is configured, a fallback chain included, and needs no other setup.
+
+| Variable | Default | Effect |
+|---|---|---|
+| `TRANSLATION_CACHE` | `false` | Turns the cache on. |
+| `TRANSLATION_CACHE_STORE` | the app's default store | A store from `config/cache.php`, such as `redis` or `database`. |
+| `TRANSLATION_CACHE_TTL` | `2592000` (30 days) | Seconds to keep an entry. `0` keeps entries forever. |
+
+- **The key** covers the source text, both languages, the provider, and every setting that can change the output: model, URL, prompt templates, temperature, `reasoning_effort`, `body` and response format. API keys, timeouts, retries, token limits and cost rates are not part of it. The field and model names are part of it only when a prompt uses `{field}` or `{model}`, or for a custom driver.
+- **What is stored.** Only successful translations. Failures, cut-off replies and invalid batch values are never stored. In a fallback chain, only results from the first member are stored, so the next identical text after an outage gets the primary provider's output.
+- **Events and usage.** A hit still fires `TranslationStarted` and `TranslationCompleted`. Its `TranslationResult` has `cached === true` and no token counts, and its usage-log row has `cached = true` with null tokens and cost.
+- **Clearing.** Entries live under the `translagenius:v1:` prefix. Changing a setting that is part of the key makes old entries miss. There is no dedicated clear command, because Laravel's cache can't delete by prefix on every driver. To clear only translations, give them their own store and clear that.
+- **Privacy.** Cached values are your translated field content, readable by anything with access to the cache store. If your fields can hold personal or confidential text, use a store with the same access controls as your database, or leave the cache off.
+
+### Usage and cost tracking
+
+Off by default. When on, every billed request gets a row in `translation_usage_logs`, with tokens and an estimated cost. When off, no listener is registered and the table is not needed.
 
 ```bash
-php artisan vendor:publish --tag=translagenius-migrations   # adds translation_reviews
+php artisan vendor:publish --tag=translagenius-migrations
+php artisan migrate
+```
+
+This publishes both optional migrations, the usage log and the review table. Delete the one you don't need before migrating.
+
+```env
+TRANSLATION_USAGE_TRACKING_ENABLED=true
+OPENAI_COST_PER_1K_PROMPT_TOKENS=0.0001
+OPENAI_COST_PER_1K_COMPLETION_TOKENS=0.0005
+```
+
+Rates are set per preset (`OPENROUTER_`, `OPENAI_`, `GEMINI_`, `DEEPSEEK_`, `MISTRAL_`, and `TRANSLATION_` for `custom`). A row's `provider` is the entry that served the request; in a fallback chain, that is the member that answered, costed with its own rates. A provider with no rate, or a response without token counts, gets a null `estimated_cost`, never `0`.
+
+Query `Models\TranslationUsageLog` like any Eloquent model:
+
+```php
+use CodingPartners\TranslaGenius\Models\TranslationUsageLog;
+
+// Total estimated spend.
+TranslationUsageLog::whereNotNull('estimated_cost')->sum('estimated_cost');
+
+// Usage for one record.
+TranslationUsageLog::where('model_class', Product::class)->where('model_id', $product->id)->get();
+
+// Tokens per provider this month.
+TranslationUsageLog::selectRaw('provider, SUM(prompt_tokens) as prompt, SUM(completion_tokens) as completion')
+    ->whereMonth('created_at', now()->month)
+    ->groupBy('provider')
+    ->get();
+```
+
+`SUM()` over the table equals what your providers billed. A batch request yields one row per language; they share a `request_id`, and the request's tokens and cost are on exactly one of them. Cache hits have null tokens, so the share of `cached` rows is your hit rate.
+
+A request that was billed but produced no saved translation still gets a row, marked by `outcome`:
+
+<details>
+<summary><code>outcome</code> values</summary>
+
+| `outcome` | Meaning |
+|---|---|
+| `translated` | A saved translation, one row per field and language, cache hits included. |
+| `truncated` | The reply stopped at the output limit. A cut-off batch is then retried one language at a time, and those requests get their own rows. |
+| `unusable` | Nothing could be taken from the reply: a batch that wasn't valid JSON or had no valid language, or an empty single reply. |
+| `failed` | An error response that still reported usage. |
+| `discarded` | A valid translation that wasn't saved, because the source changed again meanwhile, or, on a re-translation, that language was edited by hand. |
+| `unsaved` | A valid translation whose save failed, for example a database error. The error still fails the job. |
+
+</details>
+
+```php
+// Spend that produced nothing usable, per provider.
+TranslationUsageLog::where('outcome', '!=', 'translated')
+    ->selectRaw('provider, outcome, SUM(estimated_cost) as cost')
+    ->groupBy('provider', 'outcome')
+    ->get();
+```
+
+Failures that weren't billed, such as connection errors, have no row. Listen to `TranslationFailed` for failure rates. Billed-but-unused requests are also dispatched as `Events\TranslationRequestBilled`.
+
+### Review workflow
+
+AI translations can wait for a person before they are published. With review on, a translation is stored as a pending review instead of being written to the model, and published only when someone approves it. The package provides the storage, the rules and an API. The review screen, and who may approve, are up to your app.
+
+```bash
+php artisan vendor:publish --tag=translagenius-migrations
 php artisan migrate
 ```
 
@@ -511,13 +554,13 @@ TRANSLATION_REVIEW=true
 TRANSLATION_REVIEW_LOCALES=ar,fr
 ```
 
-That reviews every translatable field of every model. To narrow it, use a published `config/translagenius.php`:
+That reviews every translatable field of every model. To narrow it, use a published config:
 
 ```php
 'review' => [
     'enabled' => env('TRANSLATION_REVIEW', false),
     'models' => [
-        \App\Models\Product::class => ['description'],   // or ['*'] for all its fields
+        \App\Models\Product::class => ['description'],   // or ['*'] for every field
     ],
     'fields' => ['legal_notice'],                        // reviewed on every model
     'locales' => env('TRANSLATION_REVIEW_LOCALES', ''),
@@ -525,18 +568,12 @@ That reviews every translatable field of every model. To narrow it, use a publis
 ],
 ```
 
-With `models` and `fields` both empty, everything is reviewed. A listed class also covers its subclasses. Language codes the same save provided by hand are never reviewed: they're human input.
+With `models` and `fields` both empty, everything is reviewed. A listed class covers its subclasses too. Languages that a save set by hand are never reviewed; they are human input.
 
-### What's visible while a translation is pending
+**While a translation is pending.** A new record has nothing published yet, so its other languages fall back until approval. After a source edit on a record with published translations, `TRANSLATION_REVIEW_WHILE_PENDING` decides what readers see:
 
-A new record has nothing published yet, so its other languages fall back until approval. The interesting case is a **source edit** on a record whose translations are already published:
-
-- **`keep`** (default): the old, now stale, translation stays visible until the new one is approved.
-- **`clear`**: the stale translation is removed when the new one is produced, so the fallback language shows until approval.
-
-```env
-TRANSLATION_REVIEW_WHILE_PENDING=keep
-```
+- `keep` (default): the old, now stale, translation stays visible until the new one is approved.
+- `clear`: the stale translation is removed when the new one is produced, so the fallback language shows.
 
 ```php
 'while_pending_overrides' => [
@@ -545,7 +582,7 @@ TRANSLATION_REVIEW_WHILE_PENDING=keep
 ],
 ```
 
-### Reviewing
+**Reviewing:**
 
 ```php
 use CodingPartners\TranslaGenius\Facades\TranslaGenius;
@@ -565,43 +602,32 @@ $review->text;                      // the AI translation
 $review->source_text;               // what it was translated from
 $review->translatable;              // the record
 
-$reviews->approve($review, reviewer: $user);                              // publish as produced
+$reviews->approve($review, reviewer: $user);                               // publish as produced
 $reviews->approve($review, editedText: 'Better wording', reviewer: $user); // publish an edit
 $reviews->reject($review, reviewer: $user, note: 'Wrong tone');
-$reviews->retranslate($review);                                           // request a fresh one
+$reviews->retranslate($review);                                            // request a new one
 
-$reviews->approveAll($product, field: 'name', reviewer: $user);           // or approveAll(Product::class)
+$reviews->approveAll($product, field: 'name', reviewer: $user);            // or approveAll(Product::class)
 ```
 
 Approval locks the record and checks two things first:
 
-- **The source text changed since the translation was made:** publishing it would publish stale text. Nothing is written, the review becomes `superseded`, and a `StaleReviewException` is thrown. A newer pending review for the current text replaces it.
-- **The published text was edited by hand since:** nothing is overwritten silently. A `ReviewConflictException` is thrown and the review stays pending; approve with `force: true` to overwrite anyway, or reject it.
+- **The source changed since the translation was made.** Nothing is written, the review becomes `superseded`, and `StaleReviewException` is thrown.
+- **The published text was edited by hand since.** Nothing is overwritten. `ReviewConflictException` is thrown and the review stays pending. Pass `force: true` to overwrite anyway.
 
-`approveAll()` skips stale and conflicting reviews and returns a summary (`approved`, `skipped_stale`, `skipped_conflict`).
+`approveAll()` skips stale and conflicting reviews and returns the counts (`approved`, `skipped_stale`, `skipped_conflict`).
 
-**Rejection** publishes nothing. By default (`TRANSLATION_REVIEW_ON_REJECT=leave`) the language stays missing until you call `retranslate()`; model saves don't re-request it. Set it to `retranslate` to request a fresh translation automatically.
+**Rejection** publishes nothing. By default (`TRANSLATION_REVIEW_ON_REJECT=leave`) the language stays missing until you call `retranslate()`, and model saves don't request it again. Set it to `retranslate` to request a new translation automatically. A source edit while a review is pending supersedes it, and the re-translation creates a new one.
 
-**Source edits while pending:** the pending review becomes `superseded` and the re-translation produces a new pending review.
+Decided reviews are kept as an audit trail, with the reviewer, time, note, and the produced and published text. `translagenius:review:prune` deletes old ones.
 
-Reviews are kept after a decision, as an audit trail (`approved`, `rejected`, `superseded`, with the reviewer, time, note, and the produced versus the published text). Nothing deletes them automatically.
-
-### Commands
-
-```bash
-php artisan translagenius:review:list                          # pending counts per model / field / locale
-php artisan translagenius:review:list "App\Models\Product" --locale=ar
-php artisan translagenius:review:approve-all "App\Models\Product" --field=name --force
-php artisan translagenius:review:prune --days=90               # delete decided reviews older than 90 days
-```
-
-### Authorization
-
-The package never checks who may approve. Every decision takes an optional `reviewer` (any model, stored as a polymorphic relation), and `TranslationReview` is an ordinary Eloquent model, so guard it the usual way:
+**Authorization.** The package never checks who may approve. Every decision takes an optional `reviewer` (any model, stored as a polymorphic relation), and `TranslationReview` is an ordinary Eloquent model, so use a policy:
 
 ```php
-// AuthServiceProvider / AppServiceProvider::boot()
-Gate::policy(\CodingPartners\TranslaGenius\Models\TranslationReview::class, TranslationReviewPolicy::class);
+namespace App\Policies;
+
+use App\Models\User;
+use CodingPartners\TranslaGenius\Models\TranslationReview;
 
 class TranslationReviewPolicy
 {
@@ -611,327 +637,492 @@ class TranslationReviewPolicy
             && in_array($review->locale, $user->reviewer_locales, true);
     }
 }
+```
 
-// In your controller
-public function approve(Request $request, TranslationReview $review)
+Register it in `AppServiceProvider::boot()` with `Gate::policy(TranslationReview::class, TranslationReviewPolicy::class);`, and check it before deciding:
+
+```php
+namespace App\Http\Controllers;
+
+use CodingPartners\TranslaGenius\Facades\TranslaGenius;
+use CodingPartners\TranslaGenius\Models\TranslationReview;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
+
+class TranslationReviewController extends Controller
 {
-    $this->authorize('approve', $review);
+    public function approve(Request $request, TranslationReview $review)
+    {
+        Gate::authorize('approve', $review);
 
-    TranslaGenius::reviews()->approve($review, editedText: $request->input('text'), reviewer: $request->user());
+        TranslaGenius::reviews()->approve($review, editedText: $request->input('text'), reviewer: $request->user());
+
+        return back();
+    }
 }
 ```
 
-### With other features
+**With the other features:**
 
-- **Scopes.** `fullyTranslated()` / `notFullyTranslated()` look at published translations only. `Post::pendingReview()` (optionally `pendingReview('title', 'ar')`) finds records with translations awaiting review.
-- **Backfill.** `translagenius:backfill` doesn't request languages that are already pending (they'd be paid for twice), and does request ones that were rejected: backfilling is an explicit "try again".
-- **Cache.** The cache stores what the provider produced, as before. Approving with an edit replaces that entry with the edited text, so the next identical source text gets the corrected version (pass `cacheEdit: false` for an edit that only fits that one record). Rejecting removes the entry, so the rejected text isn't served again.
-- **Batching and fallback chains.** Unchanged: the same requests are sent; each resulting language becomes its own pending review.
-- **Usage tracking.** Cost is logged when a translation is produced (`TranslationCompleted`), whatever happens to it later. To report spend on rejected translations, join `translation_usage_logs.request_id` to `translation_reviews.request_id`.
+- `fullyTranslated()` and `notFullyTranslated()` look at published translations only. `pendingReview()` finds records with translations awaiting review.
+- `translagenius:backfill` skips languages that are already pending, and requests rejected ones again.
+- The cache stores what the provider produced. Approving an edit replaces that entry with the edited text (pass `cacheEdit: false` to keep the edit to one record); rejecting removes it.
+- Usage is logged when a translation is produced, whatever happens to it later. Join `translation_usage_logs.request_id` to `translation_reviews.request_id` to report spend on rejected translations.
+
+With review off, none of this runs and the `translation_reviews` table is not needed.
 
 ### Events
 
-| Event | When |
-|---|---|
-| `TranslationCompleted` | A translation was produced, as before. `$event->pendingReview` is `true` when it went to review instead of being published. |
-| `TranslationPendingReview` | A pending review was created (`$event->review`). |
-| `TranslationApproved` | Published; carries the review, the reviewer, and `edited`. |
-| `TranslationRejected` | Rejected; carries the review, the reviewer, and the note. |
-| `TranslationSuperseded` | A pending review became obsolete: `reason` is `source_changed` or `replaced`. |
+All events are in `CodingPartners\TranslaGenius\Events`.
 
-With review off (the default), none of this runs: no review queries, and the `translation_reviews` table isn't needed.
-
-## Lifecycle Events
-
-`TranslateFields` dispatches three events a consuming app can listen for without touching the package: `Events\TranslationStarted` and `Events\TranslationCompleted` fire around each individual field/locale translation (so `TranslationCompleted` is the hook for usage/cost tracking - it carries the full `TranslationResult`, including its token-count fields), and `Events\TranslationFailed` fires once, from the job's `failed()` method, only when the job gives up permanently on a real `TranslationFailedException` (not on a transient, retried failure, and not on an unrelated job error).
+| Event | Fired when | Main properties |
+|---|---|---|
+| `TranslationStarted` | Before each field/language is translated | `modelClass`, `modelId`, `field`, `sourceLocale`, `targetLocale`, `text` |
+| `TranslationCompleted` | A field/language was translated (cache hits included) | the above, plus `result` (a `TranslationResult`) and `pendingReview` |
+| `TranslationFailed` | Once, when the job gives up on a `TranslationFailedException` | `modelClass`, `modelId`, `exception` |
+| `TranslationRequestBilled` | A billed request produced no saved translation | `outcome`, `provider`, `requestId`, tokens, `sourceLocale`, `targetLocales` |
+| `TranslationPendingReview` | A pending review was created | `review` |
+| `TranslationApproved` | A review was published | `review`, `reviewer`, `edited` |
+| `TranslationRejected` | A review was rejected | `review`, `reviewer`, `note` |
+| `TranslationSuperseded` | A pending review became obsolete | `review`, `reason` (`source_changed` or `replaced`) |
 
 ```php
-use CodingPartners\TranslaGenius\Events\TranslationCompleted;
 use CodingPartners\TranslaGenius\Events\TranslationFailed;
-
-// e.g. in your EventServiceProvider, or Event::listen() anywhere in boot():
-
-Event::listen(function (TranslationCompleted $event) {
-    UsageLog::create([
-        'model_type' => $event->modelClass,
-        'model_id' => $event->modelId,
-        'field' => $event->field,
-        'target_locale' => $event->targetLocale,
-        'prompt_tokens' => $event->result->promptTokens,
-        'completion_tokens' => $event->result->completionTokens,
-    ]);
-});
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Log;
 
 Event::listen(function (TranslationFailed $event) {
-    Notification::route('slack', config('services.slack.alerts'))
-        ->notify(new TranslationFailedNotification($event->modelClass, $event->modelId, $event->exception));
+    Log::warning('Translation failed', [
+        'model' => $event->modelClass,
+        'id' => $event->modelId,
+        'error' => $event->exception->getMessage(),
+    ]);
 });
 ```
 
-Both events fire exactly once per field/language pair, batching or not, and also when the translation came from the cache (`$event->result->cached === true`, with no token counts). With batching, `TranslationStarted` fires for every language of the batch just before the batch request, and isn't repeated if a language then needs a request of its own. Each `TranslationCompleted` carries a `TranslationResult` with that language's text and the `requestId` of the request that produced it. When one request produced several pairs, only the first of those results carries the request's `promptTokens`/`completionTokens`; the rest have null.
+`TranslationStarted` and `TranslationCompleted` fire once per field/language pair, with or without batching. When one batch request produced several pairs, only the first result carries the request's token counts. The lifecycle events are dispatched only from the model-save flow, not from direct use of the facade or `TranslatorInterface`, which have no model to report.
 
-The `TranslationCompleted` example above is what "Usage & Cost Tracking" below does out of the box (with cost estimation and a queryable model) - write your own listener like this only if you need something it doesn't cover, e.g. your own table shape or per-tenant billing logic.
+### Query scopes
 
-These are only dispatched from the automatic model-save lifecycle (the `Translatable` trait's job), not from direct `TranslatorInterface`/facade use - that context has no model or field to report.
+The `Translatable` trait adds three scopes:
 
-## Usage & Cost Tracking
+```php
+Product::fullyTranslated()->get();             // every field has every target language
+Product::notFullyTranslated()->get();          // at least one field is missing a language
+Product::pendingReview('name', 'ar')->get();   // translations awaiting review; both arguments optional
+```
 
-Opt-in, off by default - enabling it adds a `Listeners\LogTranslationUsage` listener on `Events\TranslationCompleted` that writes one row per completed translation to `translation_usage_logs`, and does nothing at all (no listener registered, no table required) when left disabled.
+`fullyTranslated()` and `notFullyTranslated()` take an optional source locale; the targets are every other supported language. They use the query builder's JSON path syntax, which Laravel compiles for each database.
 
-**1. Publish and run the migration:**
+### Translating arbitrary text
+
+To translate text outside the model-save flow, use the `TranslaGenius` facade:
+
+```php
+use CodingPartners\TranslaGenius\Facades\TranslaGenius;
+
+$result = TranslaGenius::translate('Hello', 'en', 'ar');
+$result->text;   // the translation
+```
+
+The facade resolves `Contracts\TranslatorInterface`, so it uses the configured provider, cache and fallback chain. It throws `Exceptions\TranslationFailedException` on failure.
+
+## Artisan commands
+
+| Command | Purpose |
+|---|---|
+| `translagenius:check {--connection=}` | Checks for a config file published under the old 3.x name, and that the database connection supports the JSON queries the package needs. |
+| `translagenius:backfill {model} {--source=} {--chunk=100} {--dry-run} {--force}` | Dispatches the model's translation job for existing records that are missing translations. |
+| `translagenius:review:list {model?} {--field=} {--locale=}` | Counts pending reviews per model, field and language. |
+| `translagenius:review:approve-all {model} {--field=} {--locale=} {--force}` | Approves every pending review of a model, as produced. |
+| `translagenius:review:prune {--days=90}` | Deletes decided reviews last updated more than `--days` days ago. |
+
+**Backfill** is for records saved before you added a field or a language, or while no worker was running:
 
 ```bash
-php artisan vendor:publish --tag=translagenius-migrations
-php artisan migrate
+php artisan translagenius:backfill "App\Models\Product" --dry-run   # report only
+php artisan translagenius:backfill "App\Models\Product"             # report, then ask
+php artisan translagenius:backfill "App\Models\Product" --force --source=en --chunk=500
 ```
 
-**2. Enable it and (optionally) set cost rates.** With the shipped presets this is `.env` only:
+It reports the matching records and the maximum number of API calls, and dispatches nothing without `--force` or an interactive yes. The model must use the `Translatable` trait. It dispatches the model's own job class, iterates with `chunkById()`, and only fills missing languages. There is no `--locales=` filter, because the job always targets every supported language; pairs that already exist cost nothing.
 
-```env
-TRANSLATION_USAGE_TRACKING_ENABLED=true
-OPENAI_COST_PER_1K_PROMPT_TOKENS=0.0001
-OPENAI_COST_PER_1K_COMPLETION_TOKENS=0.0005
+## Extending
+
+### A custom provider (DeepL)
+
+For an API that doesn't speak the OpenAI format, implement `Contracts\TranslationProviderInterface` and register it as a provider entry. The trait, the job, fallback chains, the cache and usage tracking work with it unchanged. A DeepL provider, following DeepL's [Translate text](https://developers.deepl.com/api-reference/translate/request-translation) reference:
+
+```php
+namespace App\Translation;
+
+use CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface;
+use CodingPartners\TranslaGenius\DTOs\TranslationRequest;
+use CodingPartners\TranslaGenius\DTOs\TranslationResult;
+use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
+use Illuminate\Support\Facades\Http;
+
+class DeepLProvider implements TranslationProviderInterface
+{
+    /**
+     * @param  array<string, mixed>  $config  This provider's entry from config/translagenius.php,
+     *                                        plus `name` (the entry's key), added by the package.
+     */
+    public function __construct(protected array $config) {}
+
+    public function translate(TranslationRequest $request): TranslationResult
+    {
+        $response = Http::withHeaders([
+            'Authorization' => 'DeepL-Auth-Key '.$this->config['key'],
+        ])->timeout(10)->post($this->config['url'], [
+            'text' => [$request->text],
+            'source_lang' => strtoupper($request->sourceLocale),
+            'target_lang' => strtoupper($request->targetLocale),
+        ]);
+
+        if ($response->failed()) {
+            throw new TranslationFailedException(
+                "DeepL request failed with status {$response->status()}",
+                statusCode: $response->status(),
+                // A bad key won't fix itself; rate limits and server errors might.
+                retryable: $response->status() === 429 || $response->serverError(),
+            );
+        }
+
+        $text = $response->json('translations.0.text');
+
+        if (! is_string($text) || trim($text) === '') {
+            throw new TranslationFailedException('DeepL returned no translation');
+        }
+
+        return new TranslationResult(text: $text, provider: $this->config['name'] ?? 'deepl');
+    }
+}
 ```
 
-Rates belong to each provider's own entry under `providers`, so in a published config they sit with the rest of that provider's settings:
+Register it in a published `config/translagenius.php`:
 
 ```php
 'providers' => [
-    'openrouter' => [
-        // ... driver, key, url, model ...
-        'cost_per_1k_prompt_tokens' => 0.0025,
-        'cost_per_1k_completion_tokens' => 0.01,
+    // ... the shipped presets ...
+    'deepl' => [
+        'driver' => \App\Translation\DeepLProvider::class,
+        'key' => env('DEEPL_API_KEY'),
+        'url' => env('DEEPL_API_URL', 'https://api.deepl.com/v2/translate'), // api-free.deepl.com on the Free plan
     ],
 ],
-
-'usage_tracking' => [
-    'enabled' => env('TRANSLATION_USAGE_TRACKING_ENABLED', false),
-],
 ```
 
-Each log row's `provider` is the config key that served the translation (with a fallback chain, the member that succeeded), and its cost uses that entry's rates.
+It is then selectable like a preset (`TRANSLATION_PROVIDER=deepl`) or usable in a chain. A `driver` that doesn't exist, or doesn't implement the interface, fails at resolution with an error naming the entry and the class. Locale codes are passed through as written in `supported_languages`; map them if your API expects another format (DeepL distinguishes `EN-GB` and `EN-US` targets, for example). `TranslationResult` rejects empty text, so throw `TranslationFailedException` instead of returning an empty result.
 
-A provider with no rate configured (or one whose result doesn't report token counts) gets a `null` `estimated_cost` on its rows - never a `0`, which would falsely claim the translation was free.
+### Custom jobs
 
-**3. Query `Models\TranslationUsageLog`** like any other Eloquent model - it's public API surface meant for exactly this:
-
-```php
-use CodingPartners\TranslaGenius\Models\TranslationUsageLog;
-
-// Total estimated spend so far (rows with no known rate are correctly excluded).
-TranslationUsageLog::whereNotNull('estimated_cost')->sum('estimated_cost');
-
-// Usage for one model.
-TranslationUsageLog::where('model_class', Post::class)
-    ->where('model_id', $post->id)
-    ->get();
-
-// Per-provider token usage this month.
-TranslationUsageLog::selectRaw('provider, sum(prompt_tokens) as prompt, sum(completion_tokens) as completion')
-    ->whereMonth('created_at', now()->month)
-    ->groupBy('provider')
-    ->get();
-```
-
-With batching, one request translates several languages and yields several rows. They share a `request_id`, and the request's tokens and cost are stored on exactly one of them (the first pair it completed); the others have null tokens and cost, so a plain `SUM()` equals what the provider billed. Every row has a `request_id`, so `groupBy('request_id')` gives per-request totals.
-
-Translation-cache hits are logged too, as rows with `cached = true` and null tokens and cost: nothing was billed for them. Sums still equal what the provider billed, and the share of cached rows is your hit rate.
-
-**Every billed request is logged, including ones that didn't produce a translation.** A provider response that reports token usage is billed whether or not its output could be used, so those requests get a row too, marked by `outcome`:
-
-| `outcome` | Meaning |
-|---|---|
-| `translated` | A saved translation (one row per field/language; cache hits included, with `cached = true`). |
-| `truncated` | The reply stopped at the output token limit, single or batch. A truncated batch is then retried one language at a time; those requests get their own `translated` rows. |
-| `unusable` | A reply nothing could be taken from: a batch that wasn't valid JSON (or had no valid language), or an empty single reply. |
-| `failed` | An error response that still reported usage. |
-| `discarded` | A valid translation that wasn't saved, because the source text changed again while it was being made (or, on a re-translation, that language was edited by hand meanwhile). |
-| `unsaved` | A valid translation whose save failed (a database error, say). The error still fails the job as usual. |
-
-These rows carry the request's tokens and cost (costed with the rates of the provider that served it, which matters in a fallback chain) and its `request_id`. A batch request lists its languages comma-separated in `target_locale`. Each billed request is counted exactly once, so `SUM()` over the table equals what your providers billed, and `->where('outcome', 'translated')` isolates the spend that produced translations:
+Override `translationJobClass()` on a model to dispatch your own job:
 
 ```php
-// Spend that produced nothing usable, per provider.
-TranslationUsageLog::where('outcome', '!=', 'translated')
-    ->selectRaw('provider, outcome, SUM(estimated_cost) as cost')
-    ->groupBy('provider', 'outcome')
-    ->get();
-```
-
-Failures that weren't billed (connection errors, a 5xx without usage) have no row; for failure-rate visibility, listen to `TranslationFailed` (see "Lifecycle Events" above). Billed-but-unused requests are also dispatched as `Events\TranslationRequestBilled`, if you want to react to wasted spend yourself.
-
-## Other Extension Points
-
-Beyond the provider, two more seams are swappable without forking anything:
-
-- **The dispatched job** - override `translationJobClass()` on your model to dispatch a custom job instead of the default `TranslateFields`:
-  ```php
-  class Post extends Model
-  {
-      use Translatable;
-
-      protected static function translationJobClass(): string
-      {
-          return \App\Jobs\CustomTranslateFields::class;
-      }
-  }
-  ```
-  The class must implement `Contracts\TranslationJob`: a constructor that takes one `DTOs\TranslationJobPayload`. Every dispatch point (create, update, `translagenius:backfill`, the review workflow) builds the payload once and passes it. It carries the model, the fields, the source locale captured at dispatch, the re-translation plan for edited fields, and options such as backfill's `include_rejected`. A class that doesn't implement the contract is rejected when it would be dispatched, with an `InvalidTranslationJobException` naming it, rather than silently getting less information.
-
-  The simplest custom job extends `TranslateFields` (which implements the contract) and adds behavior:
-  ```php
-  use CodingPartners\TranslaGenius\Jobs\TranslateFields;
-
-  class CustomTranslateFields extends TranslateFields
-  {
-      public function handle(TranslatorInterface $translator, TranslationWriter $writer)
-      {
-          parent::handle($translator, $writer);
-          // ... your side effects
-      }
-  }
-  ```
-  A job that does something else entirely implements the interface directly:
-  ```php
-  use CodingPartners\TranslaGenius\Contracts\TranslationJob;
-  use CodingPartners\TranslaGenius\DTOs\TranslationJobPayload;
-
-  class SendToTranslationAgency implements ShouldQueue, TranslationJob
-  {
-      use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
-
-      public function __construct(public TranslationJobPayload $payload) {}
-
-      public function handle(): void
-      {
-          Agency::submit($this->payload->model, $this->payload->fields, from: $this->payload->sourceLocale);
-      }
-  }
-  ```
-  The payload serializes its model as a model identifier (like `SerializesModels`), so a queued job re-reads the record when it runs. Use `Queueable` so `TRANSLATION_QUEUE_CONNECTION` / `TRANSLATION_QUEUE` / after-commit dispatch apply to your job.
-- **Locale resolution** - `SetLocale`, the `Translatable` trait, and the `get_current_locale()`/`get_supported_languages()` helpers all resolve locale through the bound `Contracts\LocaleResolverInterface` (default: `LocaleResolvers\DefaultLocaleResolver`, which reads the request's `Accept-Language` header via `SetLocale` and `translagenius.supported_languages`). Rebind it in your own service provider for a different strategy (subdomain-based, per-user preference, ...):
-  ```php
-  $this->app->singleton(
-      \CodingPartners\TranslaGenius\Contracts\LocaleResolverInterface::class,
-      \App\Support\SubdomainLocaleResolver::class
-  );
-  ```
-
-## Example Workflow
-
-Here’s a complete example of how to use the package:
-
-### Model
-
-```php
+use App\Jobs\CustomTranslateFields;
 use CodingPartners\TranslaGenius\Traits\Translatable;
+use Illuminate\Database\Eloquent\Model;
 
 class Product extends Model
 {
     use Translatable;
 
-    protected $fillable = [
-        'price',
-        'name',
-        'description'
-    ];
-
-    public $translatable = [
-        'name',
-        'description'
-    ];
+    protected static function translationJobClass(): string
+    {
+        return CustomTranslateFields::class;
+    }
 }
 ```
 
-### Migration
+The class must implement `Contracts\TranslationJob`, whose constructor takes one `DTOs\TranslationJobPayload`. Every dispatch point (create, update, backfill, the review workflow) passes it. The payload carries `model`, `fields`, `sourceLocale`, the re-translation plan for edited fields (`retranslate`), and `options` such as backfill's `include_rejected`. A class that doesn't implement the contract is rejected at dispatch with `Exceptions\InvalidTranslationJobException`.
+
+The simplest custom job extends `TranslateFields`, which implements the contract:
 
 ```php
-Schema::create('products', function (Blueprint $table) {
-    $table->id();
-    $table->decimal('price');
-    $table->json('name');
-    $table->json('description');
-    $table->timestamps();
-});
-```
+namespace App\Jobs;
 
-### Controller
+use CodingPartners\TranslaGenius\Contracts\TranslatorInterface;
+use CodingPartners\TranslaGenius\Jobs\TranslateFields;
+use CodingPartners\TranslaGenius\Services\TranslationWriter;
 
-```php
-public function store(Request $request)
+class CustomTranslateFields extends TranslateFields
 {
-    $product = Product::create([
-        'price' => $request->price,
-        'name' => $request->name,
-        'description' => $request->description
-    ]);
+    public function handle(TranslatorInterface $translator, TranslationWriter $writer): void
+    {
+        parent::handle($translator, $writer);
 
-    return response()->json([
-        "data" => $product,
-        "message" => "Done!!"
-    ], 201);
+        // Your own side effects.
+    }
 }
 ```
 
-### Request
-
-```bash
-curl -X POST http://yourapp.com/api/posts -H "Accept-Language: en" -d '{"name": "name in English", "description": "description in English", "price": 100}'
-```
-
-After the request, the `name` and `description` fields will be automatically translated into Supported Languages.
-
-
-## Troubleshooting
-
-### Common Issues
-
-#### Missing translations:
-
-- Verify queue worker is running
-- Check API credentials
-- Confirm language codes match config
-
-#### Translations disappear after saving a model you loaded earlier:
-
-This is standard Eloquent behavior, not something the package does. A model instance holds its own copy of each translatable column. If you load it, the translation job then writes new translations to the database, and you change a translatable attribute on that **same old instance** and save it, Eloquent writes the instance's copy of the whole column and replaces the translations the job added. Call `$model->refresh()` (or load it fresh) before editing a record whose translations may have been written since you loaded it.
-
-It bites most often with the `sync` queue right after `create()`: the job runs and saves translations during `create()`, but the instance `create()` returned doesn't have them.
+A job that does something else entirely implements the interface directly:
 
 ```php
-$post = Post::create(['title' => ['en' => 'Hello']]); // sync queue: translations saved here
-$post->refresh();                                      // pick them up before editing
-$post->setTranslation('title', 'en', 'Hello again')->save();
+namespace App\Jobs;
+
+use App\Services\TranslationAgency;
+use CodingPartners\TranslaGenius\Contracts\TranslationJob;
+use CodingPartners\TranslaGenius\DTOs\TranslationJobPayload;
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+
+class SendToTranslationAgency implements ShouldQueue, TranslationJob
+{
+    use Dispatchable, InteractsWithQueue, Queueable;
+
+    public function __construct(public TranslationJobPayload $payload) {}
+
+    public function handle(TranslationAgency $agency): void
+    {
+        $agency->submit($this->payload->model, $this->payload->fields, $this->payload->sourceLocale);
+    }
+}
 ```
 
-#### Performance:
+The payload serializes its model as a model identifier, so the job reads the current record from the database when it runs. Use `Queueable` so the [queue settings](#queue) apply.
 
-- Add indexes to JSON columns
-- Consider caching frequent translations
+### Locale resolver
 
+The package reads the current locale and the supported languages through `Contracts\LocaleResolverInterface`. The default, `LocaleResolvers\DefaultLocaleResolver`, returns `app()->getLocale()` and `translagenius.supported_languages`. `SetLocale` matches `Accept-Language` against the resolver's supported languages, and the current locale becomes the source locale at dispatch (unless `TRANSLATION_SOURCE_LOCALE` is set).
 
+To use another strategy, such as a per-tenant language list, bind your own implementation:
 
-## Contributing & Testing
+```php
+namespace App\Support;
 
-The test suite needs no external services by default: it runs on SQLite in memory, and every provider call is faked.
+use CodingPartners\TranslaGenius\Contracts\LocaleResolverInterface;
+
+class TenantLocaleResolver implements LocaleResolverInterface
+{
+    public function currentLocale(): string
+    {
+        return app()->getLocale();
+    }
+
+    /** @return array<int, string> */
+    public function supportedLocales(): array
+    {
+        return tenant()?->languages ?? config('translagenius.supported_languages');
+    }
+}
+```
+
+```php
+// AppServiceProvider::register()
+$this->app->singleton(
+    \CodingPartners\TranslaGenius\Contracts\LocaleResolverInterface::class,
+    \App\Support\TenantLocaleResolver::class,
+);
+```
+
+`tenant()` stands for however your app finds the current tenant. The first supported language is the default `SetLocale` falls back to.
+
+The resolver is also called inside the queue worker, where the job works out its target languages, so `supportedLocales()` must return the right list without a request. If it depends on request state, make sure the worker sets up that context too.
+
+## Environment variable reference
+
+Every variable the shipped config reads. All are optional except the key of the provider you use.
+
+<details>
+<summary>All environment variables</summary>
+
+**Provider selection and shared settings**
+
+| Variable | Default | Config key |
+|---|---|---|
+| `TRANSLATION_PROVIDER` | `openrouter` | `default` |
+| `TRANSLATION_SOURCE_LOCALE` | none: the request locale | `source_locale` |
+| `TRANSLATION_API_TIMEOUT` | `10` | `providers.*.timeout` |
+| `TRANSLATION_TEMPERATURE` | `0.3` on `openrouter`, otherwise not sent | `providers.*.temperature` |
+| `TRANSLATION_MAX_TOKENS` | not sent | `providers.*.max_tokens` |
+| `TRANSLATION_SYSTEM_PROMPT` | built-in prompt | `prompt` |
+| `TRANSLATION_FALLBACK_CHAIN` | none | `providers.fallback.chain` |
+
+**OpenRouter (`openrouter`)**
+
+| Variable | Default | Config key |
+|---|---|---|
+| `OPENROUTER_API_KEY` | `TRANSLATION_API_KEY` | `providers.openrouter.key` |
+| `OPENROUTER_API_URL` | `TRANSLATION_API_URL`, then `https://openrouter.ai/api/v1/chat/completions` | `providers.openrouter.url` |
+| `OPENROUTER_MODEL` | `TRANSLATION_MODEL`, then `openai/gpt-4o` | `providers.openrouter.model` |
+| `OPENROUTER_REASONING_EFFORT` | not sent | `providers.openrouter.reasoning_effort` |
+| `OPENROUTER_BATCH` | `TRANSLATION_BATCH` | `providers.openrouter.batch` |
+| `OPENROUTER_SITE_URL` | not sent | `providers.openrouter.headers.HTTP-Referer` |
+| `OPENROUTER_APP_NAME` | not sent | `providers.openrouter.headers.X-OpenRouter-Title` |
+| `OPENROUTER_COST_PER_1K_PROMPT_TOKENS` | none | `providers.openrouter.cost_per_1k_prompt_tokens` |
+| `OPENROUTER_COST_PER_1K_COMPLETION_TOKENS` | none | `providers.openrouter.cost_per_1k_completion_tokens` |
+
+**OpenAI (`openai`)**
+
+| Variable | Default | Config key |
+|---|---|---|
+| `OPENAI_API_KEY` | none | `providers.openai.key` |
+| `OPENAI_API_URL` | `https://api.openai.com/v1/chat/completions` | `providers.openai.url` |
+| `OPENAI_MODEL` | `gpt-6-luna` | `providers.openai.model` |
+| `OPENAI_REASONING_EFFORT` | `none` | `providers.openai.reasoning_effort` |
+| `OPENAI_BATCH` | `TRANSLATION_BATCH` | `providers.openai.batch` |
+| `OPENAI_COST_PER_1K_PROMPT_TOKENS` | none | `providers.openai.cost_per_1k_prompt_tokens` |
+| `OPENAI_COST_PER_1K_COMPLETION_TOKENS` | none | `providers.openai.cost_per_1k_completion_tokens` |
+
+**Gemini (`gemini`)**
+
+| Variable | Default | Config key |
+|---|---|---|
+| `GEMINI_API_KEY` | none | `providers.gemini.key` |
+| `GEMINI_API_URL` | `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions` | `providers.gemini.url` |
+| `GEMINI_MODEL` | `gemini-3.5-flash-lite` | `providers.gemini.model` |
+| `GEMINI_REASONING_EFFORT` | not sent | `providers.gemini.reasoning_effort` |
+| `GEMINI_BATCH` | `TRANSLATION_BATCH` | `providers.gemini.batch` |
+| `GEMINI_COST_PER_1K_PROMPT_TOKENS` | none | `providers.gemini.cost_per_1k_prompt_tokens` |
+| `GEMINI_COST_PER_1K_COMPLETION_TOKENS` | none | `providers.gemini.cost_per_1k_completion_tokens` |
+
+**DeepSeek (`deepseek`)**
+
+| Variable | Default | Config key |
+|---|---|---|
+| `DEEPSEEK_API_KEY` | none | `providers.deepseek.key` |
+| `DEEPSEEK_API_URL` | `https://api.deepseek.com/chat/completions` | `providers.deepseek.url` |
+| `DEEPSEEK_MODEL` | `deepseek-flash` | `providers.deepseek.model` |
+| `DEEPSEEK_REASONING_EFFORT` | `none` | `providers.deepseek.reasoning_effort` |
+| `DEEPSEEK_BATCH` | `TRANSLATION_BATCH` | `providers.deepseek.batch` |
+| `DEEPSEEK_COST_PER_1K_PROMPT_TOKENS` | none | `providers.deepseek.cost_per_1k_prompt_tokens` |
+| `DEEPSEEK_COST_PER_1K_COMPLETION_TOKENS` | none | `providers.deepseek.cost_per_1k_completion_tokens` |
+
+**Mistral (`mistral`)**
+
+| Variable | Default | Config key |
+|---|---|---|
+| `MISTRAL_API_KEY` | none | `providers.mistral.key` |
+| `MISTRAL_API_URL` | `https://api.mistral.ai/v1/chat/completions` | `providers.mistral.url` |
+| `MISTRAL_MODEL` | `mistral-small-latest` | `providers.mistral.model` |
+| `MISTRAL_REASONING_EFFORT` | not sent | `providers.mistral.reasoning_effort` |
+| `MISTRAL_BATCH` | `TRANSLATION_BATCH` | `providers.mistral.batch` |
+| `MISTRAL_COST_PER_1K_PROMPT_TOKENS` | none | `providers.mistral.cost_per_1k_prompt_tokens` |
+| `MISTRAL_COST_PER_1K_COMPLETION_TOKENS` | none | `providers.mistral.cost_per_1k_completion_tokens` |
+
+**Custom endpoint (`custom`)**
+
+| Variable | Default | Config key |
+|---|---|---|
+| `TRANSLATION_API_KEY` | none | `providers.custom.key` |
+| `TRANSLATION_API_URL` | none | `providers.custom.url` |
+| `TRANSLATION_MODEL` | none | `providers.custom.model` |
+| `TRANSLATION_AUTH_HEADER` | `Authorization` | `providers.custom.auth_header` |
+| `TRANSLATION_TOKEN_LIMIT_PARAM` | `max_tokens` | `providers.custom.token_limit_param` |
+| `TRANSLATION_REASONING_EFFORT` | not sent | `providers.custom.reasoning_effort` |
+| `TRANSLATION_CUSTOM_BATCH` | `TRANSLATION_BATCH` | `providers.custom.batch` |
+| `TRANSLATION_BATCH_RESPONSE_FORMAT` | not sent | `providers.custom.batch_response_format` |
+| `TRANSLATION_COST_PER_1K_PROMPT_TOKENS` | none | `providers.custom.cost_per_1k_prompt_tokens` |
+| `TRANSLATION_COST_PER_1K_COMPLETION_TOKENS` | none | `providers.custom.cost_per_1k_completion_tokens` |
+
+**Batching, cache and review**
+
+| Variable | Default | Config key |
+|---|---|---|
+| `TRANSLATION_BATCH` | `false` | `batch.enabled` |
+| `TRANSLATION_BATCH_PROMPT` | built-in prompt | `batch.prompt` |
+| `TRANSLATION_CACHE` | `false` | `cache.enabled` |
+| `TRANSLATION_CACHE_STORE` | the app's default store | `cache.store` |
+| `TRANSLATION_CACHE_TTL` | `2592000` | `cache.ttl` |
+| `TRANSLATION_REVIEW` | `false` | `review.enabled` |
+| `TRANSLATION_REVIEW_LOCALES` | empty: every language | `review.locales` |
+| `TRANSLATION_REVIEW_WHILE_PENDING` | `keep` | `review.while_pending` |
+| `TRANSLATION_REVIEW_ON_REJECT` | `leave` | `review.on_reject` |
+
+**Queue, retries and usage tracking**
+
+| Variable | Default | Config key |
+|---|---|---|
+| `TRANSLATION_QUEUE_CONNECTION` | the app's default connection | `queue.connection` |
+| `TRANSLATION_QUEUE` | the connection's default queue | `queue.queue` |
+| `TRANSLATION_DISPATCH_AFTER_COMMIT` | `true` | `queue.after_commit` |
+| `TRANSLATION_HTTP_RETRIES` | `1` | `retries.http` |
+| `TRANSLATION_HTTP_RETRY_AFTER_MAX` | `10` | `retries.http_retry_after_max` |
+| `TRANSLATION_FALLBACK_HTTP_RETRIES` | `0` | `retries.fallback_http` |
+| `TRANSLATION_JOB_TRIES` | `3` | `retries.job_tries` |
+| `TRANSLATION_JOB_BACKOFF` | `10,30` | `retries.job_backoff` |
+| `TRANSLATION_USAGE_TRACKING_ENABLED` | `false` | `usage_tracking.enabled` |
+
+</details>
+
+## Testing
+
+The suite needs no external services: it runs on in-memory SQLite, and every provider call is faked.
 
 ```bash
 composer install
-vendor/bin/phpunit
+composer test
 ```
 
-To run the same suite against a real database, set `TRANSLAGENIUS_TEST_DB_CONNECTION` (`mysql`, `mariadb`, `pgsql` or `sqlsrv`) and the usual `DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD` variables.
+To run it against a real database, set `TRANSLAGENIUS_TEST_DB_CONNECTION` (`mysql`, `mariadb`, `pgsql` or `sqlsrv`) and the usual `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME` and `DB_PASSWORD`.
 
-### Live provider smoke tests
-
-A separate `live` group sends one short translation through each shipped preset to the real API, to check that the preset works end to end: the call succeeds, the result isn't empty or truncated, and it's attributed to the right preset. It is excluded from the default run and from CI, and each preset is skipped unless its key is in the environment. Pass only the keys you have:
+Code style and static analysis:
 
 ```bash
-OPENAI_API_KEY=sk-... GEMINI_API_KEY=... vendor/bin/phpunit --group live
+composer lint      # Pint, Laravel preset
+composer analyse   # Larastan
 ```
 
-Keys per preset: `OPENROUTER_API_KEY` (or `TRANSLATION_API_KEY`), `OPENAI_API_KEY`, `GEMINI_API_KEY`, `DEEPSEEK_API_KEY`, `MISTRAL_API_KEY`; the `custom` preset needs `TRANSLATION_API_URL` and `TRANSLATION_MODEL`. These are real, billed calls (a few tokens each). Never commit keys: pass them on the command line or export them in your shell.
+A separate `live` group sends one short translation through each shipped preset to the real API. It is excluded from the default run and from CI, and each preset is skipped unless its key is set. These are real, billed calls of a few tokens each:
 
-## Conclusion
+```bash
+OPENAI_API_KEY=... GEMINI_API_KEY=... vendor/bin/phpunit --group live
+```
 
-The TranslaGenius package simplifies the process of adding multi-language support to your Laravel application. By following the steps outlined above, you can easily configure and use the package to automatically translate your model fields, ensuring that your application is accessible to a global audience.
+The keys are `OPENROUTER_API_KEY` (or `TRANSLATION_API_KEY`), `OPENAI_API_KEY`, `GEMINI_API_KEY`, `DEEPSEEK_API_KEY` and `MISTRAL_API_KEY`; the `custom` preset needs `TRANSLATION_API_URL` and `TRANSLATION_MODEL`. Pass keys on the command line or export them in your shell, and never commit them.
+
+## Troubleshooting and FAQ
+
+**Nothing gets translated.**
+
+- Check that a queue worker is running, on the connection and queue from `TRANSLATION_QUEUE_CONNECTION` and `TRANSLATION_QUEUE`.
+- Check the provider key, and look in `failed_jobs` and your log for `TranslationFailedException`.
+- Check that the request locale is in `supported_languages`, and that the field has text in the source language. A warning in the log names any field that has text only in another language.
+- Run `php artisan translagenius:check`.
+
+**I upgraded and my config is ignored.** The config file is now `config/translagenius.php`, all lowercase. `translagenius:check` reports a file left under the old name. See [UPGRADE.md](UPGRADE.md).
+
+**Translations are cut off, or fail with a message about `TRANSLATION_MAX_TOKENS`.** The reply hit the output limit. Unset `TRANSLATION_MAX_TOKENS`, or raise it. With batching on, a cut-off batch is retried one language at a time automatically.
+
+**Translations disappear after I save a model I loaded earlier.** This is standard Eloquent behavior. A model instance holds its own copy of each translatable column. If the job writes translations after you loaded the instance, saving a change to that column from the old instance writes the old copy back. Call `$model->refresh()` before editing a record whose translations may have changed. It happens most often with the `sync` queue right after `create()`:
+
+```php
+$post = Post::create(['title' => ['en' => 'Hello']]); // sync queue: translations saved here
+$post->refresh();                                      // load them before editing
+$post->setTranslation('title', 'en', 'Hello again')->save();
+```
+
+**Which language is the source?** See [Source language](#source-language). On a real queue, set `TRANSLATION_SOURCE_LOCALE` if your content is always written in one language.
+
+**Can I translate into a language I add later?** Add it to `supported_languages` and run `translagenius:backfill` for each model.
+
+**Does it work without OpenAI-compatible APIs?** Yes, with a [custom provider](#a-custom-provider-deepl).
+
+## Upgrading
+
+See [UPGRADE.md](UPGRADE.md) for the step-by-step upgrade from 3.x to 4.0.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md).
+
+## Contributing
+
+Issues and pull requests are welcome at [github.com/YousefSaleh1/transla-genius](https://github.com/YousefSaleh1/transla-genius). Please include tests, and run `composer test`, `composer lint` and `composer analyse` before you open a pull request.
+
+## Security
+
+Please don't report security issues in public issues. See [SECURITY.md](SECURITY.md).
+
+## License
+
+MIT. See [LICENSE](LICENSE).
+
+## Credits
+
+- [Yousef Saleh](https://github.com/YousefSaleh1)
+- Built on [spatie/laravel-translatable](https://github.com/spatie/laravel-translatable)
