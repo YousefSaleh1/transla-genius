@@ -9,6 +9,7 @@ use CodingPartners\TranslaGenius\DTOs\TranslationBatchResult;
 use CodingPartners\TranslaGenius\DTOs\TranslationRequest;
 use CodingPartners\TranslaGenius\DTOs\TranslationResult;
 use Illuminate\Contracts\Cache\Repository;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Decorator that serves repeated translations from Laravel's cache, so the
@@ -193,12 +194,55 @@ class CachingProvider implements BatchTranslationProviderInterface
         return $json !== false ? $json : 'php:'.serialize($parts);
     }
 
+    /** When the last cache-error warning was logged (once a minute per process). */
+    private static ?float $lastCacheWarning = null;
+
+    /**
+     * Run a cache call; when the cache fails (a Redis that refuses
+     * connections, a full disk), return $fallback instead. The cache is an
+     * optimization: a failed read is a miss and a failed write is skipped,
+     * so translation goes on. A warning is logged at most once a minute.
+     *
+     * @template T
+     *
+     * @param  callable(): T  $call
+     * @param  T  $fallback
+     * @return T
+     */
+    protected function guarded(callable $call, mixed $fallback): mixed
+    {
+        try {
+            return $call();
+        } catch (\Exception $e) {
+            $now = microtime(true);
+            if (self::$lastCacheWarning === null || $now - self::$lastCacheWarning >= 60) {
+                self::$lastCacheWarning = $now;
+                Log::warning('CachingProvider: the translation cache failed; translating without it', [
+                    'exception_class' => get_class($e),
+                    'message' => $e->getMessage(),
+                ]);
+            }
+
+            return $fallback;
+        }
+    }
+
+    /**
+     * Forget the once-a-minute warning state (tests).
+     *
+     * @internal
+     */
+    public static function resetCacheWarning(): void
+    {
+        self::$lastCacheWarning = null;
+    }
+
     /**
      * @return array{text: string, provider: string|null}|null
      */
     protected function lookup(string $key): ?array
     {
-        $value = $this->cache->get($key);
+        $value = $this->guarded(fn () => $this->cache->get($key), null);
 
         return is_array($value) && is_string($value['text'] ?? null) && trim($value['text']) !== ''
             ? ['text' => $value['text'], 'provider' => $value['provider'] ?? null]
@@ -213,9 +257,9 @@ class CachingProvider implements BatchTranslationProviderInterface
 
         $value = ['text' => $text, 'provider' => $provider];
 
-        $this->ttl === null
+        $this->guarded(fn () => $this->ttl === null
             ? $this->cache->forever($key, $value)
-            : $this->cache->put($key, $value, $this->ttl);
+            : $this->cache->put($key, $value, $this->ttl), null);
     }
 
     /**
@@ -240,7 +284,7 @@ class CachingProvider implements BatchTranslationProviderInterface
      */
     public function forgetTranslation(string $text, string $sourceLocale, string $targetLocale, ?string $field = null, ?string $model = null): void
     {
-        $this->cache->forget($this->cacheKey($text, $sourceLocale, $targetLocale, $field, $model));
+        $this->guarded(fn () => $this->cache->forget($this->cacheKey($text, $sourceLocale, $targetLocale, $field, $model)), null);
     }
 
     /**
@@ -259,6 +303,6 @@ class CachingProvider implements BatchTranslationProviderInterface
         $key = $this->cacheKey($text, $sourceLocale, $targetLocale, $field, $model);
         $value = ['text' => $translation, 'provider' => $provider];
 
-        $this->ttl === null ? $this->cache->forever($key, $value) : $this->cache->put($key, $value, $this->ttl);
+        $this->guarded(fn () => $this->ttl === null ? $this->cache->forever($key, $value) : $this->cache->put($key, $value, $this->ttl), null);
     }
 }
