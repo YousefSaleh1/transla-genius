@@ -3,6 +3,8 @@
 namespace CodingPartners\TranslaGenius\Console\Commands;
 
 use CodingPartners\TranslaGenius\Console\Concerns\ReadsStringInput;
+use CodingPartners\TranslaGenius\Support\QueueTimeouts;
+use CodingPartners\TranslaGenius\Support\Setting;
 use Illuminate\Console\Command;
 use Illuminate\Database\ConnectionInterface;
 use Throwable;
@@ -54,7 +56,43 @@ class CheckCommand extends Command
             default => $this->warnUnknownDriver($driver),
         };
 
+        $this->checkRetryAfter();
+
         return $configOk ? $databaseResult : self::FAILURE;
+    }
+
+    /**
+     * Warn when the queue connection translation jobs use would hand a
+     * still-running job to another worker: its retry_after isn't above the
+     * job timeout. A warning, not a failure: the app works, but slow jobs
+     * are delivered twice.
+     */
+    protected function checkRetryAfter(): void
+    {
+        $connection = QueueTimeouts::connectionName();
+        $retryAfter = QueueTimeouts::retryAfter($connection);
+
+        if ($retryAfter === null) {
+            $this->line("Queue: connection [{$connection}] has no retry_after (a sync or null queue); nothing to check.");
+
+            return;
+        }
+
+        $configured = config('translagenius.queue.timeout');
+        $jobTimeout = QueueTimeouts::longestJobTimeout();
+        $label = Setting::nullableInt($configured) !== null ? "{$jobTimeout} s" : "up to {$jobTimeout} s";
+
+        if ($jobTimeout === 0 || $retryAfter > $jobTimeout) {
+            $this->info("Queue: retry_after ({$retryAfter} s) on [{$connection}] is above the job timeout ({$label}).");
+
+            return;
+        }
+
+        $suggested = QueueTimeouts::suggestedRetryAfter($jobTimeout);
+        $this->warn("retry_after ({$retryAfter} s) on queue connection [{$connection}] is not above the translation job timeout ({$label}).");
+        $this->line('A job still running after retry_after is handed to another worker. In config/queue.php, under connections.'.$connection.', set:');
+        $this->line("    'retry_after' => {$suggested},");
+        $this->line('(or set TRANSLATION_JOB_TIMEOUT below the current retry_after).');
     }
 
     /**

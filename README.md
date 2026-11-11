@@ -184,6 +184,8 @@ return Application::configure(basePath: dirname(__DIR__))
 php artisan queue:work
 ```
 
+> **Raise `retry_after` first.** A translation job may run up to 900 seconds by default, but Laravel's database and Redis queue connections hand a job to another worker after `retry_after` seconds (90 by default), even while it's still running. In `config/queue.php`, set `'retry_after' => 930` on the connection the jobs use, or set a lower `TRANSLATION_JOB_TIMEOUT`. `php artisan translagenius:check` tells you which line to change, and a job logs a warning once per worker when it isn't set.
+
 Now save a record in the request's language:
 
 ```bash
@@ -823,7 +825,7 @@ TranslaGeniusException
 
 | Command | Purpose |
 |---|---|
-| `translagenius:check {--connection=}` | Checks for a config file published under the old 3.x name, and that the database connection supports the JSON queries the package needs. |
+| `translagenius:check {--connection=}` | Checks for a config file published under the old 3.x name, that the database connection supports the JSON queries the package needs, and that the queue connection's `retry_after` is above the job timeout (a warning, with the line to change). |
 | `translagenius:backfill {model} {--source=} {--chunk=100} {--dry-run} {--force}` | Dispatches the model's translation job for existing records that are missing translations. |
 | `translagenius:review:list {model?} {--field=} {--locale=}` | Counts pending reviews per model, field and language. |
 | `translagenius:review:approve-all {model} {--field=} {--locale=} {--force}` | Approves every pending review of a model, as produced. |

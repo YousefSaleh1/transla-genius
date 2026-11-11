@@ -25,6 +25,7 @@ use CodingPartners\TranslaGenius\Support\BillingContext;
 use CodingPartners\TranslaGenius\Support\Locales;
 use CodingPartners\TranslaGenius\Support\ModelEvents;
 use CodingPartners\TranslaGenius\Support\OneJobPerRecord;
+use CodingPartners\TranslaGenius\Support\QueueTimeouts;
 use CodingPartners\TranslaGenius\Support\Setting;
 use CodingPartners\TranslaGenius\Support\StoredTranslations;
 use CodingPartners\TranslaGenius\Support\Text;
@@ -295,6 +296,11 @@ class TranslateFields implements ShouldQueue, TranslationJob
      */
     public function handle(TranslatorInterface $translator, TranslationWriter $writer)
     {
+        // A retry_after at or below this job's timeout redelivers slow jobs.
+        if ($this->job !== null && ! $this->job instanceof SyncJob) {
+            QueueTimeouts::warnIfTooShort($this->job->getConnectionName(), (int) $this->timeout);
+        }
+
         try {
             // Never the worker's own locale: it has nothing to do with the
             // request that saved the record.
