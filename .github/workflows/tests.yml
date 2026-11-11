@@ -92,23 +92,48 @@ jobs:
         run: composer update --${{ matrix.stability }} --prefer-dist --no-interaction --no-progress
 
       - name: Wait for database
+        id: wait_db
         if: matrix.db != 'sqlite'
         run: |
+          cat > "$RUNNER_TEMP/db-probe.php" <<'PHP'
+          <?php
+          $c = getenv('TRANSLAGENIUS_TEST_DB_CONNECTION');
+          $h = getenv('DB_HOST');
+          $p = getenv('DB_PORT');
+          $dsn = match ($c) {
+              'mysql', 'mariadb' => "mysql:host=$h;port=$p",
+              'pgsql' => "pgsql:host=$h;port=$p;dbname=postgres",
+              'sqlsrv' => "sqlsrv:Server=$h,$p;TrustServerCertificate=1",
+          };
+          try {
+              new PDO($dsn, getenv('DB_USERNAME'), getenv('DB_PASSWORD'));
+          } catch (Throwable $e) {
+              echo get_class($e) . ': ' . $e->getMessage() . PHP_EOL;
+              exit(1);
+          }
+          PHP
+          # Quiet while waiting; the last attempt's error is printed below.
           for i in $(seq 1 60); do
-            php -r '
-              $c = getenv("TRANSLAGENIUS_TEST_DB_CONNECTION");
-              $h = getenv("DB_HOST"); $p = getenv("DB_PORT");
-              $dsn = match ($c) {
-                  "mysql", "mariadb" => "mysql:host=$h;port=$p",
-                  "pgsql" => "pgsql:host=$h;port=$p;dbname=postgres",
-                  "sqlsrv" => "sqlsrv:Server=$h,$p;TrustServerCertificate=1",
-              };
-              new PDO($dsn, getenv("DB_USERNAME"), getenv("DB_PASSWORD"));
-            ' 2>/dev/null && exit 0
+            if php "$RUNNER_TEMP/db-probe.php" > "$RUNNER_TEMP/db-probe.log" 2>&1; then
+              exit 0
+            fi
             sleep 2
           done
-          echo "Database did not become ready in time" >&2
+          echo "::error::Database did not become ready in time. Last connection error:"
+          cat "$RUNNER_TEMP/db-probe.log"
           exit 1
+
+      # Only when the wait failed: enough to tell a missing driver from a
+      # server that never came up.
+      - name: Diagnose database startup
+        if: failure() && steps.wait_db.outcome == 'failure'
+        run: |
+          echo "--- PHP PDO / sqlsrv modules"
+          php -m | grep -iE 'pdo|sqlsrv' || echo "(none matched)"
+          echo "--- Registered ODBC drivers"
+          odbcinst -q -d 2>/dev/null || echo "(odbcinst not available)"
+          echo "--- Service container logs (${{ job.services.db.id }})"
+          docker logs "${{ job.services.db.id }}" 2>&1 | tail -n 200 || true
 
       - name: Run test suite
         # The live group calls real provider APIs; it is opt-in, never run in CI.
