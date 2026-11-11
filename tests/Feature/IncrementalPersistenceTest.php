@@ -131,7 +131,8 @@ class IncrementalPersistenceTest extends TestCase
         $this->assertSame(['name:ar' => 1, 'name:es' => 1, 'description:ar' => 1], $this->requests);
 
         $stored = TestTranslatableModel::find($model->id);
-        $this->assertSame(['en', 'ar', 'es'], array_keys($stored->getTranslations('name')));
+        // Key order isn't part of the contract (MySQL's JSON type normalizes it).
+        $this->assertEqualsCanonicalizing(['en', 'ar', 'es'], array_keys($stored->getTranslations('name')));
         $this->assertTrue(TestTranslatableModel::notFullyTranslated()->whereKey($model->id)->exists());
         $this->assertFalse(TestTranslatableModel::fullyTranslated()->whereKey($model->id)->exists());
     }
