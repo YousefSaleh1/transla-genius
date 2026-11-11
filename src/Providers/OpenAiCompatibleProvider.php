@@ -423,11 +423,36 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
         return is_string($value) && ctype_digit($value) ? (int) $value : null;
     }
 
-    /** Whether a connection failure was a timeout (cURL error 28), not a refusal or DNS error. */
+    /**
+     * Whether a connection failure was a timeout, not a refusal or a DNS
+     * error. Read from the exception Guzzle raised, which Laravel keeps as
+     * the `previous` of its ConnectionException: Guzzle 8 throws a dedicated
+     * timeout exception; Guzzle 7 a ConnectException whose handler context
+     * holds cURL errno 28 (CURLE_OPERATION_TIMEDOUT). The message is matched
+     * only when neither is there (another HTTP handler).
+     */
     protected static function isTimeout(ConnectionException $e): bool
     {
+        for ($cause = $e->getPrevious(); $cause !== null; $cause = $cause->getPrevious()) {
+            foreach (['GuzzleHttp\\Exception\\NetworkTimeoutException', 'GuzzleHttp\\Exception\\ConnectTimeoutException', 'GuzzleHttp\\Exception\\ResponseTimeoutException'] as $timeoutClass) {
+                if ($cause instanceof $timeoutClass) {
+                    return true;
+                }
+            }
+
+            if (method_exists($cause, 'getHandlerContext')) {
+                $context = $cause->getHandlerContext();
+                if (is_array($context) && isset($context['errno'])) {
+                    return (int) $context['errno'] === self::CURL_TIMEOUT_ERRNO;
+                }
+            }
+        }
+
         return str_contains($e->getMessage(), 'cURL error 28') || stripos($e->getMessage(), 'timed out') !== false;
     }
+
+    /** CURLE_OPERATION_TIMEDOUT. */
+    private const CURL_TIMEOUT_ERRNO = 28;
 
     /**
      * This instance's Guzzle handler, made on first use and kept: every
