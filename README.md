@@ -558,6 +558,27 @@ After the request, the `name` and `description` fields will be automatically tra
 
 
 
+## Contributing & Testing
+
+The test suite needs no external services by default: it runs on SQLite in memory, and every provider call is faked.
+
+```bash
+composer install
+vendor/bin/phpunit
+```
+
+To run the same suite against a real database, set `TRANSLAGENIUS_TEST_DB_CONNECTION` (`mysql`, `mariadb`, `pgsql` or `sqlsrv`) and the usual `DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD` variables.
+
+### Live provider smoke tests
+
+A separate `live` group sends one short translation through each shipped preset to the real API, to check that the preset works end to end: the call succeeds, the result isn't empty or truncated, and it's attributed to the right preset. It is excluded from the default run and from CI, and each preset is skipped unless its key is in the environment. Pass only the keys you have:
+
+```bash
+OPENAI_API_KEY=sk-... GEMINI_API_KEY=... vendor/bin/phpunit --group live
+```
+
+Keys per preset: `OPENROUTER_API_KEY` (or `TRANSLATION_API_KEY`), `OPENAI_API_KEY`, `GEMINI_API_KEY`, `DEEPSEEK_API_KEY`, `MISTRAL_API_KEY`; the `custom` preset needs `TRANSLATION_API_URL` and `TRANSLATION_MODEL`. These are real, billed calls (a few tokens each). Never commit keys: pass them on the command line or export them in your shell.
+
 ## Conclusion
 
 The TranslaGenius package simplifies the process of adding multi-language support to your Laravel application. By following the steps outlined above, you can easily configure and use the package to automatically translate your model fields, ensuring that your application is accessible to a global audience.

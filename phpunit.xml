@@ -7,7 +7,15 @@
     <testsuite name="Feature">
       <directory suffix="Test.php">./tests/Feature</directory>
     </testsuite>
+    <testsuite name="Live">
+      <directory suffix="Test.php">./tests/Live</directory>
+    </testsuite>
   </testsuites>
+  <groups>
+    <exclude>
+      <group>live</group>
+    </exclude>
+  </groups>
   <php>
     <env name="APP_ENV" value="testing"/>
     <env name="BCRYPT_ROUNDS" value="4"/>

@@ -111,4 +111,5 @@ jobs:
           exit 1
 
       - name: Run test suite
-        run: vendor/bin/phpunit
+        # The live group calls real provider APIs; it is opt-in, never run in CI.
+        run: vendor/bin/phpunit --exclude-group live
