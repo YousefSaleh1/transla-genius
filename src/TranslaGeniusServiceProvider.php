@@ -76,6 +76,9 @@ class TranslaGeniusServiceProvider extends ServiceProvider
      * @param array<int, string> $seen Provider names already being
      *        resolved in this call chain, to detect a `chain` that
      *        (directly or indirectly) references itself.
+     * @param bool $inChain Whether $name is being resolved as a member of a
+     *        fallback chain. Chain members get translaGenius.retries.fallback_http
+     *        HTTP retries and never sleep on Retry-After, so failover is fast.
      * @return TranslationProviderInterface
      *
      * @throws RuntimeException If $name has no config, no `driver`, a
@@ -83,7 +86,7 @@ class TranslaGeniusServiceProvider extends ServiceProvider
      *         TranslationProviderInterface, an empty `chain` (for a
      *         FallbackProvider driver), or `chain` forms a cycle.
      */
-    protected function resolveProvider(Application $app, string $name, array $seen = []): TranslationProviderInterface
+    protected function resolveProvider(Application $app, string $name, array $seen = [], bool $inChain = false): TranslationProviderInterface
     {
         if (in_array($name, $seen, true)) {
             throw new RuntimeException(
@@ -114,7 +117,7 @@ class TranslaGeniusServiceProvider extends ServiceProvider
             }
 
             $resolvedChain = array_map(
-                fn (string $chainedName) => $this->resolveProvider($app, $chainedName, [...$seen, $name]),
+                fn (string $chainedName) => $this->resolveProvider($app, $chainedName, [...$seen, $name], true),
                 $chain
             );
 
@@ -141,9 +144,31 @@ class TranslaGeniusServiceProvider extends ServiceProvider
             ));
         }
 
+        $retries = (array) $config->get('translaGenius.retries', []);
+        $retryDefaults = [
+            'http_retries' => self::intSetting($retries['http'] ?? null, 1),
+            'retry_after_max' => self::intSetting($retries['http_retry_after_max'] ?? null, 10),
+        ];
+        $chainOverrides = $inChain
+            ? ['http_retries' => self::intSetting($retries['fallback_http'] ?? null, 0), 'retry_after_max' => 0]
+            : [];
+
         return $app->make($driver, [
-            'config' => array_merge($providerConfig, ['name' => $name]),
+            'config' => array_merge($retryDefaults, $providerConfig, $chainOverrides, ['name' => $name]),
         ]);
+    }
+
+    /**
+     * An integer setting read from env-backed config: null or '' (an empty
+     * `VAR=` in .env) means "use the default".
+     *
+     * @param mixed $value
+     * @param int $default
+     * @return int
+     */
+    public static function intSetting(mixed $value, int $default): int
+    {
+        return $value === null || $value === '' ? $default : max(0, (int) $value);
     }
 
     /**

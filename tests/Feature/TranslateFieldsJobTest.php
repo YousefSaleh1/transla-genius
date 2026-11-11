@@ -166,6 +166,82 @@ class TranslateFieldsJobTest extends TestCase
         $this->assertSame([10, 30], $job->backoff());
     }
 
+    public function test_job_tries_and_backoff_come_from_config()
+    {
+        Queue::fake();
+        config([
+            'translaGenius.retries.job_tries' => '5',
+            'translaGenius.retries.job_backoff' => ' 5, 15 ,, 60 ',
+        ]);
+
+        $model = TestTranslatableModel::create(['name' => ['en' => 'A'], 'description' => ['en' => 'B']]);
+        $job = new TranslateFields($model, ['name']);
+
+        $this->assertSame(5, $job->tries);
+        $this->assertSame([5, 15, 60], $job->backoff());
+    }
+
+    public function test_empty_job_retry_env_values_fall_back_to_defaults()
+    {
+        Queue::fake();
+        config(['translaGenius.retries.job_tries' => '', 'translaGenius.retries.job_backoff' => '']);
+
+        $model = TestTranslatableModel::create(['name' => ['en' => 'A'], 'description' => ['en' => 'B']]);
+        $job = new TranslateFields($model, ['name']);
+
+        $this->assertSame(3, $job->tries);
+        $this->assertSame([10, 30], $job->backoff());
+    }
+
+    /**
+     * A 429 whose Retry-After was too long to wait in-request is released
+     * back to the queue for exactly that delay.
+     */
+    public function test_retry_after_from_the_provider_becomes_the_release_delay()
+    {
+        Queue::fake();
+
+        $model = TestTranslatableModel::create(['name' => ['en' => 'A'], 'description' => ['en' => 'B']]);
+
+        $mockTranslator = Mockery::mock(TranslatorInterface::class);
+        $mockTranslator->shouldReceive('translate')
+            ->andThrow(new TranslationFailedException('Rate limited', statusCode: 429, retryable: true, retryAfter: 120));
+
+        $job = (new TranslateFields($model, ['name']))->withFakeQueueInteractions();
+        $job->handle($mockTranslator, $this->writer());
+
+        $job->assertReleased(120);
+        $job->assertNotFailed();
+    }
+
+    /**
+     * On the last allowed attempt, a Retry-After is not turned into a
+     * release (that would end in MaxAttemptsExceeded, skipping failed());
+     * the exception propagates so the job fails normally.
+     */
+    public function test_retry_after_on_the_last_attempt_is_not_released()
+    {
+        Queue::fake();
+        config(['translaGenius.retries.job_tries' => 1]);
+
+        $model = TestTranslatableModel::create(['name' => ['en' => 'A'], 'description' => ['en' => 'B']]);
+
+        $mockTranslator = Mockery::mock(TranslatorInterface::class);
+        $mockTranslator->shouldReceive('translate')
+            ->andThrow(new TranslationFailedException('Rate limited', statusCode: 429, retryable: true, retryAfter: 120));
+
+        $job = (new TranslateFields($model, ['name']))->withFakeQueueInteractions();
+
+        try {
+            $job->handle($mockTranslator, $this->writer());
+            $this->fail('Expected the exception to propagate.');
+        } catch (TranslationFailedException $e) {
+            $this->assertSame(120, $e->getRetryAfter());
+        }
+
+        $job->assertNotReleased();
+    }
+
     /**
      * Fix 1/2 (Phase 2c): a non-retryable failure (e.g. bad API key) must
      * call $this->fail() immediately rather than being retried or swallowed.

@@ -7,9 +7,10 @@ use CodingPartners\TranslaGenius\DTOs\TranslationRequest;
 use CodingPartners\TranslaGenius\DTOs\TranslationResult;
 use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
 use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
 
 /**
@@ -71,7 +72,20 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
     protected string $tokenLimitParam;
 
     /**
-     * @param array{name?: string, key?: string, url?: string, model?: string, temperature?: float, max_tokens?: int, timeout?: int, auth_header?: string, headers?: array<string, string>, token_limit_param?: string} $config
+     * @var int Extra HTTP attempts after the first, for connection errors,
+     *      429 and 5xx only. 4xx (other than 429) is never retried.
+     */
+    protected int $httpRetries;
+
+    /**
+     * @var int Longest Retry-After (seconds) worth sleeping through inside
+     *      the request. A longer one is handed to the queue instead (see
+     *      TranslationFailedException::getRetryAfter()).
+     */
+    protected int $retryAfterMax;
+
+    /**
+     * @param array{name?: string, key?: string, url?: string, model?: string, temperature?: float, max_tokens?: int, timeout?: int, auth_header?: string, headers?: array<string, string>, token_limit_param?: string, http_retries?: int, retry_after_max?: int} $config
      *        Provider configuration array - one translaGenius.providers.* entry
      *        from config/translaGenius.php. `name` is injected by the service
      *        provider (the entry's config key). Every key is optional; missing
@@ -88,6 +102,8 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
         $this->timeout = (int) ($config['timeout'] ?? 10);
         $this->name = isset($config['name']) ? (string) $config['name'] : null;
         $this->authHeader = (string) ($config['auth_header'] ?? 'Authorization') ?: 'Authorization';
+        $this->httpRetries = max(0, (int) ($config['http_retries'] ?? 1));
+        $this->retryAfterMax = max(0, (int) ($config['retry_after_max'] ?? 10));
         $this->tokenLimitParam = (string) ($config['token_limit_param'] ?? 'max_tokens') ?: 'max_tokens';
         $this->headers = array_filter(
             (array) ($config['headers'] ?? []),
@@ -97,8 +113,9 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
 
     /**
      * Translate the given request via an OpenAI-compatible chat-completions
-     * endpoint, retrying transient failures (connection errors, 5xx, 429)
-     * up to 3 times with jittered exponential backoff before giving up.
+     * endpoint. Connection errors, 429 and 5xx get up to $httpRetries quick
+     * retries (a 429's Retry-After is honored if it's at most
+     * $retryAfterMax seconds); anything else fails on the first response.
      *
      * @param TranslationRequest $request The text and locale pair to translate.
      * @return TranslationResult
@@ -122,53 +139,72 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
         $systemPrompt = "You are a translation engine. Translate the user's message from {$request->sourceLocale} to {$request->targetLocale}. "
             . 'Respond with only the translated text - no explanation, commentary, or additional formatting.';
 
-        try {
-            $response = Http::withHeaders($this->requestHeaders())->timeout($this->timeout)->retry(
-                3,
-                function (int $attempt, \Exception $e) {
-                    if ($e instanceof RequestException && $e->response->status() >= 400) {
-                        return false;
-                    }
+        $body = $this->requestBody($request, $systemPrompt);
+        $attempts = $this->httpRetries + 1;
 
-                    return min(1000, 200 * (2 ** ($attempt - 1))) + rand(0, 100);
-                },
-                throw: false
-            )->post($this->apiUrl, [
-                'model' => $this->model,
-                'messages' => [
-                    ['role' => 'system', 'content' => $systemPrompt],
-                    ['role' => 'user', 'content' => $request->text],
-                ],
-                'temperature' => $this->temperature,
-                $this->tokenLimitParam => $this->maxTokens,
-            ]);
-        } catch (ConnectionException $e) {
-            Log::warning('OpenAiCompatibleProvider: connection to translation API failed', [
-                'exception_class' => get_class($e),
-                'message' => $e->getMessage(),
-            ]);
+        for ($attempt = 1; ; $attempt++) {
+            try {
+                $response = Http::withHeaders($this->requestHeaders())
+                    ->timeout($this->timeout)
+                    ->post($this->apiUrl, $body);
+            } catch (ConnectionException $e) {
+                if ($attempt < $attempts) {
+                    $this->pause($attempt);
 
-            throw new TranslationFailedException(
-                'Unable to connect to translation API: ' . $e->getMessage(),
-                retryable: true,
-                previous: $e
-            );
-        }
+                    continue;
+                }
 
-        if ($response->failed()) {
+                Log::warning('OpenAiCompatibleProvider: connection to translation API failed', [
+                    'exception_class' => get_class($e),
+                    'message' => $e->getMessage(),
+                    'attempts' => $attempt,
+                ]);
+
+                throw new TranslationFailedException(
+                    'Unable to connect to translation API: ' . $e->getMessage(),
+                    retryable: true,
+                    previous: $e
+                );
+            }
+
+            if (!$response->failed()) {
+                break;
+            }
+
             $status = $response->status();
+            $retryable = $this->isRetryableStatus($status);
+            $retryAfter = $status === 429 ? $this->parseRetryAfter($response) : null;
+
+            if ($retryable && $attempt < $attempts) {
+                if ($retryAfter === null) {
+                    $this->pause($attempt);
+
+                    continue;
+                }
+
+                if ($retryAfter <= $this->retryAfterMax) {
+                    Sleep::for($retryAfter)->seconds();
+
+                    continue;
+                }
+                // Asked to wait longer than is reasonable inside one request:
+                // fail now and let the queue retry after $retryAfter.
+            }
+
             $snippet = Str::limit((string) ($response->json('error.message') ?? $response->body()), 300);
 
             Log::warning('OpenAiCompatibleProvider: API request failed', [
                 'status' => $status,
                 'error' => $snippet,
+                'attempts' => $attempt,
             ]);
 
             throw new TranslationFailedException(
                 "Translation request failed with status {$status}",
                 statusCode: $status,
                 responseSnippet: $snippet,
-                retryable: $this->isRetryableStatus($status)
+                retryable: $retryable,
+                retryAfter: $retryAfter,
             );
         }
 
@@ -194,6 +230,62 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
             promptTokens: $response->json('usage.prompt_tokens'),
             completionTokens: $response->json('usage.completion_tokens'),
         );
+    }
+
+    /**
+     * The chat-completions request body.
+     *
+     * @param TranslationRequest $request
+     * @param string $systemPrompt
+     * @return array<string, mixed>
+     */
+    protected function requestBody(TranslationRequest $request, string $systemPrompt): array
+    {
+        return [
+            'model' => $this->model,
+            'messages' => [
+                ['role' => 'system', 'content' => $systemPrompt],
+                ['role' => 'user', 'content' => $request->text],
+            ],
+            'temperature' => $this->temperature,
+            $this->tokenLimitParam => $this->maxTokens,
+        ];
+    }
+
+    /**
+     * Short jittered backoff between HTTP attempts: 200ms, 400ms, ... capped
+     * at 1s. Kept brief on purpose - anything slower is the queue's job.
+     *
+     * @param int $attempt The attempt that just failed (1-based).
+     * @return void
+     */
+    protected function pause(int $attempt): void
+    {
+        Sleep::for(min(1000, 200 * (2 ** ($attempt - 1))) + random_int(0, 100))->milliseconds();
+    }
+
+    /**
+     * Seconds from a Retry-After header, which may be delta-seconds or an
+     * HTTP date. Null when absent or unparseable.
+     *
+     * @param Response $response
+     * @return int|null
+     */
+    protected function parseRetryAfter(Response $response): ?int
+    {
+        $value = trim($response->header('Retry-After'));
+
+        if ($value === '') {
+            return null;
+        }
+
+        if (ctype_digit($value)) {
+            return (int) $value;
+        }
+
+        $timestamp = strtotime($value);
+
+        return $timestamp === false ? null : max(0, $timestamp - time());
     }
 
     /**

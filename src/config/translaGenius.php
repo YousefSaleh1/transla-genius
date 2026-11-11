@@ -168,6 +168,36 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Retries
+    |--------------------------------------------------------------------------
+    |
+    | Two layers, split deliberately:
+    |
+    |   http                  Quick in-request retries for connection errors,
+    |                         429 and 5xx. 4xx (other than 429) is never
+    |                         retried at any layer.
+    |   http_retry_after_max  A 429 whose Retry-After is at most this many
+    |                         seconds is waited out in-request; a longer one is
+    |                         handed to the queue as the release delay.
+    |   fallback_http         HTTP retries for members of a fallback chain.
+    |                         Default 0: the next provider is the retry.
+    |   job_tries/job_backoff Queue-level attempts for TranslateFields, and the
+    |                         seconds to wait between them (comma-separated).
+    |
+    | Worst case for one field/locale: (http + 1) x job_tries requests -
+    | 6 with the defaults. A 401/400/404 is 1 request.
+    |
+    */
+    'retries' => [
+        'http' => env('TRANSLATION_HTTP_RETRIES', 1),
+        'http_retry_after_max' => env('TRANSLATION_HTTP_RETRY_AFTER_MAX', 10),
+        'fallback_http' => env('TRANSLATION_FALLBACK_HTTP_RETRIES', 0),
+        'job_tries' => env('TRANSLATION_JOB_TRIES', 3),
+        'job_backoff' => env('TRANSLATION_JOB_BACKOFF', '10,30'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Usage & Cost Tracking
     |--------------------------------------------------------------------------
     |

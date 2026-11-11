@@ -204,9 +204,9 @@ class ShippedPresetsTest extends Orchestra
 
         $this->assertSame('from-gemini', $result->text);
         $this->assertSame('gemini', $result->provider);
-        // 503 is retryable, so the primary uses its own retries (3 attempts)
-        // before the chain moves on; the secondary is called exactly once.
-        $this->assertRequestCounts(['api.openai.com' => 3, 'generativelanguage.googleapis.com' => 1]);
+        // Chain members get TRANSLATION_FALLBACK_HTTP_RETRIES (default 0)
+        // HTTP retries: the primary is tried once, then the secondary once.
+        $this->assertRequestCounts(['api.openai.com' => 1, 'generativelanguage.googleapis.com' => 1]);
     }
 
     public function test_env_only_fallback_never_calls_secondary_when_primary_succeeds()

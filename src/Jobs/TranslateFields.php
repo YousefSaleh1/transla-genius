@@ -55,28 +55,37 @@ class TranslateFields implements ShouldQueue
     protected array $fields;
 
     /**
-     * Number of attempts before the job is considered permanently failed.
-     * Transient failures (timeouts, rate limits, 5xx) get two retries beyond
-     * the initial attempt via backoff() below; non-retryable failures (bad
-     * config, 4xx errors other than 429) skip straight to failed() instead
-     * of burning through these via TranslationFailedException::isRetryable().
+     * Number of attempts before the job is considered permanently failed
+     * (translaGenius.retries.job_tries / TRANSLATION_JOB_TRIES, default 3),
+     * set at construction so it's captured in the queued payload. Transient
+     * failures (timeouts, rate limits, 5xx) use these up via backoff();
+     * non-retryable failures (bad config, 4xx other than 429, truncation)
+     * skip straight to failed() via TranslationFailedException::isRetryable().
      *
      * @var int
      */
     public $tries = 3;
 
     /**
-     * Delay (seconds) before each retry: a short initial wait, then a longer
-     * one. Translation-API failures are typically either resolved within
-     * seconds (a blip, a momentary rate limit) or not at all - there's little
-     * value in a long backoff window for a job most consuming apps expect to
-     * resolve quickly after a create/update.
+     * Delay (seconds) before each retry, from translaGenius.retries.job_backoff
+     * (TRANSLATION_JOB_BACKOFF, comma-separated; default "10,30"): a short
+     * initial wait, then a longer one. Translation-API failures are typically
+     * either resolved within seconds or not at all. A 429 with a long
+     * Retry-After overrides this for that attempt - see handle().
      *
      * @return array<int, int>
      */
     public function backoff(): array
     {
-        return [10, 30];
+        $configured = config('translaGenius.retries.job_backoff', '10,30');
+        $values = is_array($configured) ? $configured : explode(',', (string) $configured);
+
+        $delays = array_values(array_map(
+            'intval',
+            array_filter(array_map('trim', $values), fn ($value) => $value !== '')
+        ));
+
+        return $delays === [] ? [10, 30] : $delays;
     }
 
     /**
@@ -89,6 +98,10 @@ class TranslateFields implements ShouldQueue
     {
         $this->model = $model;
         $this->fields = $fields;
+        $this->tries = max(1, \CodingPartners\TranslaGenius\TranslaGeniusServiceProvider::intSetting(
+            config('translaGenius.retries.job_tries'),
+            3
+        ));
     }
 
     /**
@@ -135,6 +148,21 @@ class TranslateFields implements ShouldQueue
                 ]);
 
                 $this->fail($e);
+
+                return;
+            }
+
+            // The provider asked for a specific wait (429 Retry-After longer
+            // than it would sleep in-request): release with that delay instead
+            // of the generic backoff. Only on a real queue (the sync driver
+            // can't delay) and only while attempts remain, so the last
+            // attempt still fails through failed() and fires TranslationFailed.
+            if ($e->getRetryAfter() !== null
+                && $this->job !== null
+                && !$this->job instanceof \Illuminate\Queue\Jobs\SyncJob
+                && $this->attempts() < $this->tries
+            ) {
+                $this->release($e->getRetryAfter());
 
                 return;
             }

@@ -26,13 +26,16 @@ class TranslationFailedException extends RuntimeException
      *        immediately. Defaults to true (the safer default when a caller
      *        constructs this without specifying).
      * @param \Throwable|null $previous The original exception this wraps, if any.
+     * @param int|null $retryAfter Seconds the provider asked us to wait before
+     *        retrying (its Retry-After header), if it sent one.
      */
     public function __construct(
         string $message,
         protected readonly ?int $statusCode = null,
         protected readonly ?string $responseSnippet = null,
         protected readonly bool $retryable = true,
-        ?Throwable $previous = null
+        ?Throwable $previous = null,
+        protected readonly ?int $retryAfter = null,
     ) {
         parent::__construct($message, 0, $previous);
     }
@@ -67,5 +70,16 @@ class TranslationFailedException extends RuntimeException
     public function isRetryable(): bool
     {
         return $this->retryable;
+    }
+
+    /**
+     * Seconds the provider asked to wait before retrying (from Retry-After),
+     * if it said. TranslateFields uses this as the queue release delay.
+     *
+     * @return int|null
+     */
+    public function getRetryAfter(): ?int
+    {
+        return $this->retryAfter;
     }
 }

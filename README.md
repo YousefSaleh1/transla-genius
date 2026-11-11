@@ -81,6 +81,22 @@ GEMINI_API_KEY=your-gemini-key
 
 The first provider to succeed wins; later ones aren't called. Names are trimmed and empty items ignored, and the chain needs at least 2 entries. A missing chain, a chain that references itself, or an unknown name fails at resolution time with an error naming the problem. See [Provider Fallback / Chaining](#provider-fallback--chaining) for how failures are handled.
 
+### Retries and Rate Limits
+
+Failed calls are retried in two layers, each configurable from `.env`:
+
+| Variable | Default | What it does |
+|---|---|---|
+| `TRANSLATION_HTTP_RETRIES` | `1` | Quick in-request retries (200ms-1s apart) for connection errors, 429 and 5xx. |
+| `TRANSLATION_HTTP_RETRY_AFTER_MAX` | `10` | A 429 whose `Retry-After` is at most this many seconds is waited out in-request. A longer one ends the attempt, and the queued job is released for exactly that delay. |
+| `TRANSLATION_FALLBACK_HTTP_RETRIES` | `0` | HTTP retries for providers inside a fallback chain. The next provider is the retry, so failover isn't delayed. |
+| `TRANSLATION_JOB_TRIES` | `3` | Queue attempts for the translation job. |
+| `TRANSLATION_JOB_BACKOFF` | `10,30` | Seconds between queue attempts (comma-separated). |
+
+4xx responses other than 429 (bad key, bad request, unknown model) are never retried at any layer: the job fails on the first response. So does a truncated translation (see `TRANSLATION_MAX_TOKENS`).
+
+**Worst case** for one field and locale is `(TRANSLATION_HTTP_RETRIES + 1) x TRANSLATION_JOB_TRIES` requests: **6** with the defaults, for a provider that keeps returning 5xx. In a fallback chain, each job attempt sends one request per chain member, so a two-provider chain is at most `2 x TRANSLATION_JOB_TRIES` = 6 as well. Because a job translates all of a model's missing field/locale pairs before saving any of them, a retried job attempt repeats the pairs that had already succeeded in that attempt.
+
 ### Any Other OpenAI-Compatible Endpoint
 
 The `custom` preset covers any service or self-hosted gateway that speaks the OpenAI chat-completions format (Ollama, vLLM, LiteLLM, a corporate proxy, ...). Set the **full** chat-completions URL:
