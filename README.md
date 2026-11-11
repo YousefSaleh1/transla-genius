@@ -542,7 +542,7 @@ A request that was billed but produced no saved translation still gets a row, ma
 | `truncated` | The reply stopped at the output limit. A cut-off batch is then retried one language at a time, and those requests get their own rows. |
 | `unusable` | Nothing could be taken from the reply: a batch that wasn't valid JSON or had no valid language, or an empty single reply. |
 | `failed` | An error response that still reported usage. |
-| `discarded` | A valid translation that wasn't saved, because the source changed again meanwhile, or, on a re-translation, that language was edited by hand. |
+| `discarded` | A valid translation that wasn't saved: the source changed while it was being made, the language was filled or edited by someone else meanwhile, or the record was deleted. No `TranslationCompleted` fires for it. |
 | `unsaved` | A valid translation whose save failed, for example a database error. The error still fails the job. |
 
 </details>

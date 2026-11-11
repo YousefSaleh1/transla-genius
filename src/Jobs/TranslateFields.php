@@ -491,8 +491,9 @@ class TranslateFields implements ShouldQueue, TranslationJob
      * For a re-translation ($snapshot), the write only lands if the stored
      * source still matches and the stored target still holds its stale value
      * (TranslationWriter::applyRetranslation()). Returns true when saved; null
-     * when this target changed since the plan (already re-translated by an
-     * earlier attempt, or edited by hand) and was left alone; false when the
+     * when this target changed meanwhile (filled by someone else, already
+     * re-translated by an earlier attempt, or edited by hand) and was left
+     * alone; false when the
      * source changed again, so the rest of the field is abandoned. A result
      * that was billed but not saved is reported (see reportUnused()), and so
      * is one whose save throws - the exception then propagates as before.
@@ -535,9 +536,6 @@ class TranslateFields implements ShouldQueue, TranslationJob
                     $result->text,
                     ['locale' => $sourceLocale, 'text' => (string) $sourceText],
                 );
-                if ($outcome === TranslationWriter::TARGET_CHANGED) {
-                    $outcome = TranslationWriter::WRITTEN;
-                }
             } else {
                 $outcome = $writer->applyRetranslation(
                     $this->model,
@@ -560,7 +558,7 @@ class TranslateFields implements ShouldQueue, TranslationJob
             $this->reportUnused($result, TranslationRequestBilled::DISCARDED, $field, $sourceLocale, $targetLocale);
 
             if ($outcome === TranslationWriter::TARGET_CHANGED) {
-                Log::info('Keeping a target that changed since the source edit (already re-translated, or edited by hand)', [
+                Log::info('TranslateFields: keeping a target that changed while it was being translated (filled concurrently, already re-translated, or edited by hand)', [
                     'model_class' => get_class($this->model),
                     'model_id' => $this->model->getKey(),
                     'field' => $field,

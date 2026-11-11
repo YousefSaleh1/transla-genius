@@ -5,6 +5,7 @@ namespace CodingPartners\TranslaGenius\Tests\Feature;
 use CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface;
 use CodingPartners\TranslaGenius\Contracts\TranslatorInterface;
 use CodingPartners\TranslaGenius\DTOs\TranslationJobPayload;
+use CodingPartners\TranslaGenius\Events\TranslationCompleted;
 use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
 use CodingPartners\TranslaGenius\Jobs\TranslateFields;
 use CodingPartners\TranslaGenius\Models\TranslationUsageLog;
@@ -19,6 +20,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
@@ -375,5 +377,50 @@ class BilledUsageTest extends Orchestra
         $this->assertLogMatchesBilling();
         $this->assertSame(['unsaved primary es'], $this->unusedRows());
         $this->assertSame(1, TranslationUsageLog::where('outcome', 'translated')->count());
+    }
+
+    /**
+     * A pair filled by someone else while its request was in flight: nothing
+     * is written for it, so it is billed as discarded and not announced.
+     */
+    public function test_a_pair_filled_while_its_request_was_in_flight()
+    {
+        $completed = [];
+        Event::listen(TranslationCompleted::class, function (TranslationCompleted $e) use (&$completed) {
+            $completed[] = $e->targetLocale;
+        });
+        $this->behaviour['primary.test'] = function (Request $r, bool $isBatch) {
+            if (str_contains($r['messages'][0]['content'], ' to es.')) {
+                DB::table('test_translatable_models')->update(['name' => json_encode(['en' => 'Hello', 'es' => 'Hola (by hand)'])]);
+            }
+
+            return [];
+        };
+
+        $this->runJob()->assertNotFailed();
+
+        $this->assertCount(3, $this->billed);
+        $this->assertLogMatchesBilling();
+        $this->assertSame(['discarded primary es'], $this->unusedRows());
+        $this->assertSame(2, TranslationUsageLog::where('outcome', 'translated')->count());
+        $this->assertSame(['ar', 'fr'], $completed);
+        $this->assertSame('Hola (by hand)', TestTranslatableModel::first()->getTranslation('name', 'es', false));
+    }
+
+    /** The record was deleted while a request was in flight: billed as discarded, the rest not requested. */
+    public function test_a_record_deleted_while_a_request_was_in_flight()
+    {
+        $this->behaviour['primary.test'] = function () {
+            DB::table('test_translatable_models')->delete();
+
+            return [];
+        };
+
+        $this->runJob()->assertNotFailed();
+
+        $this->assertCount(1, $this->billed);
+        $this->assertLogMatchesBilling();
+        $this->assertSame(['discarded primary ar'], $this->unusedRows());
+        $this->assertSame(0, TranslationUsageLog::where('outcome', 'translated')->count());
     }
 }
