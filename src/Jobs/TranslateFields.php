@@ -293,12 +293,25 @@ class TranslateFields implements ShouldQueue
             $sourceText = $fieldTranslations[$currentLocale] ?? null;
 
             if (!is_string($sourceText) || trim($sourceText) === '') {
-                Log::warning('TranslateFields: no source text to translate from; skipping the field', [
-                    'model_class' => get_class($this->model),
-                    'model_id' => $this->model->getKey(),
-                    'field' => $field,
-                    'source_locale' => $currentLocale,
-                ]);
+                // Empty everywhere: a legitimately empty field (an optional
+                // description, say) - nothing to do, nothing to report. Text in
+                // another locale but not the source one is what signals a wrong
+                // source locale, so only that is worth a warning.
+                $textElsewhere = array_keys(array_filter(
+                    $fieldTranslations,
+                    fn ($value, $locale) => $locale !== $currentLocale && is_string($value) && trim($value) !== '',
+                    ARRAY_FILTER_USE_BOTH
+                ));
+
+                if ($textElsewhere !== []) {
+                    Log::warning('TranslateFields: no source text to translate from, but the field has text in another locale; skipping the field (is the source locale right?)', [
+                        'model_class' => get_class($this->model),
+                        'model_id' => $this->model->getKey(),
+                        'field' => $field,
+                        'source_locale' => $currentLocale,
+                        'locales_with_text' => $textElsewhere,
+                    ]);
+                }
 
                 continue;
             }

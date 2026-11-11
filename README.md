@@ -55,7 +55,7 @@ Translations are made *from* one language, the source, into every other language
 TRANSLATION_SOURCE_LOCALE=ar
 ```
 
-Set `TRANSLATION_SOURCE_LOCALE` if your content is always authored in one language: it then wins over the request locale. Leave it empty if people author in the language they're browsing in. If a field has no text in the source language, it isn't translated, and a warning names the model, id, field and locale. That usually means the content was saved under a different locale than you expected.
+Set `TRANSLATION_SOURCE_LOCALE` if your content is always authored in one language: it then wins over the request locale. Leave it empty if people author in the language they're browsing in. If a field has no text in the source language, it isn't translated. If it does have text in another language, a warning names the model, id, field and source locale, because that usually means the content was saved under a different locale than you expected. A field that's empty in every language (an optional description, say) is skipped silently.
 
 ### Choosing a Provider
 

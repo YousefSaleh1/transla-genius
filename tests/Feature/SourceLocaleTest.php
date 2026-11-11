@@ -176,12 +176,12 @@ class SourceLocaleTest extends TestCase
             ->assertSuccessful();
     }
 
-    public function test_an_empty_source_text_is_skipped_with_a_warning()
+    public function test_an_empty_source_text_with_text_in_another_locale_is_skipped_with_a_warning()
     {
         Log::spy();
         $model = TestTranslatableModel::withoutEvents(fn () => TestTranslatableModel::create([
             'name' => ['ar' => 'مرحبا'],
-            'description' => ['ar' => '   '],
+            'description' => ['ar' => '   ', 'en' => 'Written in English by mistake'],
         ]));
 
         (new TranslateFields($model, ['name', 'description'], [], 'ar'))
@@ -193,7 +193,24 @@ class SourceLocaleTest extends TestCase
             && $context['model_class'] === TestTranslatableModel::class
             && $context['model_id'] === $model->id
             && $context['field'] === 'description'
-            && $context['source_locale'] === 'ar');
+            && $context['source_locale'] === 'ar'
+            && $context['locales_with_text'] === ['en']);
+    }
+
+    public function test_a_field_empty_in_every_locale_is_skipped_silently()
+    {
+        Log::spy();
+        $model = TestTranslatableModel::withoutEvents(fn () => TestTranslatableModel::create([
+            'name' => ['ar' => 'مرحبا'],
+            'description' => ['ar' => ''],
+        ]));
+
+        (new TranslateFields($model, ['name', 'description'], [], 'ar'))
+            ->handle($this->app->make(TranslatorInterface::class), new TranslationWriter());
+
+        sort($this->requests);
+        $this->assertSame(['ar->en مرحبا', 'ar->es مرحبا'], $this->requests);
+        Log::shouldNotHaveReceived('warning');
     }
 
     /**
