@@ -429,6 +429,7 @@ class TranslationCacheTest extends TestCase
     {
         (include __DIR__ . '/../../src/database/migrations/create_translation_usage_logs_table.php.stub')->up();
         Event::listen(TranslationCompleted::class, LogTranslationUsage::class);
+        Event::listen(\CodingPartners\TranslaGenius\Events\TranslationRequestBilled::class, [LogTranslationUsage::class, 'handleBilled']);
         config([
             'translaGenius.providers.openrouter.cost_per_1k_prompt_tokens' => 1.0,
             'translaGenius.providers.openrouter.cost_per_1k_completion_tokens' => 2.0,

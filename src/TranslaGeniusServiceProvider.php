@@ -382,5 +382,9 @@ class TranslaGeniusServiceProvider extends ServiceProvider
         }
 
         $this->app['events']->listen(TranslationCompleted::class, LogTranslationUsage::class);
+        $this->app['events']->listen(
+            \CodingPartners\TranslaGenius\Events\TranslationRequestBilled::class,
+            [LogTranslationUsage::class, 'handleBilled']
+        );
     }
 }

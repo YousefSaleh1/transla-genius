@@ -471,6 +471,7 @@ class BatchTranslationTest extends TestCase
     {
         (include __DIR__ . '/../../src/database/migrations/create_translation_usage_logs_table.php.stub')->up();
         Event::listen(TranslationCompleted::class, LogTranslationUsage::class);
+        Event::listen(\CodingPartners\TranslaGenius\Events\TranslationRequestBilled::class, [LogTranslationUsage::class, 'handleBilled']);
         config([
             'translaGenius.providers.openrouter.cost_per_1k_prompt_tokens' => 1.0,
             'translaGenius.providers.openrouter.cost_per_1k_completion_tokens' => 2.0,
@@ -490,6 +491,9 @@ class BatchTranslationTest extends TestCase
             'billed_cost' => number_format($prompt / 1000 * 1.0 + $completion / 1000 * 2.0, 6, '.', ''),
             'logged_cost' => number_format((float) TranslationUsageLog::sum('estimated_cost'), 6, '.', ''),
             'rows' => TranslationUsageLog::count(),
+            'translated_rows' => TranslationUsageLog::where('outcome', 'translated')->count(),
+            'outcomes' => TranslationUsageLog::where('outcome', '!=', 'translated')->orderBy('id')
+                ->get(['outcome', 'field', 'target_locale'])->map(fn ($r) => "{$r->outcome} {$r->field} {$r->target_locale}")->all(),
         ];
 
         Schema::dropIfExists('translation_usage_logs');
@@ -502,7 +506,7 @@ class BatchTranslationTest extends TestCase
         $this->assertSame($usage['billed_prompt'], $usage['logged_prompt']);
         $this->assertSame($usage['billed_completion'], $usage['logged_completion']);
         $this->assertSame($usage['billed_cost'], $usage['logged_cost']);
-        $this->assertSame(6, $usage['rows']);
+        $this->assertSame(6, $usage['translated_rows']);
     }
 
     public function test_usage_totals_match_billing_batched()
@@ -524,6 +528,8 @@ class BatchTranslationTest extends TestCase
 
         $this->assertUsageMatchesBilling($usage);
         $this->assertCount(5, $this->requests); // name: batch + 3 single; description: batch
+        $this->assertSame(['truncated name ar,es,fr'], $usage['outcomes']);
+        $this->assertSame(7, $usage['rows']);
     }
 
     public function test_usage_totals_match_billing_with_a_partial_and_an_unparseable_batch()
@@ -536,6 +542,9 @@ class BatchTranslationTest extends TestCase
 
         $this->assertUsageMatchesBilling($usage);
         $this->assertCount(7, $this->requests); // 2 batch + 2 (name) + 3 (description) single
+        // The partial name batch is a normal translated request (its tokens
+        // are on the "fr" row); the unparseable description batch gets its own row.
+        $this->assertSame(['unusable description ar,es,fr'], $usage['outcomes']);
     }
 
     // --- prompt and request shape ------------------------------------------

@@ -3,6 +3,7 @@
 namespace CodingPartners\TranslaGenius\Listeners;
 
 use CodingPartners\TranslaGenius\Events\TranslationCompleted;
+use CodingPartners\TranslaGenius\Events\TranslationRequestBilled;
 use CodingPartners\TranslaGenius\Models\TranslationUsageLog;
 
 /**
@@ -49,27 +50,52 @@ class LogTranslationUsage
             'target_locale' => $event->targetLocale,
             'prompt_tokens' => $event->result->promptTokens,
             'completion_tokens' => $event->result->completionTokens,
-            'estimated_cost' => $this->estimateCost($event),
+            'estimated_cost' => $this->estimateCost($event->result->provider, $event->result->promptTokens, $event->result->completionTokens),
             'request_id' => $event->result->requestId,
             'cached' => $event->result->cached,
+            'outcome' => TranslationUsageLog::OUTCOME_TRANSLATED,
         ]);
     }
 
     /**
-     * Compute an estimated cost from the cost_per_1k_prompt_tokens /
-     * cost_per_1k_completion_tokens rates on translaGenius.providers.{provider},
-     * where {provider} is $event->result->provider - the config key the
-     * provider was resolved under. Returns null - never 0 - whenever a definitive number can't
-     * be computed: no provider reported, no rate configured for it, or a
-     * rate is configured for a token count the provider didn't report.
+     * One row for a billed request that didn't produce a saved translation
+     * (truncated, unusable, failed, discarded), so summed usage covers every
+     * billed request. A batch request's row lists its locales comma-separated
+     * in target_locale.
      *
-     * @param TranslationCompleted $event
+     * @param TranslationRequestBilled $event
+     * @return void
+     */
+    public function handleBilled(TranslationRequestBilled $event): void
+    {
+        TranslationUsageLog::create([
+            'provider' => $event->provider,
+            'model_class' => $event->modelClass,
+            'model_id' => $event->modelId === null ? null : (string) $event->modelId,
+            'field' => $event->field,
+            'source_locale' => $event->sourceLocale,
+            'target_locale' => implode(',', $event->targetLocales),
+            'prompt_tokens' => $event->promptTokens,
+            'completion_tokens' => $event->completionTokens,
+            'estimated_cost' => $this->estimateCost($event->provider, $event->promptTokens, $event->completionTokens),
+            'request_id' => $event->requestId,
+            'cached' => false,
+            'outcome' => $event->outcome,
+        ]);
+    }
+
+    /**
+     * Estimated cost from the cost_per_1k_prompt_tokens /
+     * cost_per_1k_completion_tokens rates on translaGenius.providers.{provider}
+     * - the config key the provider was resolved under. Returns null - never
+     * 0 - whenever a definitive number can't be computed: no provider
+     * reported, no rate configured for it, or a rate is configured for a
+     * token count the provider didn't report.
+     *
      * @return string|null Decimal string with 6 fractional digits, or null.
      */
-    protected function estimateCost(TranslationCompleted $event): ?string
+    protected function estimateCost(?string $provider, ?int $promptTokens, ?int $completionTokens): ?string
     {
-        $provider = $event->result->provider;
-
         if ($provider === null) {
             return null;
         }
@@ -84,22 +110,22 @@ class LogTranslationUsage
             return null;
         }
 
-        if ($promptRate !== null && $event->result->promptTokens === null) {
+        if ($promptRate !== null && $promptTokens === null) {
             return null;
         }
 
-        if ($completionRate !== null && $event->result->completionTokens === null) {
+        if ($completionRate !== null && $completionTokens === null) {
             return null;
         }
 
         $cost = 0.0;
 
         if ($promptRate !== null) {
-            $cost += ($event->result->promptTokens / 1000) * (float) $promptRate;
+            $cost += ($promptTokens / 1000) * (float) $promptRate;
         }
 
         if ($completionRate !== null) {
-            $cost += ($event->result->completionTokens / 1000) * (float) $completionRate;
+            $cost += ($completionTokens / 1000) * (float) $completionRate;
         }
 
         return number_format($cost, 6, '.', '');

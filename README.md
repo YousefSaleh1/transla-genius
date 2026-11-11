@@ -569,11 +569,31 @@ TranslationUsageLog::selectRaw('provider, sum(prompt_tokens) as prompt, sum(comp
     ->get();
 ```
 
-With batching, one request translates several languages and yields several rows. They share a `request_id`, and the request's tokens and cost are stored on exactly one of them (the first pair it completed); the others have null tokens and cost, so a plain `SUM()` equals what the provider billed. If a batch reply couldn't be used at all, its billed tokens are added to the field's first row from the one-language requests that followed. Every row has a `request_id`, so `groupBy('request_id')` gives per-request totals.
+With batching, one request translates several languages and yields several rows. They share a `request_id`, and the request's tokens and cost are stored on exactly one of them (the first pair it completed); the others have null tokens and cost, so a plain `SUM()` equals what the provider billed. Every row has a `request_id`, so `groupBy('request_id')` gives per-request totals.
 
 Translation-cache hits are logged too, as rows with `cached = true` and null tokens and cost: nothing was billed for them. Sums still equal what the provider billed, and the share of cached rows is your hit rate.
 
-Only successful translations (`TranslationCompleted`) are logged - not `TranslationFailed`. This feature is scoped to usage/cost, and a failed attempt has no token counts or cost to report; if you also want failure-rate visibility, listen to `TranslationFailed` yourself (see "Lifecycle Events" above) rather than expecting it in this table.
+**Every billed request is logged, including ones that didn't produce a translation.** A provider response that reports token usage is billed whether or not its output could be used, so those requests get a row too, marked by `outcome`:
+
+| `outcome` | Meaning |
+|---|---|
+| `translated` | A saved translation (one row per field/language; cache hits included, with `cached = true`). |
+| `truncated` | The reply stopped at the output token limit, single or batch. A truncated batch is then retried one language at a time; those requests get their own `translated` rows. |
+| `unusable` | A reply nothing could be taken from: a batch that wasn't valid JSON (or had no valid language), or an empty single reply. |
+| `failed` | An error response that still reported usage. |
+| `discarded` | A valid translation that wasn't saved, because the source text changed again while it was being made. |
+
+These rows carry the request's tokens and cost (costed with the rates of the provider that served it, which matters in a fallback chain) and its `request_id`. A batch request lists its languages comma-separated in `target_locale`. Each billed request is counted exactly once, so `SUM()` over the table equals what your providers billed, and `->where('outcome', 'translated')` isolates the spend that produced translations:
+
+```php
+// Spend that produced nothing usable, per provider.
+TranslationUsageLog::where('outcome', '!=', 'translated')
+    ->selectRaw('provider, outcome, SUM(estimated_cost) as cost')
+    ->groupBy('provider', 'outcome')
+    ->get();
+```
+
+Failures that weren't billed (connection errors, a 5xx without usage) have no row; for failure-rate visibility, listen to `TranslationFailed` (see "Lifecycle Events" above). Billed-but-unused requests are also dispatched as `Events\TranslationRequestBilled`, if you want to react to wasted spend yourself.
 
 ## Other Extension Points
 

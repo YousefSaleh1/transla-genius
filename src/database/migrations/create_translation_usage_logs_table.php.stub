@@ -37,11 +37,17 @@ return new class extends Migration
             // Served from the translation cache: no request, so no tokens or
             // cost. Keeps the hit rate visible without inflating SUM()s.
             $table->boolean('cached')->default(false);
+            // translated: a saved translation (cache hits included).
+            // truncated | unusable | failed | discarded: a billed request
+            // whose output wasn't saved - its tokens and cost are on this row,
+            // and target_locale lists its locale(s) comma-separated.
+            $table->string('outcome', 20)->default('translated');
             $table->timestamps();
 
             $table->index(['model_class', 'model_id']);
             $table->index('provider');
             $table->index('request_id');
+            $table->index('outcome');
         });
     }
 

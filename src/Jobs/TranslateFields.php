@@ -7,6 +7,7 @@ use CodingPartners\TranslaGenius\Contracts\TranslatorInterface;
 use CodingPartners\TranslaGenius\DTOs\TranslationResult;
 use CodingPartners\TranslaGenius\Events\TranslationCompleted;
 use CodingPartners\TranslaGenius\Events\TranslationFailed as TranslationFailedEvent;
+use CodingPartners\TranslaGenius\Events\TranslationRequestBilled;
 use CodingPartners\TranslaGenius\Events\TranslationStarted;
 use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
 use CodingPartners\TranslaGenius\Services\TranslationWriter;
@@ -346,9 +347,9 @@ class TranslateFields implements ShouldQueue
      *
      * Token accounting stays exact (see TranslationBatchResult::resultFor()):
      * a batch's token counts are carried by the first pair it completes and
-     * the batch's other pairs get null. If the batch reply yielded nothing
-     * usable, its billed tokens are added to this field's first pair that a
-     * one-at-a-time request completes instead, so they're never lost.
+     * the batch's other pairs get null. A billed reply that produced nothing
+     * usable (truncated, unparseable) is logged by the provider itself via
+     * TranslationRequestBilled, and its result carries no tokens.
      *
      * @param TranslatorInterface $translator
      * @param TranslationWriter $writer
@@ -373,7 +374,6 @@ class TranslateFields implements ShouldQueue
     ): int {
         $saved = 0;
         $started = [];
-        $unusedBatchTokens = null;
 
         if (count($missing) > 1 && $translator instanceof BatchTranslatorInterface && $translator->canBatch()) {
             foreach ($missing as $locale) {
@@ -401,10 +401,6 @@ class TranslateFields implements ShouldQueue
                 $saved++;
             }
 
-            if (!$tokensAttributed && $batch->hasTokens()) {
-                $unusedBatchTokens = [$batch->promptTokens, $batch->completionTokens];
-            }
-
             $missing = array_values(array_filter($missing, fn ($locale) => !isset($batch->translations[$locale])));
         }
 
@@ -414,11 +410,6 @@ class TranslateFields implements ShouldQueue
             }
 
             $result = $translator->translate($sourceText, $currentLocale, $locale, $field, $this->modelContextName());
-
-            if ($unusedBatchTokens !== null) {
-                $result = $this->withAddedTokens($result, ...$unusedBatchTokens);
-                $unusedBatchTokens = null;
-            }
 
             if (!$this->savePair($writer, $field, $currentLocale, $locale, $result, $snapshot)) {
                 return $saved;
@@ -450,6 +441,23 @@ class TranslateFields implements ShouldQueue
         );
 
         if ($snapshot !== null && $written === 0) {
+            // Billed, but not saved: report the request's tokens (carried by
+            // this pair's result, if any) so the usage log still has them.
+            if ($result->promptTokens !== null || $result->completionTokens !== null) {
+                TranslationRequestBilled::dispatch(
+                    TranslationRequestBilled::DISCARDED,
+                    $result->provider,
+                    $result->requestId,
+                    $result->promptTokens,
+                    $result->completionTokens,
+                    $sourceLocale,
+                    [$targetLocale],
+                    $field,
+                    get_class($this->model),
+                    $this->model->getKey(),
+                );
+            }
+
             return false;
         }
 
@@ -474,23 +482,6 @@ class TranslateFields implements ShouldQueue
             $sourceLocale,
             $targetLocale,
             $sourceText,
-        );
-    }
-
-    /**
-     * $result with extra token counts added (null + n = n; null + null = null).
-     */
-    protected function withAddedTokens(TranslationResult $result, ?int $promptTokens, ?int $completionTokens): TranslationResult
-    {
-        $add = fn (?int $a, ?int $b) => $a === null && $b === null ? null : (int) $a + (int) $b;
-
-        return new TranslationResult(
-            text: $result->text,
-            provider: $result->provider,
-            promptTokens: $add($result->promptTokens, $promptTokens),
-            completionTokens: $add($result->completionTokens, $completionTokens),
-            requestId: $result->requestId,
-            cached: $result->cached,
         );
     }
 

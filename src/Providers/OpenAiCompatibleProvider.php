@@ -7,6 +7,7 @@ use CodingPartners\TranslaGenius\DTOs\TranslationBatchRequest;
 use CodingPartners\TranslaGenius\DTOs\TranslationBatchResult;
 use CodingPartners\TranslaGenius\DTOs\TranslationRequest;
 use CodingPartners\TranslaGenius\DTOs\TranslationResult;
+use CodingPartners\TranslaGenius\Events\TranslationRequestBilled;
 use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
@@ -213,12 +214,19 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
         $this->assertConfigured();
 
         $requestId = (string) Str::uuid();
-        $response = $this->send($this->requestBody($this->renderPrompt($request), $request->text));
+        $billing = [$requestId, $request->sourceLocale, [$request->targetLocale], $request->field];
+        $response = $this->send($this->requestBody($this->renderPrompt($request), $request->text), $billing);
+
+        if ($response->json('choices.0.finish_reason') === 'length') {
+            $this->reportUnusedUsage($response, TranslationRequestBilled::TRUNCATED, ...$billing);
+        }
         $this->assertNotTruncated($response);
 
         $content = $response->json('choices.0.message.content');
 
         if (empty($content)) {
+            $this->reportUnusedUsage($response, TranslationRequestBilled::UNUSABLE, ...$billing);
+
             Log::warning('OpenAiCompatibleProvider: API returned empty or invalid content', [
                 'status' => $response->status(),
             ]);
@@ -279,21 +287,24 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
             $body['response_format'] = $this->responseFormat($request->targetLocales);
         }
 
-        $response = $this->send($body);
+        $billing = [$requestId, $request->sourceLocale, $request->targetLocales, $request->field];
+        $response = $this->send($body, $billing);
 
         // Unlike a single translation, a truncated batch isn't a failure: the
         // same locales requested one at a time produce much smaller replies.
+        // Its billed usage is logged here (TranslationRequestBilled), so the
+        // result carries no token counts.
         if ($response->json('choices.0.finish_reason') === 'length') {
             Log::warning('OpenAiCompatibleProvider: batch reply truncated at the output token limit; locales will be requested one at a time', [
                 'requested' => count($request->targetLocales),
                 'max_tokens' => $this->maxTokens,
             ]);
 
+            $this->reportUnusedUsage($response, TranslationRequestBilled::TRUNCATED, ...$billing);
+
             return new TranslationBatchResult(
                 translations: [],
                 provider: $this->name,
-                promptTokens: $response->json('usage.prompt_tokens'),
-                completionTokens: $response->json('usage.completion_tokens'),
                 requestId: $requestId,
                 truncated: true,
             );
@@ -318,12 +329,55 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
             ]);
         }
 
+        // Nothing usable: log the billed usage as such; the result then
+        // carries no tokens, so nothing downstream counts them again.
+        if ($translations === []) {
+            $this->reportUnusedUsage($response, TranslationRequestBilled::UNUSABLE, ...$billing);
+
+            return new TranslationBatchResult(translations: [], provider: $this->name, requestId: $requestId);
+        }
+
         return new TranslationBatchResult(
             translations: $translations,
             provider: $this->name,
             promptTokens: $response->json('usage.prompt_tokens'),
             completionTokens: $response->json('usage.completion_tokens'),
             requestId: $requestId,
+        );
+    }
+
+    /**
+     * Report a billed response whose output won't become a saved translation,
+     * so usage tracking logs it (see TranslationRequestBilled). Responses
+     * without a `usage` object weren't billed in a way we can see, and are
+     * not reported.
+     *
+     * @param array<int, string> $targetLocales
+     */
+    protected function reportUnusedUsage(
+        Response $response,
+        string $outcome,
+        string $requestId,
+        string $sourceLocale,
+        array $targetLocales,
+        ?string $field
+    ): void {
+        $prompt = $response->json('usage.prompt_tokens');
+        $completion = $response->json('usage.completion_tokens');
+
+        if ($prompt === null && $completion === null) {
+            return;
+        }
+
+        TranslationRequestBilled::dispatch(
+            $outcome,
+            $this->name,
+            $requestId,
+            is_numeric($prompt) ? (int) $prompt : null,
+            is_numeric($completion) ? (int) $completion : null,
+            $sourceLocale,
+            $targetLocales,
+            $field,
         );
     }
 
@@ -348,12 +402,15 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
      * seconds). Returns the first successful response.
      *
      * @param array<string, mixed> $body
+     * @param array{0: string, 1: string, 2: array<int, string>, 3: string|null} $billing
+     *        requestId, source locale, target locales, field - for reporting
+     *        an error response that was still billed.
      * @return Response
      *
      * @throws TranslationFailedException On a connection failure or an
      *         unsuccessful response once retries are used up.
      */
-    protected function send(array $body): Response
+    protected function send(array $body, array $billing): Response
     {
         $attempts = $this->httpRetries + 1;
 
@@ -385,6 +442,9 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
             if (!$response->failed()) {
                 return $response;
             }
+
+            // An error response that still reports usage was billed.
+            $this->reportUnusedUsage($response, TranslationRequestBilled::FAILED, ...$billing);
 
             $status = $response->status();
             $retryable = $this->isRetryableStatus($status);
