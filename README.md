@@ -40,6 +40,23 @@ The languages to translate between live in `supported_languages` (the first is t
 
 > **Upgrading from 3.x?** The config shape changed - see [CHANGELOG.md](CHANGELOG.md) for the migration notes.
 
+### Source Language
+
+Translations are made *from* one language, the source, into every other language in `supported_languages`. Which language is the source is decided once, **when the translation job is dispatched**, and travels with the job. It is never decided inside the queue worker, whose own locale (normally `config('app.locale')`) has nothing to do with the request that saved the record.
+
+| Where the job comes from | Source language |
+|---|---|
+| Creating or updating a record | `TRANSLATION_SOURCE_LOCALE` if set; otherwise the request's locale at save time (what the `SetLocale` middleware, or your own code, set with `app()->setLocale()`) |
+| `translagenius:backfill` (no request) | `--source=`; otherwise `TRANSLATION_SOURCE_LOCALE`; otherwise `app.locale`. The command prints the one it uses and names it in the confirmation prompt. |
+| A job queued by an older version (no source recorded) | `TRANSLATION_SOURCE_LOCALE`; otherwise `app.locale` as configured. Never the worker's current locale. |
+
+```env
+# Content is always written in Arabic, whatever locale the request is in:
+TRANSLATION_SOURCE_LOCALE=ar
+```
+
+Set `TRANSLATION_SOURCE_LOCALE` if your content is always authored in one language: it then wins over the request locale. Leave it empty if people author in the language they're browsing in. If a field has no text in the source language, it isn't translated, and a warning names the model, id, field and locale. That usually means the content was saved under a different locale than you expected.
+
 ### Choosing a Provider
 
 The package ships ready-made presets for common OpenAI-compatible services. Each one reads its own environment variables and defaults to the service's official endpoint.
@@ -694,6 +711,18 @@ After the request, the `name` and `description` fields will be automatically tra
 - Verify queue worker is running
 - Check API credentials
 - Confirm language codes match config
+
+#### Translations disappear after saving a model you loaded earlier:
+
+This is standard Eloquent behavior, not something the package does. A model instance holds its own copy of each translatable column. If you load it, the translation job then writes new translations to the database, and you change a translatable attribute on that **same old instance** and save it, Eloquent writes the instance's copy of the whole column and replaces the translations the job added. Call `$model->refresh()` (or load it fresh) before editing a record whose translations may have been written since you loaded it.
+
+It bites most often with the `sync` queue right after `create()`: the job runs and saves translations during `create()`, but the instance `create()` returned doesn't have them.
+
+```php
+$post = Post::create(['title' => ['en' => 'Hello']]); // sync queue: translations saved here
+$post->refresh();                                      // pick them up before editing
+$post->setTranslation('title', 'en', 'Hello again')->save();
+```
 
 #### Performance:
 
