@@ -276,7 +276,7 @@ class TranslateFields implements ShouldQueue, TranslationJob
             $saved = $this->translateMissingPairs($translator, $writer, $currentLocale, $targetLanguages);
 
             if ($saved > 0) {
-                Log::info('Translation completed successfully', [
+                Log::debug('Translation completed successfully', [
                     'model_id' => $this->model->getKey(),
                     'model_class' => get_class($this->model),
                     'translations_saved' => $saved,

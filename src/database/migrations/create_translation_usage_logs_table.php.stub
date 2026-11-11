@@ -48,6 +48,7 @@ return new class extends Migration
             $table->index('provider');
             $table->index('request_id');
             $table->index('outcome');
+            $table->index('created_at'); // spend reports by date
         });
     }
 

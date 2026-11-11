@@ -56,6 +56,9 @@ return new class extends Migration
 
             $table->index(['translatable_type', 'translatable_id', 'field', 'locale'], 'translation_reviews_owner_index');
             $table->index(['status', 'created_at']);
+            // pendingReview() and review queues: filter by type and status, join on the owner key.
+            // Named: the generated name is 66 characters, over MySQL's 64-character limit.
+            $table->index(['translatable_type', 'status', 'translatable_id'], 'translation_reviews_type_status_owner_index');
             $table->index('request_id');
         });
     }

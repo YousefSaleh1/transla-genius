@@ -98,6 +98,7 @@ A breaking architectural release: the translation backend is now swappable behin
 
 ### Changed
 
+- The per-request "translation successful" and per-job "Translation completed successfully" log lines are `debug` now (were `info`). Warnings and errors are unchanged. The review migration adds an index on `(translatable_type, status, translatable_id)` for `pendingReview()` and review queues, and the usage-log migration one on `created_at`.
 - The HTTP timeout default is now 60 seconds (was 10): replies of a few KB routinely take longer than 10. A request that timed out is logged as `failed` with null tokens, since the provider may have processed and billed it.
 - Translation jobs have a timeout, `TRANSLATION_JOB_TIMEOUT`, or by default their own worst case (HTTP timeout x HTTP attempts per pair x pairs, 120 to 900 seconds). The queue connection's `retry_after` must be longer.
 - Only one translation job runs per record at a time. Another job for that record is re-queued as a fresh copy after 10 seconds (it never uses up an attempt and is never dropped), so a create followed by a quick edit, or a redelivery, no longer pays for the same pairs twice. It needs a cache store with locks.

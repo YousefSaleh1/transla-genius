@@ -251,7 +251,7 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
             );
         }
 
-        Log::info('OpenAiCompatibleProvider: translation successful');
+        Log::debug('OpenAiCompatibleProvider: translation successful');
 
         return new TranslationResult(
             text: $content,
