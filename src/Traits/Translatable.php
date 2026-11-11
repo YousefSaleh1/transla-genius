@@ -36,8 +36,10 @@ trait Translatable
 
         static::updated(function ($model) {
             $translatableFields = $model->getTranslatableAttributes();
-            if (!empty($translatableFields) && static::hasSourceLocaleChanged($model, $translatableFields)) {
-                TranslationJobDispatcher::dispatch(static::translationJobClass(), $model, $translatableFields);
+            $retranslate = empty($translatableFields) ? [] : static::staleTranslationPlan($model, $translatableFields);
+
+            if ($retranslate !== []) {
+                TranslationJobDispatcher::dispatch(static::translationJobClass(), $model, $translatableFields, $retranslate);
             }
         });
     }
@@ -91,6 +93,52 @@ trait Translatable
      * @param array<int, string> $translatableFields
      * @return bool
      */
+    /**
+     * For each translatable field whose current-locale (source) text changed
+     * in this save, what the job must re-translate: the source locale, the
+     * new source text as a snapshot, and the target locales this same save
+     * changed itself (`keep`). Those were provided by the app or user along
+     * with the new source, so they are kept; every other target locale is now
+     * stale and gets re-translated and overwritten. Fields whose source didn't
+     * change aren't in the plan.
+     *
+     * @param \Illuminate\Database\Eloquent\Model $model
+     * @param array<int, string> $translatableFields
+     * @return array<string, array{locale: string, text: string, keep: array<int, string>}>
+     */
+    protected static function staleTranslationPlan($model, array $translatableFields): array
+    {
+        $sourceLocale = get_current_locale();
+        $plan = [];
+
+        foreach ($translatableFields as $field) {
+            if (!$model->isDirty($field)) {
+                continue;
+            }
+
+            $originalJson = $model->getRawOriginal($field);
+            $original = is_string($originalJson) ? json_decode($originalJson, true) : [];
+            $original = is_array($original) ? $original : [];
+            $current = $model->getTranslations($field);
+            $newSource = $current[$sourceLocale] ?? null;
+
+            if (!is_string($newSource) || $newSource === '' || ($original[$sourceLocale] ?? null) === $newSource) {
+                continue;
+            }
+
+            $keep = [];
+            foreach (array_unique(array_merge(array_keys($original), array_keys($current))) as $locale) {
+                if ($locale !== $sourceLocale && ($original[$locale] ?? null) !== ($current[$locale] ?? null)) {
+                    $keep[] = $locale;
+                }
+            }
+
+            $plan[$field] = ['locale' => $sourceLocale, 'text' => $newSource, 'keep' => $keep];
+        }
+
+        return $plan;
+    }
+
     protected static function hasSourceLocaleChanged($model, array $translatableFields): bool
     {
         $currentLocale = get_current_locale();

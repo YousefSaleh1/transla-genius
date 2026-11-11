@@ -23,14 +23,17 @@ final class TranslationJobDispatcher
     private static array $warned = [];
 
     /**
-     * @param class-string $jobClass A job constructed as new $jobClass($model, $fields).
+     * @param class-string $jobClass A job constructed as new $jobClass($model, $fields),
+     *        plus $retranslate as a third argument when it isn't empty.
      * @param Model $model
      * @param array<int, string> $fields
+     * @param array<string, array{locale: string, text: string, keep: array<int, string>}> $retranslate
+     *        Fields whose source text changed in this save - see Translatable.
      * @return void
      */
-    public static function dispatch(string $jobClass, Model $model, array $fields): void
+    public static function dispatch(string $jobClass, Model $model, array $fields, array $retranslate = []): void
     {
-        $job = new $jobClass($model, $fields);
+        $job = $retranslate === [] ? new $jobClass($model, $fields) : new $jobClass($model, $fields, $retranslate);
         $settings = (array) config('translaGenius.queue', []);
 
         $connection = $settings['connection'] ?? null;

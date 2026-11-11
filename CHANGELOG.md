@@ -62,6 +62,7 @@ A breaking architectural release: the translation backend is now swappable behin
 
 ### Fixed
 
+- Editing a field's source-language text now updates its translations again. Since the per-locale "fill only what's missing" change, an update dispatched a job that found every locale already filled and did nothing, so the old translations stayed forever. A source change now re-translates and overwrites that field's other locales, except any target locale set in the same save, which is kept as provided. Each job carries a snapshot of the source it translates and only writes if the stored source still matches, so an older job can't overwrite a newer edit's translations. Creating records and `translagenius:backfill` still never overwrite.
 - A custom job class without `Queueable` silently ignored `TRANSLATION_QUEUE_CONNECTION` / `TRANSLATION_QUEUE`; one warning naming the class is now logged per class per process.
 - A retried translation job no longer re-translates (and re-bills) the field/locale pairs that had already succeeded: each pair is now saved as soon as it is translated. A partly translated record is reported by `notFullyTranslated()` while the job is in flight or after it fails.
 - Translation jobs dispatched inside a database transaction no longer run before the commit (where `SerializesModels` couldn't find the row) or after a rollback, by default.

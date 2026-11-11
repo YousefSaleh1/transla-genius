@@ -58,6 +58,17 @@ class TranslateFields implements ShouldQueue
     protected array $fields;
 
     /**
+     * Fields whose source text changed in the save that dispatched this job:
+     * field => [locale (source locale), text (the new source, as a
+     * snapshot), keep (target locales that save set itself)]. Their other
+     * target locales are re-translated and overwritten - see
+     * Translatable::staleTranslationPlan() and TranslationWriter::apply().
+     *
+     * @var array<string, array{locale: string, text: string, keep: array<int, string>}>
+     */
+    protected array $retranslate;
+
+    /**
      * Number of attempts before the job is considered permanently failed
      * (translaGenius.retries.job_tries / TRANSLATION_JOB_TRIES, default 3),
      * set at construction so it's captured in the queued payload. Transient
@@ -96,11 +107,14 @@ class TranslateFields implements ShouldQueue
      *
      * @param Model&\CodingPartners\TranslaGenius\Contracts\HasTranslatableAttributes $model
      * @param array<int, string> $fields
+     * @param array<string, array{locale: string, text: string, keep: array<int, string>}> $retranslate
+     *        Re-translation plan for fields whose source changed (see $retranslate).
      */
-    public function __construct(Model $model, array $fields)
+    public function __construct(Model $model, array $fields, array $retranslate = [])
     {
         $this->model = $model;
         $this->fields = $fields;
+        $this->retranslate = $retranslate;
         $this->tries = max(1, \CodingPartners\TranslaGenius\TranslaGeniusServiceProvider::intSetting(
             config('translaGenius.retries.job_tries'),
             3
@@ -254,6 +268,12 @@ class TranslateFields implements ShouldQueue
         $saved = 0;
 
         foreach ($this->fields as $field) {
+            if (isset($this->retranslate[$field])) {
+                $saved += $this->retranslateField($translator, $writer, $field, $this->retranslate[$field]);
+
+                continue;
+            }
+
             $fieldTranslations = $this->normalizeFieldTranslations($this->model->getTranslations($field), $currentLocale);
             $sourceText = $fieldTranslations[$currentLocale] ?? null;
 
@@ -273,6 +293,54 @@ class TranslateFields implements ShouldQueue
     }
 
     /**
+     * Re-translate a field whose source text changed: every target locale
+     * except those the same save provided (`keep`), overwriting what's stored.
+     *
+     * The job works from the source text snapshot taken at save time. If the
+     * record's source no longer matches it - the source was changed again, so
+     * a newer job owns this field - nothing is requested at all; and if it
+     * changes while this job is translating, TranslationWriter discards the
+     * result under its lock.
+     *
+     * @param TranslatorInterface $translator
+     * @param TranslationWriter $writer
+     * @param string $field
+     * @param array{locale: string, text: string, keep: array<int, string>} $plan
+     * @return int Pairs saved.
+     */
+    protected function retranslateField(TranslatorInterface $translator, TranslationWriter $writer, string $field, array $plan): int
+    {
+        if ($this->model->getTranslation($field, $plan['locale'], false) !== $plan['text']) {
+            Log::info('Skipping a stale re-translation: the source text changed again since this job was dispatched', [
+                'model_class' => get_class($this->model),
+                'model_id' => $this->model->getKey(),
+                'field' => $field,
+            ]);
+
+            return 0;
+        }
+
+        if (!$this->shouldTranslateField($field, $plan['text'])) {
+            return 0;
+        }
+
+        $targets = array_values(array_diff(
+            get_supported_languages($plan['locale']),
+            (array) ($plan['keep'] ?? [])
+        ));
+
+        return $this->translateField(
+            $translator,
+            $writer,
+            $field,
+            $plan['text'],
+            $plan['locale'],
+            $targets,
+            ['locale' => $plan['locale'], 'text' => $plan['text']],
+        );
+    }
+
+    /**
      * Translate one field into its missing locales: a batch request first when
      * possible, then one request per locale still missing.
      *
@@ -288,6 +356,10 @@ class TranslateFields implements ShouldQueue
      * @param string $sourceText
      * @param string $currentLocale
      * @param array<int, string> $missing Locales to translate, in order.
+     * @param array{locale: string, text: string}|null $snapshot For a
+     *        re-translation: the source it was made from. Pairs then overwrite
+     *        what's stored, unless the source changed again, in which case the
+     *        rest of the field is abandoned (a newer job owns it).
      * @return int Pairs saved.
      */
     protected function translateField(
@@ -296,7 +368,8 @@ class TranslateFields implements ShouldQueue
         string $field,
         string $sourceText,
         string $currentLocale,
-        array $missing
+        array $missing,
+        ?array $snapshot = null
     ): int {
         $saved = 0;
         $started = [];
@@ -322,7 +395,9 @@ class TranslateFields implements ShouldQueue
                 $result = $batch->resultFor($locale, $carriesTokens);
                 $tokensAttributed = $tokensAttributed || $carriesTokens;
 
-                $this->savePair($writer, $field, $currentLocale, $locale, $result);
+                if (!$this->savePair($writer, $field, $currentLocale, $locale, $result, $snapshot)) {
+                    return $saved;
+                }
                 $saved++;
             }
 
@@ -345,7 +420,9 @@ class TranslateFields implements ShouldQueue
                 $unusedBatchTokens = null;
             }
 
-            $this->savePair($writer, $field, $currentLocale, $locale, $result);
+            if (!$this->savePair($writer, $field, $currentLocale, $locale, $result, $snapshot)) {
+                return $saved;
+            }
             $saved++;
         }
 
@@ -353,11 +430,28 @@ class TranslateFields implements ShouldQueue
     }
 
     /**
-     * Save one pair, then announce it.
+     * Save one pair, then announce it. Returns false when a re-translation
+     * was discarded because the source changed again (nothing is announced).
+     *
+     * @param array{locale: string, text: string}|null $snapshot
      */
-    protected function savePair(TranslationWriter $writer, string $field, string $sourceLocale, string $targetLocale, TranslationResult $result): void
-    {
-        $writer->apply($this->model, [$field => [$targetLocale => $result->text]]);
+    protected function savePair(
+        TranslationWriter $writer,
+        string $field,
+        string $sourceLocale,
+        string $targetLocale,
+        TranslationResult $result,
+        ?array $snapshot = null
+    ): bool {
+        $written = $writer->apply(
+            $this->model,
+            [$field => [$targetLocale => $result->text]],
+            $snapshot === null ? [] : [$field => $snapshot],
+        );
+
+        if ($snapshot !== null && $written === 0) {
+            return false;
+        }
 
         TranslationCompleted::dispatch(
             get_class($this->model),
@@ -367,6 +461,8 @@ class TranslateFields implements ShouldQueue
             $targetLocale,
             $result,
         );
+
+        return true;
     }
 
     protected function dispatchStarted(string $field, string $sourceLocale, string $targetLocale, string $sourceText): void

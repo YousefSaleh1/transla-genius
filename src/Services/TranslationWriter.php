@@ -4,6 +4,7 @@ namespace CodingPartners\TranslaGenius\Services;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 
 /**
@@ -31,13 +32,24 @@ use InvalidArgumentException;
 class TranslationWriter
 {
     /**
-     * Persist $translations onto $model, skipping any field/locale that
-     * already has a value (never overwrites an existing translation).
+     * Persist $translations onto $model.
+     *
+     * Without $sourceSnapshots (create, backfill, filling gaps): a pair that
+     * already has a value is skipped - an existing translation is never
+     * overwritten.
+     *
+     * With a snapshot for a field (re-translation after its source text
+     * changed): that field's pairs overwrite what's stored, but only if, under
+     * the row lock, the stored source text still equals the snapshot the
+     * translation was made from. If the source changed again in the meantime,
+     * a newer job owns the field, so this field's pairs are discarded.
      *
      * @param Model&\CodingPartners\TranslaGenius\Contracts\HasTranslatableAttributes $model
      * @param array<string, array<string, string>> $translations Map of
      *        field => [locale => text] to apply.
-     * @return void
+     * @param array<string, array{locale: string, text: string}> $sourceSnapshots
+     *        field => the source locale and text its translations were made from.
+     * @return int Number of pairs written.
      *
      * @throws InvalidArgumentException if $model doesn't use the
      *         Translatable trait (or otherwise doesn't implement
@@ -47,10 +59,10 @@ class TranslationWriter
      *         BadMethodCallException that would otherwise surface deep
      *         inside the transaction below.
      */
-    public function apply(Model $model, array $translations): void
+    public function apply(Model $model, array $translations, array $sourceSnapshots = []): int
     {
         if (empty($translations)) {
-            return;
+            return 0;
         }
 
         if (!method_exists($model, 'getTranslation') || !method_exists($model, 'setTranslation')) {
@@ -61,21 +73,35 @@ class TranslationWriter
             ));
         }
 
-        DB::transaction(function () use ($model, $translations) {
+        return DB::transaction(function () use ($model, $translations, $sourceSnapshots) {
             $locked = $model->newQuery()->lockForUpdate()->find($model->getKey());
 
             // Model was deleted between dispatch and execution - nothing to save.
             if (!$locked) {
-                return;
+                return 0;
             }
 
-            $locked->withoutEvents(function () use ($locked, $translations) {
-                foreach ($translations as $field => $values) {
-                    foreach ($values as $locale => $value) {
-                        $existing = $locked->getTranslation($field, $locale, false);
+            $written = 0;
 
-                        if (empty($existing)) {
+            $locked->withoutEvents(function () use ($locked, $translations, $sourceSnapshots, &$written) {
+                foreach ($translations as $field => $values) {
+                    $snapshot = $sourceSnapshots[$field] ?? null;
+
+                    if ($snapshot !== null
+                        && $locked->getTranslation($field, $snapshot['locale'], false) !== $snapshot['text']) {
+                        Log::info('TranslationWriter: discarding a re-translation; the source text changed again', [
+                            'model_class' => get_class($locked),
+                            'model_id' => $locked->getKey(),
+                            'field' => $field,
+                        ]);
+
+                        continue;
+                    }
+
+                    foreach ($values as $locale => $value) {
+                        if ($snapshot !== null || empty($locked->getTranslation($field, $locale, false))) {
                             $locked->setTranslation($field, $locale, $value);
+                            $written++;
                         }
                     }
                 }
@@ -84,6 +110,8 @@ class TranslationWriter
                     $locked->save();
                 }
             });
+
+            return $written;
         });
     }
 }
