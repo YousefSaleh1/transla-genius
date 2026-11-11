@@ -6,6 +6,7 @@ use CodingPartners\TranslaGenius\Console\Concerns\ReadsStringInput;
 use CodingPartners\TranslaGenius\Contracts\HasTranslatableAttributes;
 use CodingPartners\TranslaGenius\Jobs\TranslateFields;
 use CodingPartners\TranslaGenius\Support\Locales;
+use CodingPartners\TranslaGenius\Support\Text;
 use CodingPartners\TranslaGenius\Support\TranslationJobDispatcher;
 use CodingPartners\TranslaGenius\Traits\Translatable;
 use Illuminate\Console\Command;
@@ -115,9 +116,29 @@ class BackfillCommand extends Command
 
         $buildQuery = fn () => $modelInstance->newQuery()->scopes(['notFullyTranslated' => [$sourceLocale]]);
 
-        $matchingCount = $buildQuery()->count();
+        // A record whose every translatable field is blank in the source
+        // locale has nothing to translate from; its job would request
+        // nothing. notFullyTranslated() matches it all the same (its targets
+        // are missing too), so it is filtered out here, per chunk: "blank"
+        // means empty after trim() (Support\Text::isBlank()), which needs a
+        // per-driver raw JSON expression to say in SQL on five drivers. The
+        // same filter runs in the counting pass and the dispatch pass, so
+        // the count shown is what gets dispatched.
+        $hasSourceText = fn ($record): bool => $this->hasSourceText($record, $translatableFields, $sourceLocale);
+
+        $matchingCount = 0;
+        $skippedCount = 0;
+        $buildQuery()->chunkById($chunkSize, function ($records) use (&$matchingCount, &$skippedCount, $hasSourceText) {
+            foreach ($records as $record) {
+                $hasSourceText($record) ? $matchingCount++ : $skippedCount++;
+            }
+        });
 
         $this->info("Found {$matchingCount} [{$modelClass}] record(s) not fully translated.");
+
+        if ($skippedCount > 0) {
+            $this->line("Skipped {$skippedCount} record(s) with no [{$sourceLocale}] text to translate from.");
+        }
 
         if ($matchingCount === 0) {
             return self::SUCCESS;
@@ -149,8 +170,12 @@ class BackfillCommand extends Command
 
         $dispatched = 0;
 
-        $buildQuery()->chunkById($chunkSize, function ($records) use (&$dispatched, $bar, $jobClass, $sourceLocale) {
+        $buildQuery()->chunkById($chunkSize, function ($records) use (&$dispatched, $bar, $jobClass, $sourceLocale, $hasSourceText) {
             foreach ($records as $record) {
+                if (! $hasSourceText($record)) {
+                    continue;
+                }
+
                 // With review on, pairs awaiting review are skipped by the job,
                 // and pairs that were rejected are requested again.
                 TranslationJobDispatcher::dispatch($jobClass, $record, $record->getTranslatableAttributes(), [], $sourceLocale, ['include_rejected' => true]);
@@ -164,6 +189,23 @@ class BackfillCommand extends Command
         $this->info("Dispatched {$jobClassLabel} for {$dispatched} record(s).");
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Whether any translatable field of $record has text in $sourceLocale.
+     *
+     * @param  Model&HasTranslatableAttributes  $record
+     * @param  array<int, string>  $translatableFields
+     */
+    protected function hasSourceText(Model $record, array $translatableFields, string $sourceLocale): bool
+    {
+        foreach ($translatableFields as $field) {
+            if (! Text::isBlank($record->getTranslation($field, $sourceLocale, false))) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

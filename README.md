@@ -766,7 +766,7 @@ php artisan translagenius:backfill "App\Models\Product"             # report, th
 php artisan translagenius:backfill "App\Models\Product" --force --source=en --chunk=500
 ```
 
-It reports the matching records and the maximum number of API calls, and dispatches nothing without `--force` or an interactive yes. The model must use the `Translatable` trait. It dispatches the model's own job class, iterates with `chunkById()`, and only fills missing languages. There is no `--locales=` filter, because the job always targets every supported language; pairs that already exist cost nothing.
+It reports the matching records and the maximum number of API calls, and dispatches nothing without `--force` or an interactive yes. Records whose translatable fields are all blank in the source locale have nothing to translate from: they are skipped, reported as skipped, and not counted, so the count in the prompt is the number of jobs dispatched. The model must use the `Translatable` trait. It dispatches the model's own job class, iterates with `chunkById()`, and only fills missing languages. There is no `--locales=` filter, because the job always targets every supported language; pairs that already exist cost nothing.
 
 ## Extending
 

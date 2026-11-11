@@ -12,6 +12,7 @@ use CodingPartners\TranslaGenius\Tests\TestModels\NonTranslatableModel;
 use CodingPartners\TranslaGenius\Tests\TestModels\TestTranslatableModel;
 use CodingPartners\TranslaGenius\TranslaGeniusServiceProvider;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Orchestra\Testbench\TestCase as Orchestra;
@@ -243,5 +244,57 @@ class BackfillCommandTest extends Orchestra
 
         Queue::assertPushed(MarkerTranslationJob::class, 1);
         Queue::assertNotPushed(TranslateFields::class);
+    }
+
+    /**
+     * Records with no text in the source locale in any translatable field
+     * have nothing to translate from: they are neither counted nor
+     * dispatched. The prompt's count is exactly what gets dispatched.
+     */
+    public function test_records_with_nothing_to_translate_are_skipped_and_the_count_matches()
+    {
+        $rows = [
+            // nothing to translate from: skipped
+            ['name' => '{}', 'description' => '{}'],
+            ['name' => json_encode(['en' => '   ']), 'description' => json_encode(['en' => ''])],
+            ['name' => json_encode(['en' => '', 'ar' => 'نص']), 'description' => '{}'],
+            // partially translated: dispatched
+            ['name' => json_encode(['en' => 'A', 'ar' => 'ا']), 'description' => json_encode(['en' => 'B', 'ar' => 'ب', 'es' => 'b'])],
+            ['name' => json_encode(['en' => ' ']), 'description' => json_encode(['en' => 'B'])],
+            // fully translated: not matched at all
+            ['name' => json_encode(['en' => 'A', 'ar' => 'ا', 'es' => 'a']), 'description' => json_encode(['en' => 'B', 'ar' => 'ب', 'es' => 'b'])],
+        ];
+        DB::table('test_translatable_models')->insert($rows);
+        $ids = DB::table('test_translatable_models')->orderBy('id')->pluck('id')->all();
+
+        Queue::fake();
+
+        $this->artisan('translagenius:backfill', ['model' => TestTranslatableModel::class, '--source' => 'en'])
+            ->expectsOutputToContain('Found 2 [')
+            ->expectsOutputToContain('Skipped 3 record(s) with no [en] text to translate from.')
+            ->expectsConfirmation('Dispatch TranslateFields for these 2 record(s), translating from [en]?', 'yes')
+            ->expectsOutputToContain('Dispatched TranslateFields for 2 record(s).')
+            ->assertSuccessful();
+
+        Queue::assertPushed(TranslateFields::class, 2);
+        $dispatchedIds = Queue::pushed(TranslateFields::class)->map(fn ($job) => (new \ReflectionProperty($job, 'model'))->getValue($job)->getKey())->sort()->values()->all();
+        $this->assertSame([$ids[3], $ids[4]], array_map('intval', $dispatchedIds));
+    }
+
+    public function test_dry_run_counts_only_records_with_something_to_translate()
+    {
+        DB::table('test_translatable_models')->insert([
+            ['name' => '{}', 'description' => '{}'],
+            ['name' => json_encode(['en' => 'A']), 'description' => '{}'],
+        ]);
+
+        Queue::fake();
+
+        $this->artisan('translagenius:backfill', ['model' => TestTranslatableModel::class, '--source' => 'en', '--dry-run' => true])
+            ->expectsOutputToContain('Found 1 [')
+            ->expectsOutputToContain('Up to 4 translation API call(s)')
+            ->assertSuccessful();
+
+        Queue::assertNothingPushed();
     }
 }
