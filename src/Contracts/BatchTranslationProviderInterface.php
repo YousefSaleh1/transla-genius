@@ -26,8 +26,10 @@ interface BatchTranslationProviderInterface extends TranslationProviderInterface
      * Returns only the locales that came back valid; the rest are translated
      * one at a time by the caller. A reply that can't be used at all returns
      * an empty set of translations (with its token counts, if any) rather than
-     * throwing. Throws TranslationFailedException for request-level failures
-     * (HTTP errors, truncation), exactly like translate().
+     * throwing; so does a truncated reply, flagged `truncated` (one-at-a-time
+     * requests have much smaller replies, so they're worth trying). Throws
+     * TranslationFailedException for request-level failures (HTTP errors),
+     * exactly like translate().
      *
      * @param TranslationBatchRequest $request
      * @return TranslationBatchResult

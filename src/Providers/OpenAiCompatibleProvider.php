@@ -259,7 +259,8 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
      * Only requested locales whose value is a non-empty string are returned;
      * extra keys are ignored. A reply that isn't a JSON object (one
      * surrounding code fence is tolerated) returns no translations, so the
-     * caller translates each locale on its own. HTTP failures and truncation
+     * caller translates each locale on its own. A reply cut off at the token
+     * limit returns no translations either, flagged `truncated`. HTTP failures
      * throw exactly as in translate().
      *
      * @param TranslationBatchRequest $request
@@ -279,7 +280,24 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
         }
 
         $response = $this->send($body);
-        $this->assertNotTruncated($response);
+
+        // Unlike a single translation, a truncated batch isn't a failure: the
+        // same locales requested one at a time produce much smaller replies.
+        if ($response->json('choices.0.finish_reason') === 'length') {
+            Log::warning('OpenAiCompatibleProvider: batch reply truncated at the output token limit; locales will be requested one at a time', [
+                'requested' => count($request->targetLocales),
+                'max_tokens' => $this->maxTokens,
+            ]);
+
+            return new TranslationBatchResult(
+                translations: [],
+                provider: $this->name,
+                promptTokens: $response->json('usage.prompt_tokens'),
+                completionTokens: $response->json('usage.completion_tokens'),
+                requestId: $requestId,
+                truncated: true,
+            );
+        }
 
         $decoded = $this->decodeJsonObject((string) $response->json('choices.0.message.content'));
         $translations = [];

@@ -143,13 +143,16 @@ final class FallbackProvider implements BatchTranslationProviderInterface
      *   wins, even with a partial batch. Its missing locales are then
      *   translated one at a time through the whole chain (translate()), so
      *   they get every member's chance, primary first.
-     * - A member that throws (an HTTP failure, a truncated reply) hands over
-     *   to the next batch-capable member, exactly like translate().
+     * - A member that throws (an HTTP failure) or returns a truncated reply
+     *   hands over to the next batch-capable member, exactly like translate().
+     *   A truncated attempt's tokens aren't carried over: like any failed
+     *   attempt in a chain, it isn't logged.
      * - Members that can't batch are skipped here; they still serve the
      *   one-at-a-time calls.
-     * - If no batch attempt succeeds: when some member can't batch, an empty
-     *   batch is returned so every locale goes through the chain one at a time;
-     *   when every member could batch and all failed, AllProvidersFailedException.
+     * - If no batch attempt succeeds: when some member can't batch, or any
+     *   attempt was truncated, an empty batch is returned so every locale goes
+     *   through the chain one at a time; when every member could batch and
+     *   every attempt threw, AllProvidersFailedException.
      *
      * @param TranslationBatchRequest $request
      * @return TranslationBatchResult
@@ -160,6 +163,7 @@ final class FallbackProvider implements BatchTranslationProviderInterface
     {
         $failures = [];
         $hasSingleOnlyMember = false;
+        $anyTruncated = false;
 
         foreach ($this->providers as $position => $provider) {
             if (!$this->canBatch($provider)) {
@@ -168,7 +172,17 @@ final class FallbackProvider implements BatchTranslationProviderInterface
             }
 
             try {
-                return $provider->translateBatch($request);
+                $result = $provider->translateBatch($request);
+
+                if (!$result->truncated) {
+                    return $result;
+                }
+
+                $anyTruncated = true;
+                Log::warning('FallbackProvider: provider returned a truncated batch, trying next in chain', [
+                    'provider' => get_class($provider),
+                    'position' => $position,
+                ]);
             } catch (TranslationFailedException $e) {
                 Log::warning('FallbackProvider: provider failed a batch, trying next in chain', [
                     'provider' => get_class($provider),
@@ -187,7 +201,7 @@ final class FallbackProvider implements BatchTranslationProviderInterface
             }
         }
 
-        if ($hasSingleOnlyMember || $failures === []) {
+        if ($hasSingleOnlyMember || $anyTruncated || $failures === []) {
             return TranslationBatchResult::empty();
         }
 

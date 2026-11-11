@@ -276,7 +276,7 @@ class BatchTranslationTest extends TestCase
         $this->assertSame(['batch name ar,es,fr', 'batch description ar,es,fr'], $this->requestTypes());
     }
 
-    public function test_truncated_batch_is_a_non_retryable_failure()
+    public function test_truncated_batch_falls_back_to_one_request_per_locale()
     {
         $this->batching(true);
         $this->batchReply['name'] = fn ($locales) => ['content' => '{"ar": "name:ar", "es": "na', 'finish_reason' => 'length'];
@@ -284,10 +284,24 @@ class BatchTranslationTest extends TestCase
 
         $job = $this->runJob($model);
 
-        $job->assertFailedWith(\CodingPartners\TranslaGenius\Exceptions\TranslationFailedException::class);
+        $job->assertNotFailed();
         $job->assertNotReleased();
-        $this->assertSame(['batch name ar,es,fr'], $this->requestTypes());
-        $this->assertSame('', TestTranslatableModel::find($model->id)->getTranslation('name', 'ar', false));
+        $this->assertSame(
+            ['batch name ar,es,fr', 'single name ar', 'single name es', 'single name fr', 'batch description ar,es,fr'],
+            $this->requestTypes()
+        );
+        $this->assertSame($this->allSix(), $this->stored($model));
+    }
+
+    public function test_a_truncated_single_locale_request_still_fails_the_job()
+    {
+        $this->batching(false);
+        $this->override = fn (Request $r) => Http::response(['choices' => [['message' => ['content' => 'half'], 'finish_reason' => 'length']]]);
+
+        $job = $this->runJob($this->createModel());
+
+        $job->assertFailedWith(\CodingPartners\TranslaGenius\Exceptions\TranslationFailedException::class);
+        Http::assertSentCount(1);
     }
 
     // --- fallback chains -------------------------------------------------
@@ -324,6 +338,39 @@ class BatchTranslationTest extends TestCase
         $this->assertCount(1, Http::recorded(fn ($r) => str_contains($r->url(), 'secondary.test')));
         $this->assertSameTranslations(
             ['en' => 'Source name', 'ar' => 'S:ar', 'es' => 'S:es', 'fr' => 'S:fr'],
+            TestTranslatableModel::find($model->id)->getTranslations('name')
+        );
+    }
+
+    public function test_when_every_member_truncates_the_batch_the_locales_go_through_the_chain_one_at_a_time()
+    {
+        $this->override = function (Request $r) {
+            $isBatch = str_contains($r['messages'][0]['content'], 'each of these languages');
+            $host = parse_url($r->url(), PHP_URL_HOST);
+
+            if ($isBatch) {
+                return Http::response(['choices' => [['message' => ['content' => '{"ar": "x'], 'finish_reason' => 'length']]]);
+            }
+
+            preg_match('/ to (\w+)\./', $r['messages'][0]['content'], $m);
+
+            return Http::response(['choices' => [['message' => ['content' => "{$host}:{$m[1]}"], 'finish_reason' => 'stop']]]);
+        };
+
+        $translator = new Translator(new FallbackProvider([
+            $this->chainMember('primary', 'primary.test'),
+            $this->chainMember('secondary', 'secondary.test'),
+        ]));
+        $model = TestTranslatableModel::create(['name' => ['en' => 'Source name'], 'description' => ['en' => '']]);
+
+        (new TranslateFields($model, ['name']))->handle($translator, new TranslationWriter());
+
+        // 1 batch per member (both truncated), then 3 singles via the chain,
+        // all served by the primary.
+        $this->assertCount(4, Http::recorded(fn ($r) => str_contains($r->url(), 'primary.test')));
+        $this->assertCount(1, Http::recorded(fn ($r) => str_contains($r->url(), 'secondary.test')));
+        $this->assertSameTranslations(
+            ['en' => 'Source name', 'ar' => 'primary.test:ar', 'es' => 'primary.test:es', 'fr' => 'primary.test:fr'],
             TestTranslatableModel::find($model->id)->getTranslations('name')
         );
     }
@@ -466,6 +513,17 @@ class BatchTranslationTest extends TestCase
     public function test_usage_totals_match_billing_unbatched()
     {
         $this->assertUsageMatchesBilling($this->runWithUsageLogging(fn () => $this->batching(false)));
+    }
+
+    public function test_usage_totals_match_billing_with_a_truncated_batch()
+    {
+        $usage = $this->runWithUsageLogging(function () {
+            $this->batching(true);
+            $this->batchReply['name'] = fn ($locales) => ['content' => '{"ar": "na', 'finish_reason' => 'length'];
+        });
+
+        $this->assertUsageMatchesBilling($usage);
+        $this->assertCount(5, $this->requests); // name: batch + 3 single; description: batch
     }
 
     public function test_usage_totals_match_billing_with_a_partial_and_an_unparseable_batch()

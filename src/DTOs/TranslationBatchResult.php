@@ -19,6 +19,10 @@ final readonly class TranslationBatchResult
      * @param int|null $promptTokens Prompt tokens for the whole request.
      * @param int|null $completionTokens Completion tokens for the whole request.
      * @param string|null $requestId Identifies the request.
+     * @param bool $truncated The reply stopped at the output token limit, so
+     *        nothing was taken from it. The caller translates every locale one
+     *        at a time instead (smaller replies), or a fallback chain tries
+     *        its next member. Token counts are still what the request billed.
      */
     public function __construct(
         public array $translations,
@@ -26,6 +30,7 @@ final readonly class TranslationBatchResult
         public ?int $promptTokens = null,
         public ?int $completionTokens = null,
         public ?string $requestId = null,
+        public bool $truncated = false,
     ) {
     }
 
