@@ -1151,7 +1151,7 @@ Every variable the shipped config reads. All are optional except the key of the 
 
 ## Testing
 
-The suite needs no external services: it runs on in-memory SQLite, and every provider call is faked.
+The suite needs nothing outside PHP: it runs on in-memory SQLite, provider calls are faked, and the few tests that need a real HTTP server start one with the PHP binary running the tests. The connection-reuse test can also run over TLS: set `TRANSLAGENIUS_TEST_TLS_CERT` and `TRANSLAGENIUS_TEST_TLS_KEY` to a self-signed `localhost` certificate and key, and run PHP with `-d curl.cainfo=<cert>`.
 
 ```bash
 composer install

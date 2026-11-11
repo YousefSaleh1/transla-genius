@@ -4,6 +4,8 @@ namespace CodingPartners\TranslaGenius\Tests\Unit;
 
 use CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider;
 use GuzzleHttp\Exception\ConnectException;
+use GuzzleHttp\Exception\ConnectTimeoutException;
+use GuzzleHttp\Exception\NetworkTimeoutException;
 use GuzzleHttp\Psr7\Request;
 use Illuminate\Http\Client\ConnectionException;
 use PHPUnit\Framework\TestCase;
@@ -29,13 +31,13 @@ class TimeoutDetectionTest extends TestCase
 
     public function test_guzzle_8_timeout_exceptions()
     {
-        if (! class_exists(\GuzzleHttp\Exception\NetworkTimeoutException::class)) {
+        if (! class_exists(NetworkTimeoutException::class)) {
             $this->markTestSkipped('Guzzle 7 has no dedicated timeout exceptions.');
         }
 
         $request = new Request('POST', 'https://api.test');
-        $this->assertTrue($this->isTimeout($this->wrap(new \GuzzleHttp\Exception\NetworkTimeoutException('stopped', $request))));
-        $this->assertTrue($this->isTimeout($this->wrap(new \GuzzleHttp\Exception\ConnectTimeoutException('stopped', $request))));
+        $this->assertTrue($this->isTimeout($this->wrap(new NetworkTimeoutException('stopped', $request))));
+        $this->assertTrue($this->isTimeout($this->wrap(new ConnectTimeoutException('stopped', $request))));
         $this->assertFalse($this->isTimeout($this->wrap(new ConnectException('refused', $request))));
     }
 

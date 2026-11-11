@@ -26,7 +26,7 @@ class ConnectionReuseTest extends TestCase
 
         config([
             'translagenius.supported_languages' => ['en', 'ar', 'es', 'fr', 'de', 'it', 'pt', 'ja', 'ko'],
-            'translagenius.providers.openrouter.url' => $this->startChatServer(),
+            'translagenius.providers.openrouter.url' => $this->startKeepAliveServer(),
         ]);
     }
 

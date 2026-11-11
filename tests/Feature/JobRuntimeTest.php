@@ -42,17 +42,33 @@ class JobRuntimeTest extends TestCase
         return (require __DIR__.'/../../src/config/translagenius.php')['providers']['openrouter'];
     }
 
-    public function test_a_12_second_reply_succeeds_with_the_default_timeout()
+    public function test_the_shipped_default_timeout_is_60_seconds()
     {
-        $entry = $this->shippedEntry();
-        $provider = new OpenAiCompatibleProvider([
-            'key' => 'k', 'url' => $this->startChatServer(), 'model' => 'm', 'name' => 'openrouter',
-            'timeout' => $entry['timeout'], 'http_retries' => 0, 'headers' => ['X-Delay' => '12'],
+        $this->assertSame(60, $this->shippedEntry()['timeout']);
+        $this->assertSame(60, OpenAiCompatibleProvider::DEFAULT_TIMEOUT);
+    }
+
+    /**
+     * The timeout is applied for real: a 2-second reply fails at 1 s and
+     * arrives at 5 s. (The built-in server answers one request at a time, so
+     * the second one may wait up to 1 s for the first to finish: 3 s < 5 s.)
+     */
+    public function test_the_timeout_is_applied_to_the_request()
+    {
+        $url = $this->startChatServer();
+        $provider = fn (int $timeout) => new OpenAiCompatibleProvider([
+            'key' => 'k', 'url' => $url, 'model' => 'm', 'name' => 'openrouter',
+            'timeout' => $timeout, 'http_retries' => 0, 'headers' => ['X-Delay' => '2'],
         ]);
 
-        $result = $provider->translate(new TranslationRequest('Slow', 'en', 'ar'));
+        try {
+            $provider(1)->translate(new TranslationRequest('Slow', 'en', 'ar'));
+            $this->fail('Expected a timeout at 1 s.');
+        } catch (TranslationFailedException $e) {
+            $this->assertStringContainsString('cURL error 28', $e->getMessage());
+        }
 
-        $this->assertSame('Slow!', $result->text);
+        $this->assertSame('Slow!', $provider(5)->translate(new TranslationRequest('Slow', 'en', 'ar'))->text);
     }
 
     /**
@@ -68,7 +84,7 @@ class JobRuntimeTest extends TestCase
 
         $provider = new OpenAiCompatibleProvider([
             'key' => 'k', 'url' => $this->startChatServer(), 'model' => 'm', 'name' => 'openrouter',
-            'timeout' => 1, 'http_retries' => 0, 'headers' => ['X-Delay' => '3'],
+            'timeout' => 1, 'http_retries' => 0, 'headers' => ['X-Delay' => '2'],
         ]);
 
         try {
