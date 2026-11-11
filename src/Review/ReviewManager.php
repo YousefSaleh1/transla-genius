@@ -15,6 +15,7 @@ use CodingPartners\TranslaGenius\Exceptions\StaleReviewException;
 use CodingPartners\TranslaGenius\Models\TranslationReview;
 use CodingPartners\TranslaGenius\Providers\CachingProvider;
 use CodingPartners\TranslaGenius\Services\TranslationWriter;
+use CodingPartners\TranslaGenius\Support\Text;
 use CodingPartners\TranslaGenius\Support\TranslationJobDispatcher;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -202,7 +203,7 @@ class ReviewManager
         bool $cacheEdit = true,
         bool $force = false,
     ): TranslationReview {
-        $edited = $editedText !== null && trim($editedText) !== '' && $editedText !== $review->text;
+        $edited = $editedText !== null && ! Text::isBlank($editedText) && $editedText !== $review->text;
 
         // Outcomes are decided inside the transaction but thrown after it, so
         // marking a stale review superseded is committed, not rolled back.
@@ -307,7 +308,7 @@ class ReviewManager
         }
 
         $sourceText = (string) $owner->getTranslation($review->field, $review->source_locale, false);
-        if (trim($sourceText) === '') {
+        if (Text::isBlank($sourceText)) {
             return;
         }
 

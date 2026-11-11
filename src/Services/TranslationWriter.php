@@ -3,6 +3,7 @@
 namespace CodingPartners\TranslaGenius\Services;
 
 use CodingPartners\TranslaGenius\Contracts\HasTranslatableAttributes;
+use CodingPartners\TranslaGenius\Support\Text;
 use CodingPartners\TranslaGenius\Traits\Translatable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
@@ -101,7 +102,7 @@ class TranslationWriter
                     }
 
                     foreach ($values as $locale => $value) {
-                        if ($snapshot !== null || empty($locked->getTranslation($field, $locale, false))) {
+                        if ($snapshot !== null || Text::isBlank($locked->getTranslation($field, $locale, false))) {
                             $locked->setTranslation($field, $locale, $value);
                             $written++;
                         }
@@ -156,7 +157,7 @@ class TranslationWriter
                 return self::SOURCE_CHANGED;
             }
 
-            if (! empty($locked->getTranslation($field, $locale, false))) {
+            if (! Text::isBlank($locked->getTranslation($field, $locale, false))) {
                 return self::TARGET_CHANGED;
             }
 

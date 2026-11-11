@@ -2,6 +2,7 @@
 
 namespace CodingPartners\TranslaGenius\DTOs;
 
+use CodingPartners\TranslaGenius\Support\Text;
 use InvalidArgumentException;
 
 /**
@@ -19,7 +20,7 @@ use InvalidArgumentException;
  * the guarantee "there is a real result." This closes a real LSP gap: the
  * interface's return type alone didn't previously rule out a
  * well-formed-but-empty result silently passing through
- * TranslateFields::translateMissingPairs()'s empty() check as "still
+ * TranslateFields::translateMissingPairs()'s Text::isBlank() check as "still
  * missing" instead of surfacing as the contract violation it actually is.
  */
 final readonly class TranslationResult
@@ -47,7 +48,7 @@ final readonly class TranslationResult
         public ?string $requestId = null,
         public bool $cached = false,
     ) {
-        if (trim($text) === '') {
+        if (Text::isBlank($text)) {
             throw new InvalidArgumentException(
                 'TranslationResult::$text must not be empty - throw TranslationFailedException instead of constructing an empty result.'
             );

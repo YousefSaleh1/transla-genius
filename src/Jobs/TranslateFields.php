@@ -17,6 +17,7 @@ use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
 use CodingPartners\TranslaGenius\Review\ReviewManager;
 use CodingPartners\TranslaGenius\Review\ReviewSettings;
 use CodingPartners\TranslaGenius\Services\TranslationWriter;
+use CodingPartners\TranslaGenius\Support\Text;
 use CodingPartners\TranslaGenius\Support\TranslationJobDispatcher;
 use CodingPartners\TranslaGenius\Traits\Translatable;
 use CodingPartners\TranslaGenius\TranslaGeniusServiceProvider;
@@ -308,14 +309,14 @@ class TranslateFields implements ShouldQueue, TranslationJob
             $fieldTranslations = $this->normalizeFieldTranslations($this->model->getTranslations($field), $currentLocale);
             $sourceText = $fieldTranslations[$currentLocale] ?? null;
 
-            if (! is_string($sourceText) || trim($sourceText) === '') {
+            if (! is_string($sourceText) || Text::isBlank($sourceText)) {
                 // Empty everywhere: a legitimately empty field (an optional
                 // description, say) - nothing to do, nothing to report. Text in
                 // another locale but not the source one is what signals a wrong
                 // source locale, so only that is worth a warning.
                 $textElsewhere = array_keys(array_filter(
                     $fieldTranslations,
-                    fn ($value, $locale) => $locale !== $currentLocale && is_string($value) && trim($value) !== '',
+                    fn ($value, $locale) => $locale !== $currentLocale && is_string($value) && ! Text::isBlank($value),
                     ARRAY_FILTER_USE_BOTH
                 ));
 
@@ -340,7 +341,7 @@ class TranslateFields implements ShouldQueue, TranslationJob
             // for this source text (see ReviewManager::pairsToSkip()).
             $missing = array_values(array_filter(
                 $targetLanguages,
-                fn (string $locale) => empty($fieldTranslations[$locale]) && ! in_array($locale, $skip[$field] ?? [], true)
+                fn (string $locale) => Text::isBlank($fieldTranslations[$locale] ?? null) && ! in_array($locale, $skip[$field] ?? [], true)
             ));
 
             $saved += $this->translateField($translator, $writer, $field, $sourceText, $currentLocale, $missing);

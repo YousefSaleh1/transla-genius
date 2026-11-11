@@ -7,6 +7,7 @@ use CodingPartners\TranslaGenius\Contracts\TranslationJob;
 use CodingPartners\TranslaGenius\Jobs\TranslateFields;
 use CodingPartners\TranslaGenius\Models\TranslationReview;
 use CodingPartners\TranslaGenius\Support\KeyCast;
+use CodingPartners\TranslaGenius\Support\Text;
 use CodingPartners\TranslaGenius\Support\TranslationJobDispatcher;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\Connection;
@@ -124,7 +125,7 @@ trait Translatable
             $current = $model->getTranslations($field);
             $newSource = $current[$sourceLocale] ?? null;
 
-            if (! is_string($newSource) || $newSource === '' || ($original[$sourceLocale] ?? null) === $newSource) {
+            if (! is_string($newSource) || Text::isBlank($newSource) || ($original[$sourceLocale] ?? null) === $newSource) {
                 continue;
             }
 

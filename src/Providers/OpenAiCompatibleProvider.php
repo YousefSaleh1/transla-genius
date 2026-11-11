@@ -9,6 +9,7 @@ use CodingPartners\TranslaGenius\DTOs\TranslationRequest;
 use CodingPartners\TranslaGenius\DTOs\TranslationResult;
 use CodingPartners\TranslaGenius\Events\TranslationRequestBilled;
 use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
+use CodingPartners\TranslaGenius\Support\Text;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
@@ -223,7 +224,7 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
 
         $content = $response->json('choices.0.message.content');
 
-        if (empty($content)) {
+        if (! is_string($content) || Text::isBlank($content)) {
             $this->reportUnusedUsage($response, TranslationRequestBilled::UNUSABLE, ...$billing);
 
             Log::warning('OpenAiCompatibleProvider: API returned empty or invalid content', [
@@ -233,7 +234,9 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
             throw new TranslationFailedException(
                 'AI model returned an empty or invalid response',
                 statusCode: $response->status(),
-                retryable: true
+                // The same request gets the same kind of reply; a fallback
+                // chain still moves on to its next member.
+                retryable: false
             );
         }
 
@@ -311,7 +314,7 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
         foreach ($request->targetLocales as $locale) {
             $value = $decoded[$locale] ?? null;
 
-            if (is_string($value) && trim($value) !== '') {
+            if (is_string($value) && ! Text::isBlank($value)) {
                 $translations[$locale] = $value;
             }
         }
