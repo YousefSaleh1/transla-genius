@@ -101,7 +101,7 @@ Failed calls are retried in two layers, each configurable from `.env`:
 
 4xx responses other than 429 (bad key, bad request, unknown model) are never retried at any layer: the job fails on the first response. So does a truncated translation (see `TRANSLATION_MAX_TOKENS`).
 
-**Worst case** for one field and locale is `(TRANSLATION_HTTP_RETRIES + 1) x TRANSLATION_JOB_TRIES` requests: **6** with the defaults, for a provider that keeps returning 5xx. In a fallback chain, each job attempt sends one request per chain member, so a two-provider chain is at most `2 x TRANSLATION_JOB_TRIES` = 6 as well. Because a job translates all of a model's missing field/locale pairs before saving any of them, a retried job attempt repeats the pairs that had already succeeded in that attempt.
+**Worst case** for one field and locale is `(TRANSLATION_HTTP_RETRIES + 1) x TRANSLATION_JOB_TRIES` requests: **6** with the defaults, for a provider that keeps returning 5xx. In a fallback chain, each job attempt sends one request per chain member, so a two-provider chain is at most `2 x TRANSLATION_JOB_TRIES` = 6 as well. Each field/locale pair is saved as soon as it's translated, so a retried job only requests the pairs that are still missing: work that succeeded before a failure is never paid for twice. While a job is in flight, or after one fails, a partly translated record shows up in `notFullyTranslated()` (and not in `fullyTranslated()`), so `translagenius:backfill` can pick it up later.
 
 ### Any Other OpenAI-Compatible Endpoint
 
@@ -274,7 +274,7 @@ There's no `--locales=` filter: `TranslateFields` always translates into every l
 ## How It Works
 
 1. **Model Events**: When a model is created or updated, the `Translatable` trait automatically dispatches a `TranslateFields` job.
-2. **Translation Job**: The `TranslateFields` job asks `Translator` to translate each missing field/locale, then hands the results to `TranslationWriter` to persist.
+2. **Translation Job**: The `TranslateFields` job asks `Translator` to translate each missing field/locale pair and hands each result to `TranslationWriter` as soon as it arrives, which saves it under a row lock (only filling gaps, and without firing model events).
 3. **Translator**: `Translator` resolves whichever `TranslationProviderInterface` implementation is configured (`translaGenius.default`) and delegates to it - the job never talks to a specific provider directly.
 4. **Provider**: The bound provider (`OpenAiCompatibleProvider` by default) communicates with the external API and returns a `TranslationResult`.
 

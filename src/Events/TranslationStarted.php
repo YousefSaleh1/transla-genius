@@ -9,7 +9,7 @@ use Illuminate\Foundation\Events\Dispatchable;
  * TranslatorInterface to translate one field into one target locale.
  *
  * Dispatched from the automatic model-save lifecycle only (see
- * TranslateFields::prepareTranslations()) - not from direct
+ * TranslateFields::translateMissingPairs()) - not from direct
  * TranslatorInterface/facade use outside that job, since that context has
  * no model/field to report. A consuming app can use this (paired with
  * TranslationCompleted or the job's own failure handling) to build a

@@ -84,7 +84,7 @@ class LifecycleEventsTest extends Orchestra
 
         // Real end-to-end flow: create() -> Translatable::bootTranslatable()
         // -> TranslateFields::dispatch() -> runs synchronously -> handle()
-        // -> prepareTranslations() dispatches these events around each of
+        // -> translateMissingPairs() dispatches these events around each of
         // its translator->translate() calls.
         $model = TestTranslatableModel::create([
             'name' => ['en' => 'Hello'],

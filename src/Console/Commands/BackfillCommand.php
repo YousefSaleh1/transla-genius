@@ -26,7 +26,7 @@ use Illuminate\Database\Eloquent\Model;
  * No target-locale filtering option is offered: TranslateFields always
  * translates into every locale from translaGenius.supported_languages
  * (already-present field/locale pairs are skipped internally, at no API
- * cost - see TranslateFields::prepareTranslations()), and that target set
+ * cost - see TranslateFields::translateMissingPairs()), and that target set
  * isn't parameterized per-dispatch. A `--locales=` option here could only
  * ever narrow which *records* this command considers "not fully
  * translated", not which locales the dispatched job actually attempts for

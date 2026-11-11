@@ -30,7 +30,7 @@ use Throwable;
  * Fires three lifecycle events a consuming app can listen for without
  * touching this class: Events\TranslationStarted and
  * Events\TranslationCompleted around each individual field/locale
- * translate() call (see prepareTranslations()), and Events\TranslationFailed
+ * translate() call (see translateMissingPairs()), and Events\TranslationFailed
  * once, from failed(), if the job gives up permanently. See each event's
  * own docblock for exactly when/why it fires.
  *
@@ -128,14 +128,13 @@ class TranslateFields implements ShouldQueue
             $currentLocale = get_current_locale();
             $targetLanguages = get_supported_languages();
 
-            $translations = $this->prepareTranslations($translator, $currentLocale, $targetLanguages);
+            $saved = $this->translateMissingPairs($translator, $writer, $currentLocale, $targetLanguages);
 
-            if (!empty($translations)) {
-                $writer->apply($this->model, $translations);
-
+            if ($saved > 0) {
                 Log::info('Translation completed successfully', [
                     'model_id' => $this->model->getKey(),
                     'model_class' => get_class($this->model),
+                    'translations_saved' => $saved,
                 ]);
             }
         } catch (TranslationFailedException $e) {
@@ -212,67 +211,78 @@ class TranslateFields implements ShouldQueue
     }
 
     /**
-     * Prepare translations for the given model and fields.
+     * Translate every missing field/locale pair and save each one as soon as
+     * it succeeds, so a failure part-way through loses nothing already paid
+     * for: when the queue retries the job, the model is re-read and only the
+     * pairs still missing are requested again.
      *
-     * Persistence is deliberately not this method's concern - it only
-     * computes the [field => [locale => text]] map; TranslationWriter
-     * (called from handle()) owns the locked read-check-write that applies
-     * it. See TranslationWriter for why that split matters under
-     * concurrent updates.
+     * Saved per pair rather than per field: a DB write costs milliseconds,
+     * an API call costs money and seconds, so even the earlier locales of a
+     * field whose later locale failed shouldn't be translated twice.
+     * TranslationWriter re-checks each pair under a row lock and only fills
+     * gaps, so saving as we go stays safe against concurrent jobs, and it
+     * saves without model events, so it doesn't re-trigger the `updated`
+     * listener that dispatched this job.
      *
      * Dispatches Events\TranslationStarted immediately before, and
-     * Events\TranslationCompleted immediately after, each individual
-     * translate() call this method makes. If translate() throws, only
-     * TranslationStarted will have fired for that attempt - see
-     * TranslateFields::failed() for the corresponding failure event.
+     * Events\TranslationCompleted immediately after (once the pair is saved),
+     * each individual translate() call. If translate() throws, only
+     * TranslationStarted will have fired for that attempt - see failed() for
+     * the corresponding failure event.
      *
      * @param TranslatorInterface $translator
+     * @param TranslationWriter $writer
      * @param string $currentLocale The locale field values are read/translated from.
      * @param array<int, string> $targetLanguages Locales to translate into.
-     * @return array<string, array<string, string>> Map of field => [locale => text].
+     * @return int Number of pairs translated and saved by this call.
      */
-    protected function prepareTranslations(TranslatorInterface $translator, string $currentLocale, array $targetLanguages): array
-    {
-        $translations = [];
+    protected function translateMissingPairs(
+        TranslatorInterface $translator,
+        TranslationWriter $writer,
+        string $currentLocale,
+        array $targetLanguages
+    ): int {
+        $saved = 0;
 
         foreach ($this->fields as $field) {
             $fieldTranslations = $this->normalizeFieldTranslations($this->model->getTranslations($field), $currentLocale);
             $sourceText = $fieldTranslations[$currentLocale] ?? null;
 
             if ($sourceText === null || !$this->shouldTranslateField($field, $sourceText)) {
-                $translations[$field] = $fieldTranslations;
                 continue;
             }
 
             foreach ($targetLanguages as $targetLanguage) {
-                if (empty($fieldTranslations[$targetLanguage])) {
-                    TranslationStarted::dispatch(
-                        get_class($this->model),
-                        $this->model->getKey(),
-                        $field,
-                        $currentLocale,
-                        $targetLanguage,
-                        $sourceText,
-                    );
-
-                    $result = $translator->translate($sourceText, $currentLocale, $targetLanguage);
-                    $fieldTranslations[$targetLanguage] = $result->text;
-
-                    TranslationCompleted::dispatch(
-                        get_class($this->model),
-                        $this->model->getKey(),
-                        $field,
-                        $currentLocale,
-                        $targetLanguage,
-                        $result,
-                    );
+                if (!empty($fieldTranslations[$targetLanguage])) {
+                    continue;
                 }
-            }
 
-            $translations[$field] = $fieldTranslations;
+                TranslationStarted::dispatch(
+                    get_class($this->model),
+                    $this->model->getKey(),
+                    $field,
+                    $currentLocale,
+                    $targetLanguage,
+                    $sourceText,
+                );
+
+                $result = $translator->translate($sourceText, $currentLocale, $targetLanguage);
+
+                $writer->apply($this->model, [$field => [$targetLanguage => $result->text]]);
+                $saved++;
+
+                TranslationCompleted::dispatch(
+                    get_class($this->model),
+                    $this->model->getKey(),
+                    $field,
+                    $currentLocale,
+                    $targetLanguage,
+                    $result,
+                );
+            }
         }
 
-        return $translations;
+        return $saved;
     }
 
     /**
