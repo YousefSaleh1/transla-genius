@@ -47,6 +47,12 @@ class TranslaGeniusServiceProvider extends ServiceProvider
             'translaGenius'
         );
 
+        // The app's configured locale, captured before anything can change
+        // it: app()->setLocale() also rewrites config('app.locale'), so a
+        // long-running process (a queue worker) can't rely on reading it later.
+        $configuredLocale = (string) $this->app['config']->get('app.locale', 'en');
+        $this->app->instance('translagenius.configured_locale', $configuredLocale);
+
         $this->app->singleton(TranslationProviderInterface::class, function ($app) {
             $name = $app->make('config')->get('translaGenius.default');
             $this->cacheProfiles = [];

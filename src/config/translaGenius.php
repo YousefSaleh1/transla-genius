@@ -18,6 +18,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Source Locale
+    |--------------------------------------------------------------------------
+    |
+    | The language content is authored in, which translations are made from.
+    | Empty (the default): the locale of the request that saves the record
+    | (as set by the SetLocale middleware), captured when the job is
+    | dispatched - never the queue worker's own locale. Set it if content is
+    | always written in one language; it then wins over the request locale.
+    | Backfill (no request) uses --source, then this, then app.locale.
+    |
+    */
+    'source_locale' => env('TRANSLATION_SOURCE_LOCALE'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Default Translation Provider
     |--------------------------------------------------------------------------
     |

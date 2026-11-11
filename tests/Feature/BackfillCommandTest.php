@@ -149,7 +149,7 @@ class BackfillCommandTest extends Orchestra
         Queue::fake();
 
         $this->artisan('translagenius:backfill', ['model' => TestTranslatableModel::class])
-            ->expectsConfirmation('Dispatch TranslateFields for these 1 record(s)?', 'no')
+            ->expectsConfirmation('Dispatch TranslateFields for these 1 record(s), translating from [en]?', 'no')
             ->assertExitCode(0);
 
         Queue::assertNothingPushed();
@@ -187,7 +187,7 @@ class BackfillCommandTest extends Orchestra
         Queue::fake();
 
         $this->artisan('translagenius:backfill', ['model' => TestTranslatableModel::class])
-            ->expectsConfirmation('Dispatch TranslateFields for these 1 record(s)?', 'yes')
+            ->expectsConfirmation('Dispatch TranslateFields for these 1 record(s), translating from [en]?', 'yes')
             ->assertExitCode(0);
 
         Queue::assertPushed(TranslateFields::class, 1);

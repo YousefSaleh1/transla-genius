@@ -29,11 +29,22 @@ final class TranslationJobDispatcher
      * @param array<int, string> $fields
      * @param array<string, array{locale: string, text: string, keep: array<int, string>}> $retranslate
      *        Fields whose source text changed in this save - see Translatable.
+     * @param string|null $sourceLocale The locale the content was written in;
+     *        null = self::sourceLocale(), resolved now, at dispatch time.
      * @return void
      */
-    public static function dispatch(string $jobClass, Model $model, array $fields, array $retranslate = []): void
+    public static function dispatch(string $jobClass, Model $model, array $fields, array $retranslate = [], ?string $sourceLocale = null): void
     {
-        $job = $retranslate === [] ? new $jobClass($model, $fields) : new $jobClass($model, $fields, $retranslate);
+        $sourceLocale ??= self::sourceLocale();
+
+        // TranslateFields takes (model, fields, retranslate, sourceLocale). A
+        // custom job from translationJobClass() gets only as many of those as
+        // its constructor declares, so an existing (model, fields) job keeps
+        // working unchanged.
+        $arguments = [$model, $fields, $retranslate, $sourceLocale];
+        $constructor = (new \ReflectionClass($jobClass))->getConstructor();
+        $accepted = $constructor === null ? 0 : ($constructor->isVariadic() ? count($arguments) : $constructor->getNumberOfParameters());
+        $job = new $jobClass(...array_slice($arguments, 0, max(2, $accepted)));
         $settings = (array) config('translaGenius.queue', []);
 
         $connection = $settings['connection'] ?? null;
@@ -62,6 +73,43 @@ final class TranslationJobDispatcher
         }
 
         dispatch($job);
+    }
+
+    /**
+     * The locale content is authored in, decided when the job is dispatched
+     * (never inside the job, where the queue worker's locale is unrelated to
+     * the request that saved the record): TRANSLATION_SOURCE_LOCALE when set,
+     * otherwise the current (request) locale.
+     *
+     * @return string
+     */
+    public static function sourceLocale(): string
+    {
+        $fixed = trim((string) config('translaGenius.source_locale'));
+
+        return $fixed !== '' ? $fixed : get_current_locale();
+    }
+
+    /**
+     * Source locale for contexts with no request (backfill, and jobs queued
+     * before the locale was carried): TRANSLATION_SOURCE_LOCALE, then the
+     * app's configured locale (config('app.locale') as it was at boot).
+     * Deterministic - not the process's current locale, which
+     * app()->setLocale() may have changed (along with config('app.locale')).
+     *
+     * @return string
+     */
+    public static function defaultSourceLocale(): string
+    {
+        $fixed = trim((string) config('translaGenius.source_locale'));
+
+        if ($fixed !== '') {
+            return $fixed;
+        }
+
+        return app()->bound('translagenius.configured_locale')
+            ? (string) app('translagenius.configured_locale')
+            : (string) config('app.locale', 'en');
     }
 
     /**

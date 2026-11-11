@@ -108,7 +108,7 @@ trait Translatable
      */
     protected static function staleTranslationPlan($model, array $translatableFields): array
     {
-        $sourceLocale = get_current_locale();
+        $sourceLocale = TranslationJobDispatcher::sourceLocale();
         $plan = [];
 
         foreach ($translatableFields as $field) {
@@ -181,17 +181,19 @@ trait Translatable
      * (MySQL, PostgreSQL, SQLite) instead of only ever working on MySQL.
      *
      * @param \Illuminate\Database\Eloquent\Builder $query
+     * @param string|null $sourceLocale Locale content is authored in; its targets
+     *        are every other supported locale. Null = the current locale.
      * @return \Illuminate\Database\Eloquent\Builder
      *
      * @see self::scopeNotFullyTranslated() The inverse.
      */
-    public function scopeFullyTranslated(Builder $query)
+    public function scopeFullyTranslated(Builder $query, ?string $sourceLocale = null)
     {
         if (empty($this->translatable) || !is_array($this->translatable)) {
             return $query;
         }
 
-        $targetLanguages = get_supported_languages();
+        $targetLanguages = get_supported_languages($sourceLocale);
 
         foreach ($this->translatable as $field) {
             $query->where(function ($q) use ($field, $targetLanguages) {
@@ -220,17 +222,19 @@ trait Translatable
      * scopeFullyTranslated(), so it's equally driver-agnostic.
      *
      * @param \Illuminate\Database\Eloquent\Builder $query
+     * @param string|null $sourceLocale Locale content is authored in; its targets
+     *        are every other supported locale. Null = the current locale.
      * @return \Illuminate\Database\Eloquent\Builder
      *
      * @see self::scopeFullyTranslated() The inverse.
      */
-    public function scopeNotFullyTranslated(Builder $query)
+    public function scopeNotFullyTranslated(Builder $query, ?string $sourceLocale = null)
     {
         if (empty($this->translatable) || !is_array($this->translatable)) {
             return $query;
         }
 
-        $targetLanguages = get_supported_languages();
+        $targetLanguages = get_supported_languages($sourceLocale);
         $translatableFields = $this->translatable;
 
         return $query->where(function ($outer) use ($translatableFields, $targetLanguages) {

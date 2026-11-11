@@ -70,6 +70,15 @@ class TranslateFields implements ShouldQueue
     protected array $retranslate;
 
     /**
+     * The locale the content was authored in, captured at dispatch time (see
+     * TranslationJobDispatcher::sourceLocale()). Null only for a job queued
+     * by a version that didn't carry it - see resolvedSourceLocale().
+     *
+     * @var string|null
+     */
+    protected ?string $sourceLocale = null;
+
+    /**
      * Number of attempts before the job is considered permanently failed
      * (translaGenius.retries.job_tries / TRANSLATION_JOB_TRIES, default 3),
      * set at construction so it's captured in the queued payload. Transient
@@ -110,12 +119,15 @@ class TranslateFields implements ShouldQueue
      * @param array<int, string> $fields
      * @param array<string, array{locale: string, text: string, keep: array<int, string>}> $retranslate
      *        Re-translation plan for fields whose source changed (see $retranslate).
+     * @param string|null $sourceLocale Locale the content was authored in, as
+     *        decided at dispatch time.
      */
-    public function __construct(Model $model, array $fields, array $retranslate = [])
+    public function __construct(Model $model, array $fields, array $retranslate = [], ?string $sourceLocale = null)
     {
         $this->model = $model;
         $this->fields = $fields;
         $this->retranslate = $retranslate;
+        $this->sourceLocale = $sourceLocale;
         $this->tries = max(1, \CodingPartners\TranslaGenius\TranslaGeniusServiceProvider::intSetting(
             config('translaGenius.retries.job_tries'),
             3
@@ -143,8 +155,10 @@ class TranslateFields implements ShouldQueue
     public function handle(TranslatorInterface $translator, TranslationWriter $writer)
     {
         try {
-            $currentLocale = get_current_locale();
-            $targetLanguages = get_supported_languages();
+            // Never the worker's own locale: it has nothing to do with the
+            // request that saved the record.
+            $currentLocale = $this->resolvedSourceLocale();
+            $targetLanguages = get_supported_languages($currentLocale);
 
             $saved = $this->translateMissingPairs($translator, $writer, $currentLocale, $targetLanguages);
 
@@ -278,7 +292,18 @@ class TranslateFields implements ShouldQueue
             $fieldTranslations = $this->normalizeFieldTranslations($this->model->getTranslations($field), $currentLocale);
             $sourceText = $fieldTranslations[$currentLocale] ?? null;
 
-            if ($sourceText === null || !$this->shouldTranslateField($field, $sourceText)) {
+            if (!is_string($sourceText) || trim($sourceText) === '') {
+                Log::warning('TranslateFields: no source text to translate from; skipping the field', [
+                    'model_class' => get_class($this->model),
+                    'model_id' => $this->model->getKey(),
+                    'field' => $field,
+                    'source_locale' => $currentLocale,
+                ]);
+
+                continue;
+            }
+
+            if (!$this->shouldTranslateField($field, $sourceText)) {
                 continue;
             }
 
@@ -503,6 +528,31 @@ class TranslateFields implements ShouldQueue
         }
 
         return true;
+    }
+
+    /**
+     * The source locale this job translates from: the one captured at dispatch.
+     * A job serialized before that was carried (queued before an upgrade) has
+     * none, and uses TRANSLATION_SOURCE_LOCALE, then config('app.locale') -
+     * deterministically, never the worker's current locale.
+     *
+     * @return string
+     */
+    protected function resolvedSourceLocale(): string
+    {
+        if ($this->sourceLocale !== null && $this->sourceLocale !== '') {
+            return $this->sourceLocale;
+        }
+
+        $fallback = \CodingPartners\TranslaGenius\Support\TranslationJobDispatcher::defaultSourceLocale();
+
+        Log::info('TranslateFields: job carries no source locale (queued before it was recorded); using the default', [
+            'model_class' => get_class($this->model),
+            'model_id' => $this->model->getKey(),
+            'source_locale' => $fallback,
+        ]);
+
+        return $fallback;
     }
 
     /**

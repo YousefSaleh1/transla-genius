@@ -50,7 +50,8 @@ class BackfillCommand extends Command
         {model : Fully-qualified Eloquent model class name that uses the Translatable trait}
         {--chunk=100 : Number of records to load per chunk via chunkById()}
         {--force : Dispatch without an interactive confirmation prompt - required for non-interactive/CI use}
-        {--dry-run : Only report how many records/calls would be affected; dispatch nothing}';
+        {--dry-run : Only report how many records/calls would be affected; dispatch nothing}
+        {--source= : Locale the content is authored in (default: TRANSLATION_SOURCE_LOCALE, then app.locale)}';
 
     protected $description = "Dispatch the model's translation job for existing records that are missing translations";
 
@@ -100,7 +101,15 @@ class BackfillCommand extends Command
         $jobClass = $modelClass::getTranslationJobClass();
         $jobClassLabel = class_basename($jobClass);
 
-        $buildQuery = fn () => $modelClass::query()->notFullyTranslated();
+        // There's no request here, so the source locale is explicit:
+        // --source, then TRANSLATION_SOURCE_LOCALE, then app.locale.
+        $sourceLocale = trim((string) $this->option('source'));
+        $sourceLocale = $sourceLocale !== '' ? $sourceLocale : TranslationJobDispatcher::defaultSourceLocale();
+        $targetLocales = get_supported_languages($sourceLocale);
+
+        $this->line("Source locale: {$sourceLocale}; target locale(s): " . implode(', ', $targetLocales));
+
+        $buildQuery = fn () => $modelClass::query()->notFullyTranslated($sourceLocale);
 
         $matchingCount = $buildQuery()->count();
 
@@ -110,7 +119,7 @@ class BackfillCommand extends Command
             return self::SUCCESS;
         }
 
-        $estimatedCalls = $matchingCount * count($translatableFields) * count(get_supported_languages());
+        $estimatedCalls = $matchingCount * count($translatableFields) * count($targetLocales);
         $this->line(
             "Up to {$estimatedCalls} translation API call(s) may result (records x fields x locales - "
             . 'field/locale pairs already translated are skipped automatically, at no API cost).'
@@ -123,7 +132,7 @@ class BackfillCommand extends Command
         }
 
         $confirmed = $this->option('force')
-            || $this->confirm("Dispatch {$jobClassLabel} for these {$matchingCount} record(s)?", false);
+            || $this->confirm("Dispatch {$jobClassLabel} for these {$matchingCount} record(s), translating from [{$sourceLocale}]?", false);
 
         if (!$confirmed) {
             $this->warn('Aborted: no jobs dispatched.');
@@ -136,9 +145,9 @@ class BackfillCommand extends Command
 
         $dispatched = 0;
 
-        $buildQuery()->chunkById($chunkSize, function ($records) use (&$dispatched, $bar, $jobClass) {
+        $buildQuery()->chunkById($chunkSize, function ($records) use (&$dispatched, $bar, $jobClass, $sourceLocale) {
             foreach ($records as $record) {
-                TranslationJobDispatcher::dispatch($jobClass, $record, $record->getTranslatableAttributes());
+                TranslationJobDispatcher::dispatch($jobClass, $record, $record->getTranslatableAttributes(), [], $sourceLocale);
                 $dispatched++;
                 $bar->advance();
             }
