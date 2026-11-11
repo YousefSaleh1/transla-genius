@@ -11,6 +11,7 @@ use CodingPartners\TranslaGenius\DTOs\TranslationResult;
 use CodingPartners\TranslaGenius\Exceptions\AllProvidersFailedException;
 use CodingPartners\TranslaGenius\Exceptions\TranslationConfigurationException;
 use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
+use Exception;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -109,7 +110,11 @@ final class FallbackProvider implements BatchTranslationProviderInterface
                 }
 
                 return $result;
-            } catch (TranslationFailedException $e) {
+            } catch (Exception $caught) {
+                // A custom driver's own exception (an SDK's) fails this member
+                // like any other failure. A PHP Error is a bug: not caught.
+                $e = $this->asTranslationFailure($caught, $this->names[$position]);
+
                 Log::warning('FallbackProvider: provider failed, trying next in chain', [
                     'provider' => $this->names[$position],
                     'position' => $position,
@@ -125,6 +130,7 @@ final class FallbackProvider implements BatchTranslationProviderInterface
                     'status_code' => $e->getStatusCode(),
                     'retryable' => $e->isRetryable(),
                     'retry_after' => $e->getRetryAfter(),
+                    'exception' => $e,
                 ];
             }
         }
@@ -192,7 +198,11 @@ final class FallbackProvider implements BatchTranslationProviderInterface
                     'provider' => $this->names[$position],
                     'position' => $position,
                 ]);
-            } catch (TranslationFailedException $e) {
+            } catch (Exception $caught) {
+                // A custom driver's own exception (an SDK's) fails this member
+                // like any other failure. A PHP Error is a bug: not caught.
+                $e = $this->asTranslationFailure($caught, $this->names[$position]);
+
                 Log::warning('FallbackProvider: provider failed a batch, trying next in chain', [
                     'provider' => $this->names[$position],
                     'position' => $position,
@@ -208,6 +218,7 @@ final class FallbackProvider implements BatchTranslationProviderInterface
                     'status_code' => $e->getStatusCode(),
                     'retryable' => $e->isRetryable(),
                     'retry_after' => $e->getRetryAfter(),
+                    'exception' => $e,
                 ];
             }
         }
@@ -217,6 +228,24 @@ final class FallbackProvider implements BatchTranslationProviderInterface
         }
 
         throw new AllProvidersFailedException($failures);
+    }
+
+    /**
+     * A member's exception as a TranslationFailedException: as is, or, for
+     * any other exception, wrapped as a retryable one naming the member and
+     * keeping the original as `previous`.
+     */
+    protected function asTranslationFailure(Exception $e, string $member): TranslationFailedException
+    {
+        if ($e instanceof TranslationFailedException) {
+            return $e;
+        }
+
+        return new TranslationFailedException(
+            "[{$member}] ".get_class($e).': '.$e->getMessage(),
+            retryable: true,
+            previous: $e,
+        );
     }
 
     /**

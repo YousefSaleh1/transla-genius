@@ -256,8 +256,8 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
         return new TranslationResult(
             text: $content,
             provider: $this->name,
-            promptTokens: $response->json('usage.prompt_tokens'),
-            completionTokens: $response->json('usage.completion_tokens'),
+            promptTokens: self::tokens($response, 'prompt_tokens'),
+            completionTokens: self::tokens($response, 'completion_tokens'),
             requestId: $requestId,
         );
     }
@@ -349,8 +349,8 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
         return new TranslationBatchResult(
             translations: $translations,
             provider: $this->name,
-            promptTokens: $response->json('usage.prompt_tokens'),
-            completionTokens: $response->json('usage.completion_tokens'),
+            promptTokens: self::tokens($response, 'prompt_tokens'),
+            completionTokens: self::tokens($response, 'completion_tokens'),
             requestId: $requestId,
         );
     }
@@ -371,8 +371,8 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
         array $targetLocales,
         ?string $field
     ): void {
-        $prompt = $response->json('usage.prompt_tokens');
-        $completion = $response->json('usage.completion_tokens');
+        $prompt = self::tokens($response, 'prompt_tokens');
+        $completion = self::tokens($response, 'completion_tokens');
 
         if ($prompt === null && $completion === null) {
             return;
@@ -382,8 +382,8 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
             $outcome,
             $this->name,
             $requestId,
-            is_numeric($prompt) ? (int) $prompt : null,
-            is_numeric($completion) ? (int) $completion : null,
+            $prompt,
+            $completion,
             $sourceLocale,
             $targetLocales,
             $field,
@@ -402,6 +402,22 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
                 'Translation provider '.($this->name !== null ? "[{$this->name}] " : '').'configuration missing: API key or API URL.'
             );
         }
+    }
+
+    /**
+     * A token count from the response's `usage`, or null (unknown) when it's
+     * missing or not a whole number: a gateway reporting "twelve" or 3.5
+     * must not crash the translation.
+     */
+    protected static function tokens(Response $response, string $key): ?int
+    {
+        $value = $response->json("usage.{$key}");
+
+        if (is_int($value)) {
+            return $value >= 0 ? $value : null;
+        }
+
+        return is_string($value) && ctype_digit($value) ? (int) $value : null;
     }
 
     /** Whether a connection failure was a timeout (cURL error 28), not a refusal or DNS error. */

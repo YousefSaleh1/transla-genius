@@ -273,7 +273,7 @@ OPENAI_API_KEY=your-openai-key
 GEMINI_API_KEY=your-gemini-key
 ```
 
-The first provider to succeed wins, and later ones are not called. The chain moves on after any failure, including non-retryable ones such as a bad key or an exhausted quota, because that is the case a fallback exists for. If every member fails, `Exceptions\AllProvidersFailedException` is thrown; it extends `TranslationFailedException`, and `getFailures()` returns each member's failure, naming the member by its config name (`openai`, `gemini`) with its PHP class alongside.
+The first provider to succeed wins, and later ones are not called. The chain moves on after any failure, including non-retryable ones such as a bad key or an exhausted quota, because that is the case a fallback exists for. If every member fails, `Exceptions\AllProvidersFailedException` is thrown; it extends `TranslationFailedException`, and `getFailures()` returns each member's failure, naming the member by its config name (`openai`, `gemini`) with its PHP class alongside. A custom driver that throws its SDK's own exception counts as a failure of that member too: it is wrapped in a retryable `TranslationFailedException` (the original is its `previous`) and the chain moves on. A PHP `Error`, such as a `TypeError`, is a bug and is not caught.
 
 The chain needs at least 2 names. A missing chain, a chain that includes itself, or an unknown name fails when the provider is resolved, with an error naming the problem. In a published config you can define more chains, with `chain` as an array:
 

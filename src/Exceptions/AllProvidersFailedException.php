@@ -30,13 +30,14 @@ class AllProvidersFailedException extends TranslationFailedException
      * OpenAiCompatibleProvider class, so the class alone doesn't say which
      * member failed.
      *
-     * @param  array<int, array{provider: string, class: class-string, message: string, status_code: int|null, retryable: bool, retry_after?: int|null}>  $failures
+     * @param  array<int, array{provider: string, class: class-string, message: string, status_code: int|null, retryable: bool, retry_after?: int|null, exception?: TranslationFailedException}>  $failures
      */
     public function __construct(protected readonly array $failures)
     {
         parent::__construct(
             self::buildMessage($failures),
             retryable: self::anyRetryable($failures),
+            previous: $failures[0]['exception'] ?? null,
             retryAfter: self::shortestRetryAfter($failures),
         );
     }
@@ -45,7 +46,7 @@ class AllProvidersFailedException extends TranslationFailedException
      * Every provider's individual failure, in try order - for logging or
      * building a more detailed error report than getMessage() alone gives.
      *
-     * @return array<int, array{provider: string, class: class-string, message: string, status_code: int|null, retryable: bool, retry_after?: int|null}>
+     * @return array<int, array{provider: string, class: class-string, message: string, status_code: int|null, retryable: bool, retry_after?: int|null, exception?: TranslationFailedException}>
      */
     public function getFailures(): array
     {
@@ -53,7 +54,7 @@ class AllProvidersFailedException extends TranslationFailedException
     }
 
     /**
-     * @param  array<int, array{provider: string, class: class-string, message: string, status_code: int|null, retryable: bool, retry_after?: int|null}>  $failures
+     * @param  array<int, array{provider: string, class: class-string, message: string, status_code: int|null, retryable: bool, retry_after?: int|null, exception?: TranslationFailedException}>  $failures
      */
     private static function buildMessage(array $failures): string
     {
@@ -74,7 +75,7 @@ class AllProvidersFailedException extends TranslationFailedException
      * any moment, so there is no wait to use (null): the job's own backoff
      * applies.
      *
-     * @param  array<int, array{provider: string, class: class-string, message: string, status_code: int|null, retryable: bool, retry_after?: int|null}>  $failures
+     * @param  array<int, array{provider: string, class: class-string, message: string, status_code: int|null, retryable: bool, retry_after?: int|null, exception?: TranslationFailedException}>  $failures
      */
     private static function shortestRetryAfter(array $failures): ?int
     {
@@ -104,7 +105,7 @@ class AllProvidersFailedException extends TranslationFailedException
      * Only when every provider failed non-retryably is retrying the whole
      * chain again guaranteed to be futile.
      *
-     * @param  array<int, array{provider: string, class: class-string, message: string, status_code: int|null, retryable: bool, retry_after?: int|null}>  $failures
+     * @param  array<int, array{provider: string, class: class-string, message: string, status_code: int|null, retryable: bool, retry_after?: int|null, exception?: TranslationFailedException}>  $failures
      */
     private static function anyRetryable(array $failures): bool
     {
