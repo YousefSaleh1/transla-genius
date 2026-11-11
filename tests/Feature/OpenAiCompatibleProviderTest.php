@@ -220,4 +220,77 @@ class OpenAiCompatibleProviderTest extends TestCase
             Http::assertSent(fn (Request $request) => !array_key_exists('temperature', $request->data()));
         }
     }
+
+    public function test_reasoning_effort_is_sent_only_when_set()
+    {
+        foreach ([[null, false], ['', false], ['  ', false], ['low', 'low'], ['none', 'none']] as [$value, $expected]) {
+            $sent = null;
+            Http::fake(function (Request $request) use (&$sent) {
+                $sent = $request->data();
+
+                return Http::response(['choices' => [['message' => ['content' => 'ok']]]], 200);
+            });
+
+            (new OpenAiCompatibleProvider($this->config(['reasoning_effort' => $value])))
+                ->translate(new TranslationRequest('Hi', 'en', 'ar'));
+
+            if ($expected === false) {
+                $this->assertArrayNotHasKey('reasoning_effort', $sent, var_export($value, true));
+            } else {
+                $this->assertSame($expected, $sent['reasoning_effort']);
+            }
+        }
+    }
+
+    public function test_body_fields_are_merged_but_cannot_override_protected_fields_or_the_key()
+    {
+        $sent = null;
+        Http::fake(function (Request $request) use (&$sent) {
+            $sent = $request;
+
+            return Http::response(['choices' => [['message' => ['content' => 'ok']]]], 200);
+        });
+
+        (new OpenAiCompatibleProvider($this->config([
+            'temperature' => 0.3,
+            'body' => [
+                'top_p' => 0.9,
+                'seed' => 7,
+                'temperature' => 1.5,             // configured temperature wins
+                'model' => 'attacker-model',      // protected
+                'messages' => [['role' => 'system', 'content' => 'leak']], // protected
+                'stream' => true,                 // protected
+                'Authorization' => 'Bearer other',  // only ever a body field, never auth
+            ],
+        ])))->translate(new TranslationRequest('Hi', 'en', 'ar'));
+
+        $this->assertSame(0.9, $sent['top_p']);
+        $this->assertSame(7, $sent['seed']);
+        $this->assertSame(0.3, $sent['temperature']);
+        $this->assertSame('test-model', $sent['model']);
+        $this->assertCount(2, $sent['messages']);
+        $this->assertSame(['role' => 'user', 'content' => 'Hi'], $sent['messages'][1]);
+        $this->assertArrayNotHasKey('stream', $sent->data());
+        $this->assertSame(['Bearer test-api-key'], $sent->header('Authorization'));
+    }
+
+    public function test_body_can_supply_fields_the_entry_does_not_configure()
+    {
+        $sent = null;
+        Http::fake(function (Request $request) use (&$sent) {
+            $sent = $request->data();
+
+            return Http::response(['choices' => [['message' => ['content' => 'ok']]]], 200);
+        });
+
+        (new OpenAiCompatibleProvider($this->config([
+            'temperature' => null,
+            'max_tokens' => null,
+            'body' => ['temperature' => 0.7, 'max_tokens' => 900, 'reasoning_effort' => 'low'],
+        ])))->translate(new TranslationRequest('Hi', 'en', 'ar'));
+
+        $this->assertSame(0.7, $sent['temperature']);
+        $this->assertSame(900, $sent['max_tokens']);
+        $this->assertSame('low', $sent['reasoning_effort']);
+    }
 }

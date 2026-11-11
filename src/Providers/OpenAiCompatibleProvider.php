@@ -38,10 +38,30 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
         . 'Respond with only the translated text - no explanation, commentary, or additional formatting.';
 
     /**
+     * Request-body fields `body` can never set: the provider always owns the
+     * model and the messages (the system/user split is a safety boundary),
+     * and a streamed reply couldn't be parsed. The API key is a header, so
+     * `body` can't reach it at all.
+     */
+    public const PROTECTED_BODY_FIELDS = ['model', 'messages', 'stream'];
+
+    /**
      * @var string|null Configured system prompt template, or null for
      *      DEFAULT_PROMPT. Only ever sent as the `system` message.
      */
     protected ?string $prompt;
+
+    /**
+     * @var string|null `reasoning_effort` to send (e.g. "none", "low"), or
+     *      null to omit the field and use the model's default.
+     */
+    protected ?string $reasoningEffort;
+
+    /**
+     * @var array<string, mixed> Extra provider-specific request-body fields,
+     *      minus PROTECTED_BODY_FIELDS.
+     */
+    protected array $extraBody;
 
     /** @var string API key sent as a Bearer token; blank fails fast in translate(). */
     protected string $apiKey;
@@ -105,7 +125,7 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
     protected int $retryAfterMax;
 
     /**
-     * @param array{name?: string, key?: string, url?: string, model?: string, temperature?: float|null, max_tokens?: int|null, timeout?: int, auth_header?: string, headers?: array<string, string>, token_limit_param?: string, http_retries?: int, retry_after_max?: int} $config
+     * @param array{name?: string, key?: string, url?: string, model?: string, temperature?: float|null, max_tokens?: int|null, timeout?: int, auth_header?: string, headers?: array<string, string>, token_limit_param?: string, http_retries?: int, retry_after_max?: int, prompt?: string|null, reasoning_effort?: string|null, body?: array<string, mixed>} $config
      *        Provider configuration array - one translaGenius.providers.* entry
      *        from config/translaGenius.php. `name` is injected by the service
      *        provider (the entry's config key). Every key is optional; missing
@@ -122,6 +142,18 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
         $this->timeout = (int) ($config['timeout'] ?? 10);
         $this->name = isset($config['name']) ? (string) $config['name'] : null;
         $this->prompt = trim((string) ($config['prompt'] ?? '')) === '' ? null : (string) $config['prompt'];
+        $this->reasoningEffort = trim((string) ($config['reasoning_effort'] ?? '')) === '' ? null : trim((string) $config['reasoning_effort']);
+        $this->extraBody = (array) ($config['body'] ?? []);
+
+        $blocked = array_intersect(array_keys($this->extraBody), self::PROTECTED_BODY_FIELDS);
+        if ($blocked !== []) {
+            Log::warning('OpenAiCompatibleProvider: ignoring protected fields in `body` config', [
+                'provider' => $this->name,
+                'fields' => array_values($blocked),
+            ]);
+
+            $this->extraBody = array_diff_key($this->extraBody, array_flip(self::PROTECTED_BODY_FIELDS));
+        }
         $this->authHeader = (string) ($config['auth_header'] ?? 'Authorization') ?: 'Authorization';
         $this->httpRetries = max(0, (int) ($config['http_retries'] ?? 1));
         $this->retryAfterMax = max(0, (int) ($config['retry_after_max'] ?? 10));
@@ -303,13 +335,19 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
      */
     protected function requestBody(TranslationRequest $request, string $systemPrompt): array
     {
-        $body = [
+        // Extra `body` fields first, so everything below takes precedence;
+        // protected fields were already stripped in the constructor.
+        $body = array_merge($this->extraBody, [
             'model' => $this->model,
             'messages' => [
                 ['role' => 'system', 'content' => $systemPrompt],
                 ['role' => 'user', 'content' => $request->text],
             ],
-        ];
+        ]);
+
+        if ($this->reasoningEffort !== null) {
+            $body['reasoning_effort'] = $this->reasoningEffort;
+        }
 
         if ($this->temperature !== null) {
             $body['temperature'] = $this->temperature;

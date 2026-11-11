@@ -322,4 +322,34 @@ class ShippedPresetsTest extends Orchestra
 
         Http::assertSent(fn (Request $r) => $r['temperature'] === 0.1);
     }
+
+    public function test_reasoning_effort_defaults_per_preset()
+    {
+        $this->fakeEndpoints();
+        Http::fake(['api.deepseek.com/*' => Http::response(['choices' => [['message' => ['content' => 'ok'], 'finish_reason' => 'stop']]])]);
+
+        $expected = ['openai' => 'none', 'deepseek' => 'none', 'gemini' => null, 'openrouter' => null];
+        $hosts = ['openai' => 'api.openai.com', 'deepseek' => 'api.deepseek.com', 'gemini' => 'googleapis', 'openrouter' => 'openrouter.ai'];
+
+        foreach ($expected as $preset => $effort) {
+            $this->withEnv(['TRANSLATION_PROVIDER' => $preset, strtoupper($preset) . '_API_KEY' => 'k']);
+            $this->translate();
+
+            Http::assertSent(fn (Request $r) => str_contains($r->url(), $hosts[$preset])
+                && ($effort === null ? !array_key_exists('reasoning_effort', $r->data()) : $r['reasoning_effort'] === $effort));
+        }
+    }
+
+    public function test_reasoning_effort_env_overrides_and_empty_omits()
+    {
+        $this->fakeEndpoints();
+
+        $this->withEnv(['TRANSLATION_PROVIDER' => 'gemini', 'GEMINI_API_KEY' => 'k', 'GEMINI_REASONING_EFFORT' => 'low']);
+        $this->translate();
+        Http::assertSent(fn (Request $r) => str_contains($r->url(), 'googleapis') && $r['reasoning_effort'] === 'low');
+
+        $this->withEnv(['TRANSLATION_PROVIDER' => 'openai', 'OPENAI_API_KEY' => 'k', 'OPENAI_REASONING_EFFORT' => '']);
+        $this->translate();
+        Http::assertSent(fn (Request $r) => str_contains($r->url(), 'api.openai.com') && !array_key_exists('reasoning_effort', $r->data()));
+    }
 }

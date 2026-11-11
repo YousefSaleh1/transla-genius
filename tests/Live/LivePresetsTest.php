@@ -79,13 +79,22 @@ class LivePresetsTest extends Orchestra
         $this->assertNotSame('', trim($result->text));
         $this->assertSame($preset, $result->provider);
 
-        [, $response] = Http::recorded()->last();
+        [$request, $response] = Http::recorded()->last();
         $this->assertNotSame('length', $response->json('choices.0.finish_reason'), 'Translation was truncated.');
 
+        // The preset's configured reasoning_effort (default or *_REASONING_EFFORT)
+        // really went out, so a passing run also proves the API accepts it.
+        $configuredEffort = trim((string) config("translaGenius.providers.{$preset}.reasoning_effort"));
+        $this->assertSame(
+            $configuredEffort === '' ? null : $configuredEffort,
+            $request->data()['reasoning_effort'] ?? null
+        );
+
         fwrite(STDERR, sprintf(
-            "\n  [live %s] %s -> \"%s\" (finish_reason: %s, tokens: %s/%s)\n",
+            "\n  [live %s] %s, reasoning_effort %s -> \"%s\" (finish_reason: %s, tokens: %s/%s)\n",
             $preset,
             config("translaGenius.providers.{$preset}.model"),
+            $configuredEffort === '' ? 'not sent' : $configuredEffort,
             $result->text,
             var_export($response->json('choices.0.finish_reason'), true),
             var_export($result->promptTokens, true),

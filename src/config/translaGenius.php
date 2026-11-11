@@ -56,6 +56,10 @@ return [
     |   auth_header              'Authorization' (default, sends "Bearer <key>"),
     |                            or another header name to send the raw key in.
     |   headers                  Extra request headers; null/empty values are dropped.
+    |   reasoning_effort         Sent only when set (e.g. 'none', 'low'); empty = omit.
+    |   body                     Extra request-body fields (config only). Can't set
+    |                            model, messages or stream; configured temperature,
+    |                            token limit and reasoning_effort take precedence.
     |   cost_per_1k_*_tokens     Rates for usage tracking; null means "unknown".
     |
     | Timeout, temperature and max_tokens are shared across presets through
@@ -79,6 +83,7 @@ return [
             'model' => env('OPENROUTER_MODEL', env('TRANSLATION_MODEL', 'openai/gpt-4o')),
             'timeout' => env('TRANSLATION_API_TIMEOUT', 10),
             'temperature' => env('TRANSLATION_TEMPERATURE', 0.3),
+            'reasoning_effort' => env('OPENROUTER_REASONING_EFFORT'),
             'max_tokens' => env('TRANSLATION_MAX_TOKENS'),
             // Optional attribution headers documented by OpenRouter.
             'headers' => [
@@ -97,6 +102,7 @@ return [
             'model' => env('OPENAI_MODEL', 'gpt-6-luna'),
             'timeout' => env('TRANSLATION_API_TIMEOUT', 10),
             'temperature' => env('TRANSLATION_TEMPERATURE'),
+            'reasoning_effort' => env('OPENAI_REASONING_EFFORT', 'none'),
             'max_tokens' => env('TRANSLATION_MAX_TOKENS'),
             // OpenAI deprecates max_tokens in favor of max_completion_tokens.
             'token_limit_param' => 'max_completion_tokens',
@@ -113,6 +119,7 @@ return [
             'model' => env('GEMINI_MODEL', 'gemini-3.5-flash-lite'),
             'timeout' => env('TRANSLATION_API_TIMEOUT', 10),
             'temperature' => env('TRANSLATION_TEMPERATURE'),
+            'reasoning_effort' => env('GEMINI_REASONING_EFFORT'),
             'max_tokens' => env('TRANSLATION_MAX_TOKENS'),
             'cost_per_1k_prompt_tokens' => env('GEMINI_COST_PER_1K_PROMPT_TOKENS'),
             'cost_per_1k_completion_tokens' => env('GEMINI_COST_PER_1K_COMPLETION_TOKENS'),
@@ -126,6 +133,7 @@ return [
             'model' => env('DEEPSEEK_MODEL', 'deepseek-flash'),
             'timeout' => env('TRANSLATION_API_TIMEOUT', 10),
             'temperature' => env('TRANSLATION_TEMPERATURE'),
+            'reasoning_effort' => env('DEEPSEEK_REASONING_EFFORT', 'none'),
             'max_tokens' => env('TRANSLATION_MAX_TOKENS'),
             'cost_per_1k_prompt_tokens' => env('DEEPSEEK_COST_PER_1K_PROMPT_TOKENS'),
             'cost_per_1k_completion_tokens' => env('DEEPSEEK_COST_PER_1K_COMPLETION_TOKENS'),
@@ -140,6 +148,7 @@ return [
             'model' => env('MISTRAL_MODEL', 'mistral-small-latest'),
             'timeout' => env('TRANSLATION_API_TIMEOUT', 10),
             'temperature' => env('TRANSLATION_TEMPERATURE'),
+            'reasoning_effort' => env('MISTRAL_REASONING_EFFORT'),
             'max_tokens' => env('TRANSLATION_MAX_TOKENS'),
             'cost_per_1k_prompt_tokens' => env('MISTRAL_COST_PER_1K_PROMPT_TOKENS'),
             'cost_per_1k_completion_tokens' => env('MISTRAL_COST_PER_1K_COMPLETION_TOKENS'),
@@ -155,6 +164,7 @@ return [
             'model' => env('TRANSLATION_MODEL'),
             'timeout' => env('TRANSLATION_API_TIMEOUT', 10),
             'temperature' => env('TRANSLATION_TEMPERATURE'),
+            'reasoning_effort' => env('TRANSLATION_REASONING_EFFORT'),
             'max_tokens' => env('TRANSLATION_MAX_TOKENS'),
             'token_limit_param' => env('TRANSLATION_TOKEN_LIMIT_PARAM', 'max_tokens'),
             'auth_header' => env('TRANSLATION_AUTH_HEADER', 'Authorization'),

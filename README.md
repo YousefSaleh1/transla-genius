@@ -59,7 +59,7 @@ Settings shared by every preset: `TRANSLATION_API_TIMEOUT` (seconds, default 10)
 
 **Temperature.** Only `openrouter` sends a temperature by default (0.3, as before). The other presets' default models reason before answering, and their docs either don't document `temperature` for them or say it has no effect while thinking (DeepSeek), so leaving it out lets each model use its own default. Setting `TRANSLATION_TEMPERATURE` sends it to whichever preset is active; an empty value sends nothing.
 
-**`openai` default model.** `gpt-6-luna` is the cheapest text model on OpenAI's [models page](https://developers.openai.com/api/docs/models) ($0.10 / $0.50 per 1M input/output tokens), and every model listed there is a reasoning model. Its [model page](https://developers.openai.com/api/docs/models/gpt-6-luna) gives `medium` as the default reasoning effort, and per the [Chat Completions reference](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create) reasoning tokens count toward `max_completion_tokens` and are billed as output. That's why the preset sends neither a temperature nor a token limit by default.
+**`openai` default model.** `gpt-6-luna` is the cheapest text model on OpenAI's [models page](https://developers.openai.com/api/docs/models) ($0.10 / $0.50 per 1M input/output tokens), and every model listed there is a reasoning model. Its [model page](https://developers.openai.com/api/docs/models/gpt-6-luna) gives `medium` as the default reasoning effort, and per the [Chat Completions reference](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create) reasoning tokens count toward `max_completion_tokens` and are billed as output. That's why the preset sends neither a temperature nor a token limit by default, and asks for `reasoning_effort` `none` (see [Reasoning Effort](#reasoning-effort)).
 
 Default models are a starting point, checked against each provider's documentation when they were chosen. Providers retire models over time; set the `*_MODEL` variable to pin the one you want. `mistral-small-latest` is an alias that Mistral may move to a newer model (and price) without notice.
 
@@ -86,6 +86,32 @@ GEMINI_API_KEY=your-gemini-key
 ```
 
 The first provider to succeed wins; later ones aren't called. Names are trimmed and empty items ignored, and the chain needs at least 2 entries. A missing chain, a chain that references itself, or an unknown name fails at resolution time with an error naming the problem. See [Provider Fallback / Chaining](#provider-fallback--chaining) for how failures are handled.
+
+### Reasoning Effort
+
+Several default models reason before they answer. That costs money and latency that translation doesn't need, and the reasoning tokens count toward the output limit. Each preset has its own variable for the Chat Completions `reasoning_effort` field. It's sent only when set; an empty value sends nothing.
+
+| Preset | Variable | Default | What the provider documents |
+|---|---|---|---|
+| `openai` | `OPENAI_REASONING_EFFORT` | `none` | The [Chat Completions reference](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create) accepts `reasoning_effort` (default `medium`), and the [`gpt-6-luna` page](https://developers.openai.com/api/docs/models/gpt-6-luna) lists `none` among its supported efforts. |
+| `deepseek` | `DEEPSEEK_REASONING_EFFORT` | `none` | The [chat completion reference](https://api-docs.deepseek.com/api/create-chat-completion) lists `none`, `low`, `high`, `max` for `deepseek-flash`; `none` disables thinking mode. |
+| `gemini` | `GEMINI_REASONING_EFFORT` | not sent | The [OpenAI-compatibility page](https://aistudio.google.com/docs/openai) maps `reasoning_effort`, but its table doesn't cover Gemini 3.5 Flash-Lite, so no default is set. |
+| `mistral` | `MISTRAL_REASONING_EFFORT` | not sent | Mistral's [reasoning guide](https://docs.mistral.ai/inference/conversations/reasoning) documents `none` and `high` for Mistral Small 4 (`mistral-small-2603`), but doesn't say that `mistral-small-latest` points to it. |
+| `openrouter` | `OPENROUTER_REASONING_EFFORT` | not sent | The [API reference](https://openrouter.ai/docs/api-reference/chat-completion) accepts `reasoning_effort`, but the default `openai/gpt-4o` isn't documented as a reasoning model. |
+| `custom` | `TRANSLATION_REASONING_EFFORT` | not sent | Depends on your endpoint. |
+
+### Extra Request Fields
+
+For any other provider-specific parameter, a provider entry in a published config can set `body`, which is merged into the request:
+
+```php
+'deepseek' => [
+    // ...
+    'body' => ['top_p' => 0.9, 'seed' => 42],
+],
+```
+
+`body` can't set `model`, `messages` or `stream`: those are always set by the package (the system/user message split is a safety boundary, and a streamed reply couldn't be read), and are dropped with a log warning. The API key travels in a header, out of `body`'s reach. A configured `temperature`, token limit or `reasoning_effort` takes precedence over the same field in `body`.
 
 ### System Prompt
 
