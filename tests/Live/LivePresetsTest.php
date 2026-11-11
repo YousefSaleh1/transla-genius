@@ -136,19 +136,26 @@ class LivePresetsTest extends Orchestra
             ['es', 'fr', 'de'],
         ));
 
-        $this->assertCount(1, Http::recorded(), 'Expected exactly one request.');
+        // On a real network a transient 429/503 followed by the provider's own
+        // retry is normal; what batching guarantees is one *successful* request.
+        $attempts = Http::recorded();
+        $successful = $attempts->filter(fn ($pair) => $pair[1]->successful())->values();
+        $this->assertCount(1, $successful, 'Expected exactly one successful (2xx) batch response.');
         $this->assertSame(['es', 'fr', 'de'], array_keys($batch->translations), 'Every locale must come back valid.');
         foreach ($batch->translations as $text) {
             $this->assertNotSame('', trim($text));
         }
         $this->assertSame($preset, $batch->provider);
 
-        [$request, $response] = Http::recorded()->last();
+        [$request, $response] = $successful->first();
         $this->assertNotSame('length', $response->json('choices.0.finish_reason'));
 
+        $statuses = $attempts->map(fn ($pair) => $pair[1]->status())->implode(', ');
+
         fwrite(STDERR, sprintf(
-            "\n  [live batch %s] %s, response_format %s -> %s (tokens: %s/%s)\n",
+            "\n  [live batch %s] %s%s, response_format %s -> %s (tokens: %s/%s)\n",
             $preset,
+            $attempts->count() > 1 ? "attempts: {$statuses}; " : '',
             config("translaGenius.providers.{$preset}.model"),
             json_encode($request->data()['response_format']['type'] ?? 'none'),
             json_encode($batch->translations, JSON_UNESCAPED_UNICODE),
