@@ -352,6 +352,9 @@ return [
     |                 HTTP attempts per pair x pairs), between 120 and 900. The
     |                 queue connection's `retry_after` must be longer, or the
     |                 queue hands a still-running job to another worker.
+    |   max_requeues  Times a job that finds its record busy with another
+    |                 translation job is re-queued (10 s apart) before it fails
+    |                 (TRANSLATION_JOB_MAX_REQUEUES, default 100).
     |   after_commit  Dispatch only after the surrounding DB transaction
     |                 commits (nothing at all on rollback). Default true. When
     |                 false, the connection's own `after_commit` setting applies.
@@ -362,6 +365,7 @@ return [
         'queue' => env('TRANSLATION_QUEUE'),
         'after_commit' => env('TRANSLATION_DISPATCH_AFTER_COMMIT', true),
         'timeout' => env('TRANSLATION_JOB_TIMEOUT'),
+        'max_requeues' => env('TRANSLATION_JOB_MAX_REQUEUES', 100),
     ],
 
     /*

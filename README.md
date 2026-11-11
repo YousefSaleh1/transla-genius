@@ -368,7 +368,7 @@ These apply to every dispatch: model create and update, `translagenius:backfill`
 
 > **Set the queue connection's `retry_after` higher than the job timeout** (in `config/queue.php`; 900 is enough for the default). Laravel's database and Redis connections default to 90 seconds. When a job runs longer than `retry_after`, the queue hands it to another worker while the first is still running it.
 
-**One job per record.** Two jobs never translate the same record at the same time, so a create followed by a quick edit, or a redelivered job, doesn't pay for the same pairs twice. While one job holds a record, another job for that record is put back on the queue with a 10-second delay, as a fresh copy: waiting never uses up one of its attempts, and it is never dropped. The lock lives in your default cache store and lasts the job timeout plus 30 seconds. Use a store that shares locks between your workers: Redis, database, Memcached or DynamoDB. The `file` store only locks within one machine, `array` within one process, and `null` never blocks. With a custom store that doesn't support locks, a warning is logged and jobs may overlap: the row lock and snapshots still keep the data right, but overlapping pairs are paid for twice.
+**One job per record.** Two jobs never translate the same record at the same time, so a create followed by a quick edit, or a redelivered job, doesn't pay for the same pairs twice. While one job holds a record, another job for that record is put back on the queue with a 10-second delay, as a fresh copy: waiting never uses up one of its attempts, and it is never dropped. The lock lives in your default cache store and lasts the job timeout plus 30 seconds. A job that keeps finding its record busy fails after `TRANSLATION_JOB_MAX_REQUEUES` re-queues (default 100, about 17 minutes) with `Exceptions\RecordBusyException`, naming the record: usually a worker that hung while holding its lock. Use a store that shares locks between your workers: Redis, database, Memcached or DynamoDB. The `file` store only locks within one machine, `array` within one process, and `null` never blocks. With a custom store that doesn't support locks, a warning is logged and jobs may overlap: the row lock and snapshots still keep the data right, but overlapping pairs are paid for twice.
 
 ### System prompt
 
@@ -812,6 +812,7 @@ TranslaGeniusException
 ├── TranslationFailedException              a translation couldn't be made; isRetryable() says whether to try again
 │   ├── AllProvidersFailedException         every member of a fallback chain failed
 │   ├── PairsFailedException                some pairs of a job failed; the others were saved
+│   ├── RecordBusyException                 the record stayed busy with another job through every re-queue
 │   └── TranslationConfigurationException   the configuration is wrong; never retryable
 ├── InvalidTranslationJobException          a job class doesn't implement Contracts\TranslationJob
 ├── StaleReviewException                    approving a review whose source text changed
@@ -1138,6 +1139,7 @@ Every variable the shipped config reads. All are optional except the key of the 
 | `TRANSLATION_DISPATCH_AFTER_COMMIT` | `true` | `queue.after_commit` |
 | `TRANSLATION_FIRE_MODEL_EVENTS` | `false` | `fire_model_events` |
 | `TRANSLATION_JOB_TIMEOUT` | derived per job, 120 to 900 | `queue.timeout` |
+| `TRANSLATION_JOB_MAX_REQUEUES` | `100` | `queue.max_requeues` |
 | `TRANSLATION_HTTP_RETRIES` | `1` | `retries.http` |
 | `TRANSLATION_HTTP_RETRY_AFTER_MAX` | `10` | `retries.http_retry_after_max` |
 | `TRANSLATION_FALLBACK_HTTP_RETRIES` | `0` | `retries.fallback_http` |

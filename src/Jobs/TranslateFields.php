@@ -15,6 +15,7 @@ use CodingPartners\TranslaGenius\Events\TranslationRequestBilled;
 use CodingPartners\TranslaGenius\Events\TranslationsPersisted;
 use CodingPartners\TranslaGenius\Events\TranslationStarted;
 use CodingPartners\TranslaGenius\Exceptions\PairsFailedException;
+use CodingPartners\TranslaGenius\Exceptions\RecordBusyException;
 use CodingPartners\TranslaGenius\Exceptions\TranslationConfigurationException;
 use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
 use CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider;
@@ -186,6 +187,13 @@ class TranslateFields implements ShouldQueue, TranslationJob
     public const BUSY_RETRY_SECONDS = 10;
 
     /**
+     * Re-queues of a job that keeps finding its record busy before it fails
+     * (TRANSLATION_JOB_MAX_REQUEUES): 100 x 10 s outlasts the longest lock
+     * (the 900 s job timeout plus 30 s).
+     */
+    public const DEFAULT_MAX_REQUEUES = 100;
+
+    /**
      * One job per record at a time (Support\OneJobPerRecord). The lock lasts
      * a little longer than the job may run, so it never expires under a
      * running job; with no job timeout, an hour.
@@ -209,13 +217,25 @@ class TranslateFields implements ShouldQueue, TranslationJob
      * Put a fresh copy of this job on the queue, $seconds from now, and
      * remove this one: the record is busy with another translation job.
      * Not a release, which would count as one of $tries. The copy goes to
-     * the same connection and queue.
+     * the same connection and queue, and counts the re-queue in its payload
+     * options (`busy_requeues`); after TRANSLATION_JOB_MAX_REQUEUES the job
+     * fails with RecordBusyException instead.
      *
      * @internal Called by Support\OneJobPerRecord.
      */
     public function requeueAfter(int $seconds): void
     {
-        $copy = new static(new TranslationJobPayload($this->model, $this->fields, $this->sourceLocale, $this->retranslate, $this->options));
+        $requeues = Setting::int($this->options['busy_requeues'] ?? null, 0);
+        $max = Setting::int(config('translagenius.queue.max_requeues'), self::DEFAULT_MAX_REQUEUES);
+
+        if ($requeues >= $max) {
+            $this->fail(new RecordBusyException(get_class($this->model), $this->model->getKey(), $requeues));
+
+            return;
+        }
+
+        $options = ['busy_requeues' => $requeues + 1] + $this->options;
+        $copy = new static(new TranslationJobPayload($this->model, $this->fields, $this->sourceLocale, $this->retranslate, $options));
         $copy->onConnection($this->connection)->onQueue($this->queue)->delay($seconds);
 
         dispatch($copy);

@@ -6,6 +6,7 @@ use CodingPartners\TranslaGenius\Contracts\TranslatorInterface;
 use CodingPartners\TranslaGenius\DTOs\TranslationJobPayload;
 use CodingPartners\TranslaGenius\DTOs\TranslationRequest;
 use CodingPartners\TranslaGenius\Events\TranslationRequestBilled;
+use CodingPartners\TranslaGenius\Exceptions\RecordBusyException;
 use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
 use CodingPartners\TranslaGenius\Jobs\TranslateFields;
 use CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider;
@@ -192,5 +193,37 @@ class JobRuntimeTest extends TestCase
 
         $requeued->assertNotFailed();
         $this->assertSame('Lamp*', TestTranslatableModel::find($model->id)->getTranslation('name', 'ar', false));
+    }
+
+    /**
+     * A record whose lock stays held (a hung worker) can't keep its jobs
+     * going round the queue forever: after the cap, the job fails, naming
+     * the record.
+     */
+    public function test_a_job_that_keeps_finding_its_record_busy_fails_after_the_cap()
+    {
+        Queue::fake();
+        Http::fake();
+        config(['translagenius.queue.max_requeues' => 2]);
+
+        $model = TestTranslatableModel::withoutEvents(fn () => TestTranslatableModel::create(['name' => ['en' => 'Lamp'], 'description' => ['en' => '']]));
+        $lock = cache()->lock(TranslateFields::overlapKey($model), 600);
+        $this->assertTrue($lock->get());
+
+        $job = (new TranslateFields(new TranslationJobPayload($model, ['name'], 'en')))->withFakeQueueInteractions();
+        for ($round = 1; $round <= 2; $round++) {
+            $this->process($job);
+            $job->assertDeleted();
+            $job = unserialize(serialize(Queue::pushed(TranslateFields::class)->last()))->withFakeQueueInteractions();
+        }
+
+        $this->process($job);
+
+        $job->assertFailed();
+        $this->assertInstanceOf(RecordBusyException::class, $job->job->failedWith);
+        $this->assertStringContainsString(TestTranslatableModel::class.' #'.$model->id, $job->job->failedWith->getMessage());
+        Queue::assertPushed(TranslateFields::class, 2);
+        Http::assertNothingSent();
+        $lock->release();
     }
 }
