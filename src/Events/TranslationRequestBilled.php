@@ -37,6 +37,9 @@ class TranslationRequestBilled
 
     public const UNSAVED = 'unsaved';
 
+    /** The record was gone when the translation was to be saved: deleted, soft-deleted, or hidden by a global scope. */
+    public const MISSING = 'missing';
+
     /**
      * @param  string  $outcome  One of the constants above.
      * @param  array<int, string>  $targetLocales  Locale(s) the request was for.

@@ -74,6 +74,14 @@ class TranslateFields implements ShouldQueue, TranslationJob
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     /**
+     * A record deleted before its job runs has nothing to translate: the job
+     * is dropped, not failed (no failed_jobs row).
+     *
+     * @var bool
+     */
+    public $deleteWhenMissingModels = true;
+
+    /**
      * @var Model&HasTranslatableAttributes
      */
     protected Model $model;
@@ -826,6 +834,21 @@ class TranslateFields implements ShouldQueue, TranslationJob
             $this->reportUnused($result, TranslationRequestBilled::UNSAVED, $field, $sourceLocale, $targetLocale);
 
             throw $e;
+        }
+
+        if ($outcome === TranslationWriter::MISSING) {
+            $this->reportUnused($result, TranslationRequestBilled::MISSING, $field, $sourceLocale, $targetLocale);
+
+            Log::info('TranslateFields: the record is gone (deleted, soft-deleted, or hidden by a global scope); not saving, and not requesting the rest', [
+                'model_class' => get_class($this->model),
+                'model_id' => $this->model->getKey(),
+                'field' => $field,
+            ]);
+
+            // Every further write would find it gone too.
+            $this->stopRequesting = true;
+
+            return false;
         }
 
         if ($outcome !== TranslationWriter::WRITTEN) {

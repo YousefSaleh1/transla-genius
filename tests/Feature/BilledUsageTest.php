@@ -392,7 +392,7 @@ class BilledUsageTest extends Orchestra
         $this->assertSame('Hola (by hand)', TestTranslatableModel::first()->getTranslation('name', 'es', false));
     }
 
-    /** The record was deleted while a request was in flight: billed as discarded, the rest not requested. */
+    /** The record was deleted while a request was in flight: billed as missing, the rest not requested. */
     public function test_a_record_deleted_while_a_request_was_in_flight()
     {
         $this->behaviour['primary.test'] = function () {
@@ -405,7 +405,7 @@ class BilledUsageTest extends Orchestra
 
         $this->assertCount(1, $this->billed);
         $this->assertLogMatchesBilling();
-        $this->assertSame(['discarded primary ar'], $this->unusedRows());
+        $this->assertSame(['missing primary ar'], $this->unusedRows());
         $this->assertSame(0, TranslationUsageLog::where('outcome', 'translated')->count());
     }
 
