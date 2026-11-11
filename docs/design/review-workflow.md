@@ -1,6 +1,6 @@
 # Review / Approval Workflow — Design
 
-Status: **proposal, for review before implementation.** Nothing here is implemented yet.
+Status: **decided** (see [Decisions](#decisions)); implemented in Phase 7. Where the body and the Decisions section ever disagree, the Decisions win.
 
 ## Goal
 
@@ -26,21 +26,35 @@ Constraints carried over from the existing package:
 'review' => [
     'enabled' => env('TRANSLATION_REVIEW', false),
 
-    // Which model/field pairs go through review when enabled.
-    // Empty array = every translatable field of every model (see Open decision 1).
+    // Which model/field pairs go through review when enabled. With both
+    // `models` and `fields` empty, every translatable field of every model is
+    // reviewed (Decision 1).
     'models' => [
         \App\Models\Product::class => ['description', 'marketing_copy'],
         \App\Models\Page::class => ['*'],               // all translatable fields
     ],
 
-    // Optional: only these target locales are reviewed; others publish directly.
+    // Field names reviewed on every model (in addition to `models`).
+    'fields' => [],
+
+    // Only these target locales are reviewed; others publish directly (Decision 7).
     'locales' => [],                                     // empty = all
+
+    // What stays visible while a re-translation is pending (Decision 2).
+    'while_pending' => env('TRANSLATION_REVIEW_WHILE_PENDING', 'keep'),  // 'keep' | 'clear'
+    'while_pending_overrides' => [
+        // \App\Models\Product::class => 'clear',                       // whole model
+        // \App\Models\Product::class => ['price_note' => 'clear'],      // per field
+    ],
+
+    // After a rejection (Decision 4).
+    'on_reject' => env('TRANSLATION_REVIEW_ON_REJECT', 'leave'),        // 'leave' | 'retranslate'
 ],
 ```
 
 Per-field selection is the useful granularity: a product's `name` is low-risk and high-volume, while its `description` or legal text is what people want to read before it goes live. A per-locale filter is cheap to add and covers "we only have Arabic reviewers".
 
-**Model-level property** (`protected array $translationReview = ['description'];` on the model): worth supporting **later, as an optional override**, not in the first version.
+**Model-level property** (`protected array $translationReview = ['description'];` on the model): **not in v1** (Decision 6); configuration is config/env only. The reasoning that led there:
 
 - For: the setting sits next to `$translatable`, and it moves with the model across apps that share it.
 - Against: it's a code change, which is against the zero-code goal; two sources of truth need a precedence rule (config should win, so ops can switch review off without a deploy); and it's one more thing to test.
@@ -114,7 +128,7 @@ For example a `translations_pending` JSON column next to each translatable colum
 2. If the stored source text's hash ≠ `source_hash`, the translation is stale. Mark the row `superseded` and refuse with a clear exception (`StaleReviewException`), so the UI can tell the reviewer the source changed.
 3. Otherwise write `approved_text ?? text` to the field/locale, **overwriting** what's there (this is the "publish" step), set `approved`, the reviewer and `reviewed_at`.
 
-**Rejection** sets `rejected` (reviewer, note) and publishes nothing. The locale keeps whatever it had: missing for a new record, or the old published text after a source change (see §4). Re-requesting is **not** automatic by default, since the same setup would likely produce the same text (and with the cache on, would *exactly* reproduce it). The API offers an explicit `retranslate()` that evicts the cache entry and dispatches a fresh job for that pair; a config option `review.on_reject = 'leave' | 'retranslate'` can make that automatic. See Open decision 4.
+**Rejection** sets `rejected` (reviewer, note) and publishes nothing. The locale keeps whatever it had: missing for a new record, or the old published text after a source change (see §4). Re-requesting is **not** automatic by default, since the same setup would likely produce the same text (and with the cache on, would *exactly* reproduce it). The API offers an explicit `retranslate()` that evicts the cache entry and dispatches a fresh job for that pair; `review.on_reject = 'retranslate'` makes that automatic. The default is `leave` (Decision 4).
 
 **Source changes while pending.** The update hook already plans a re-translation for the changed field. In addition, every `pending` row for that field is marked `superseded` (its `source_hash` no longer matches), and the re-translation produces a new `pending` row. Approving a superseded row is refused, as in step 2 above.
 
@@ -132,7 +146,7 @@ New records are simple: there's no published text, so the locale falls back (Spa
 | **B. Clear the locale** when the source changes, so it falls back until approval | Fallback locale (usually the source language) | Never shows a translation that contradicts the source | Users of that locale suddenly see another language; a slow review queue means long gaps |
 | **C. Per model/field config** (`review.while_pending = 'keep' | 'clear'`) | Either | Fits both marketing copy (keep) and legal/pricing text (clear) | One more setting to understand; needs both paths tested |
 
-**This is for Yousef to decide** (Open decision 2). A useful data point: with review **off**, the current behavior (since the stale-translation fix) is effectively A for the duration of the job (seconds), so A's downside only becomes real with a human in the loop.
+**Decided: option C, with A as the default** (Decision 2): `review.while_pending` (`keep` by default, or `clear`), overridable per model or per field with `review.while_pending_overrides`. With `clear`, the stale published text is removed when the pending translation is produced, so the fallback locale shows until approval. A useful data point: with review **off**, the current behavior (since the stale-translation fix) is effectively A for the duration of the job (seconds), so A's downside only becomes real with a human in the loop.
 
 ## 5. Interaction with existing features
 
@@ -140,12 +154,12 @@ New records are simple: there's no published text, so the locale falls back (Spa
 - `fullyTranslated` / `notFullyTranslated` keep looking only at the published column, so they mean "what users can see". A pending pair is *not* translated yet.
 - Add `pendingReview()`: models with at least one `pending` row (a `whereExists` on `translation_reviews`, portable). Optionally `pendingReview('description', 'ar')`.
 
-**Backfill.** `translagenius:backfill` selects `notFullyTranslated` records, so it would see pairs awaiting review as missing and pay for them again. With review on, the job (and backfill's pre-count) must skip any field/locale that already has a `pending` row. Backfill output reports skipped-pending counts. Rejected pairs are *not* skipped: a rejected pair is missing, and backfilling it is a deliberate re-request. See Open decision 5.
+**Backfill.** `translagenius:backfill` selects `notFullyTranslated` records, so it would see pairs awaiting review as missing and pay for them again. With review on, the job (and backfill's pre-count) must skip any field/locale that already has a `pending` row. Backfill output reports skipped-pending counts. Rejected pairs are *not* skipped: a rejected pair is missing, and backfilling it is a deliberate re-request (Decision 5). A job dispatched by a model save, by contrast, does skip a pair rejected for the current source text, so a rejection really does leave the locale missing until an explicit `retranslate()` or backfill (Decision 4).
 
 **Cache.**
 - The cache keeps storing **machine output at translation time**, exactly as today. Review doesn't change what the model produced.
 - **On reject**: evict that entry. Otherwise the next record with identical source text gets the rejected text served from cache, at zero cost, straight into the review queue again. (Recommended, low risk.)
-- **On approve-with-edit**: *recommendation: replace the cache entry with the edited text*, marked `reviewed: true`. Reasons: the human-corrected version is what you want for the next identical text, and without it every repeat of a boilerplate sentence needs the same correction again. Risk: an edit that only makes sense in one record's context (it mentions that product) would spread. Mitigations: only identical source text shares the entry anyway, and the API's `approve()` takes a `cacheEdit: false` flag for record-specific edits. See Open decision 3.
+- **On approve-with-edit**: **replace the cache entry with the edited text, by default** (Decision 3), with a per-approval opt-out (`cacheEdit: false`). Reasons: the human-corrected version is what you want for the next identical text, and without it every repeat of a boilerplate sentence needs the same correction again. Risk: an edit that only makes sense in one record's context (it mentions that product) would spread. Mitigations: only identical source text shares the entry anyway, and the API's `approve()` takes a `cacheEdit: false` flag for record-specific edits.
 - On approve-as-is: no change (the entry already holds that text).
 
 **Batching.** No change to requests. A batch's valid locales each become a `pending` row, all sharing its `request_id`. The fallback and truncation rules are unchanged.
@@ -233,7 +247,7 @@ Breaking-change surface if someone *enables* it later: published text for review
 - **Bulk/commands:** `approveAll` skips stale rows and reports them; `review:list` counts; `approve-all` needs `--force` or confirmation; `prune` deletes only decided rows.
 - **Portability:** string `translatable_id` with integer and UUID owners; morph aliases; full suite on SQLite, MySQL, MariaDB, PostgreSQL, SQL Server.
 
-## 10. Open decisions for Yousef
+## 10. Open decisions for Yousef (all resolved; see [Decisions](#decisions))
 
 1. **What does `TRANSLATION_REVIEW=true` cover when `review.models` is empty?**
    Options: (a) everything translatable; (b) nothing until models are listed.
@@ -270,3 +284,20 @@ Breaking-change surface if someone *enables* it later: published text for review
 9. **`TranslationCompleted` semantics under review.**
    Options: (a) keep firing when produced, with `pendingReview` added; (b) fire only on publish (approval), with a new `TranslationProduced` event for the production step.
    *Recommendation: (a).* Usage tracking and existing listeners keep working; (b) would silently change what existing listeners see.
+
+---
+
+## Decisions
+
+Recorded after review; these are final, and the body above has been updated to match.
+
+1. **Activation scope** (resolves Open decision 1). `TRANSLATION_REVIEW=true` with no models (and no fields) listed covers every translatable field.
+2. **Visibility while pending** (resolves Open decision 2). Configurable per model and per field. The default keeps the previously published, now stale, text visible until approval (`keep`); the alternative, `clear`, removes it so the fallback locale shows.
+3. **Cache** (resolves Open decision 3). Approval with a reviewer edit updates the cache entry by default, with a per-approval opt-out. Rejection always removes that cache entry.
+4. **Rejection** (resolves Open decision 4). Configurable (`review.on_reject`). The default, `leave`, leaves the locale missing until an explicit `retranslate()`.
+5. **Backfill with review on** (resolves Open decision 5). Skip pairs that are pending; re-request rejected ones.
+6. **Model property** (resolves Open decision 6). No model-level property in v1; configuration is config/env only.
+7. **Per-locale filter** (resolves Open decision 7). `review.locales` is in v1.
+8. **Retention** (resolves Open decision 8). Decided review rows are kept, with a `prune` Artisan command; there is no automatic deletion.
+9. **Events** (resolves Open decision 9). `TranslationCompleted` keeps firing when a translation is produced, with a `pendingReview` flag; new events cover approval and rejection.
+
