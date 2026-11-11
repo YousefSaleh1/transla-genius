@@ -83,6 +83,14 @@ class TestCase extends Orchestra
     protected function tearDown(): void
     {
         $this->dropTables();
+
+        // Close this test's server connections. Without it they outlive the
+        // test, and a long run exhausts PostgreSQL's max_connections (100 by
+        // default) - "too many clients already".
+        foreach (array_keys(DB::getConnections()) as $name) {
+            DB::disconnect($name);
+        }
+
         parent::tearDown();
     }
 
@@ -206,6 +214,10 @@ class TestCase extends Orchestra
             };
         } catch (\Exception $e) {
             throw new \RuntimeException("Failed to create database '$database': " . $e->getMessage());
+        } finally {
+            // Only needed for this check; close it rather than keep one more
+            // server connection open per test.
+            DB::purge('temp');
         }
     }
 
