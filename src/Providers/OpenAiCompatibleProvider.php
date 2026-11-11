@@ -12,12 +12,15 @@ use CodingPartners\TranslaGenius\Exceptions\TranslationConfigurationException;
 use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
 use CodingPartners\TranslaGenius\Support\Setting;
 use CodingPartners\TranslaGenius\Support\Text;
+use GuzzleHttp\Promise\PromiseInterface;
+use GuzzleHttp\Utils;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
+use Psr\Http\Message\RequestInterface;
 
 /**
  * Default TranslationProviderInterface implementation: any OpenAI-compatible
@@ -399,6 +402,24 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
     }
 
     /**
+     * This instance's Guzzle handler, made on first use and kept: every
+     * request goes through the same one, so its open connection (and TLS
+     * session) is reused across the requests of a job and across jobs that
+     * share this instance (see Support\ProviderFactory). Laravel still builds
+     * its own handler stack around it per request, so Http::fake() and
+     * request middleware work as usual.
+     *
+     * @return callable(RequestInterface, array<string, mixed>): PromiseInterface
+     */
+    protected function handler(): callable
+    {
+        return $this->handler ??= Utils::chooseHandler();
+    }
+
+    /** @var (callable(RequestInterface, array<string, mixed>): PromiseInterface)|null */
+    private $handler = null;
+
+    /**
      * POST $body, retrying connection errors, 429 and 5xx up to $httpRetries
      * times (a 429's Retry-After is honored if it's at most $retryAfterMax
      * seconds). Returns the first successful response.
@@ -418,6 +439,7 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
         for ($attempt = 1; ; $attempt++) {
             try {
                 $response = Http::withHeaders($this->requestHeaders())
+                    ->setHandler($this->handler())
                     ->timeout($this->timeout)
                     ->post($this->apiUrl, $body);
             } catch (ConnectionException $e) {

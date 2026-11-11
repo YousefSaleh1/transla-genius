@@ -444,7 +444,7 @@ When the job gives up, it fails to the queue's `failed_jobs` table and fires `Ev
 
 ### Multi-tenant apps
 
-The package reads its config when it's used, not when the process starts. Each translation is sent with the provider, key, URL, model and cache setting in config at that moment, and the default source locale is read from `app.locale` (or `translagenius.source_locale`) the same way. A queue worker serving several tenants only has to put the right tenant's config in place before each job runs. Provider instances are reused while the config is unchanged, so this costs nothing per job.
+The package reads its config when it's used, not when the process starts. Each translation is sent with the provider, key, URL, model and cache setting in config at that moment, and the default source locale is read from `app.locale` (or `translagenius.source_locale`) the same way. A queue worker serving several tenants only has to put the right tenant's config in place before each job runs. Provider instances are reused while the config is unchanged, together with their open HTTP connection, so this costs nothing per job.
 
 One way: carry the tenant id in Laravel's [`Context`](https://laravel.com/docs/context), which is restored in the worker before a `Queue::before` hook runs, and apply that tenant's settings there:
 

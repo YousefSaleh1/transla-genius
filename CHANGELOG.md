@@ -98,6 +98,7 @@ A breaking architectural release: the translation backend is now swappable behin
 
 ### Changed
 
+- Each provider keeps one HTTP connection open across its requests, within a job and across jobs with the same config. Every request used to open its own connection: a job of 2 fields x 8 languages made 16 TLS handshakes against a local server, now 1. `Http::fake()` works as before.
 - Retry defaults: 1 quick HTTP retry (`TRANSLATION_HTTP_RETRIES`) for connection errors, 429 and 5xx, then the queue's 3 attempts (`TRANSLATION_JOB_TRIES`, backoff `TRANSLATION_JOB_BACKOFF`). A 429's `Retry-After` is honored: waited out in-request up to `TRANSLATION_HTTP_RETRY_AFTER_MAX` seconds (default 10), otherwise used as the queue release delay. Fallback chain members make no HTTP retries by default (`TRANSLATION_FALLBACK_HTTP_RETRIES=0`), so failover is immediate. Worst case per field/locale is 6 requests.
 - `TRANSLATION_MAX_TOKENS` is unset by default (was 200), so no limit is sent and each provider's own default applies. Set it to cap output.
 - `temperature` is optional: a null or empty value isn't sent. Only the `openrouter` preset still defaults it (0.3); the other presets leave it to the model.
