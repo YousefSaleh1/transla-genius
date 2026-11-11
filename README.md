@@ -600,7 +600,7 @@ TranslationUsageLog::where('outcome', '!=', 'translated')
     ->get();
 ```
 
-Failures that weren't billed, such as connection errors, have no row. Listen to `TranslationFailed` for failure rates. Billed-but-unused requests are also dispatched as `Events\TranslationRequestBilled`.
+Every row a translation job produced names its record (`model_class`, `model_id`) and field, whatever its outcome. Rows from the facade have no record. Failures that weren't billed, such as connection errors, have no row. Listen to `TranslationFailed` for failure rates. Billed-but-unused requests are also dispatched as `Events\TranslationRequestBilled`.
 
 ### Review workflow
 

@@ -160,6 +160,13 @@ class BilledUsageTest extends Orchestra
         ));
 
         $this->assertNotEmpty($this->billed);
+
+        // Every row names the record and field it was billed for: the job knows them.
+        foreach (TranslationUsageLog::all() as $row) {
+            $this->assertSame(TestTranslatableModel::class, $row->model_class, "{$row->outcome} row: model_class");
+            $this->assertNotNull($row->model_id, "{$row->outcome} row: model_id");
+            $this->assertNotNull($row->field, "{$row->outcome} row: field");
+        }
         $this->assertSame($billedPrompt, (int) TranslationUsageLog::sum('prompt_tokens'), 'prompt tokens');
         $this->assertSame($billedCompletion, (int) TranslationUsageLog::sum('completion_tokens'), 'completion tokens');
         $this->assertSame(number_format($billedCost, 6, '.', ''), number_format((float) TranslationUsageLog::sum('estimated_cost'), 6, '.', ''), 'cost');
@@ -458,5 +465,44 @@ class BilledUsageTest extends Orchestra
         $this->assertSame('secondary.test:es', TestTranslatableModel::first()->getTranslation('name', 'es', false));
         $this->assertLogMatchesBilling();
         $this->assertSame(['unusable primary es'], $this->unusedRows());
+    }
+
+    /**
+     * Every row the job can attribute names its record and field, whatever
+     * the outcome: translated, truncated, failed, unusable.
+     */
+    public function test_every_outcome_row_carries_the_model_and_field()
+    {
+        $this->behaviour['primary.test'] = function (Request $r, bool $isBatch) {
+            $system = $r['messages'][0]['content'];
+
+            return match (true) {
+                str_contains($system, ' to ar.') => ['content' => 'half', 'finish_reason' => 'length'],
+                str_contains($system, ' to es.') => ['status' => 400],
+                default => [],
+            };
+        };
+
+        $job = $this->runJob();
+        $model = TestTranslatableModel::first();
+
+        $rows = TranslationUsageLog::orderBy('id')->get();
+        $this->assertSame(['truncated', 'failed', 'translated'], $rows->pluck('outcome')->all());
+        foreach ($rows as $row) {
+            $this->assertSame(TestTranslatableModel::class, $row->model_class, "{$row->outcome} row");
+            $this->assertSame((string) $model->id, (string) $row->model_id, "{$row->outcome} row");
+            $this->assertSame('name', $row->field, "{$row->outcome} row");
+        }
+
+        // A batch reply nothing could be taken from, too.
+        TranslationUsageLog::query()->delete();
+        config(['translagenius.batch.enabled' => true]);
+        $this->behaviour['primary.test'] = fn (Request $r, bool $isBatch) => $isBatch ? ['content' => 'not json'] : [];
+        $this->runJob(['en' => 'Other']);
+
+        $unusable = TranslationUsageLog::where('outcome', 'unusable')->firstOrFail();
+        $this->assertSame(TestTranslatableModel::class, $unusable->model_class);
+        $this->assertSame('name', $unusable->field);
+        $this->assertNotNull($unusable->model_id);
     }
 }

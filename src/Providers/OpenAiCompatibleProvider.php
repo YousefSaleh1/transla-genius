@@ -10,6 +10,7 @@ use CodingPartners\TranslaGenius\DTOs\TranslationResult;
 use CodingPartners\TranslaGenius\Events\TranslationRequestBilled;
 use CodingPartners\TranslaGenius\Exceptions\TranslationConfigurationException;
 use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
+use CodingPartners\TranslaGenius\Support\BillingContext;
 use CodingPartners\TranslaGenius\Support\Setting;
 use CodingPartners\TranslaGenius\Support\Text;
 use GuzzleHttp\Promise\PromiseInterface;
@@ -387,6 +388,8 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
             $sourceLocale,
             $targetLocales,
             $field,
+            BillingContext::modelClass(),
+            BillingContext::modelId(),
         );
     }
 
@@ -471,7 +474,7 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
                 // A request that timed out may have reached the provider and
                 // been processed, and billed: report it, with unknown tokens.
                 if (self::isTimeout($e)) {
-                    TranslationRequestBilled::dispatch(TranslationRequestBilled::FAILED, $this->name, $billing[0], null, null, $billing[1], $billing[2], $billing[3]);
+                    TranslationRequestBilled::dispatch(TranslationRequestBilled::FAILED, $this->name, $billing[0], null, null, $billing[1], $billing[2], $billing[3], BillingContext::modelClass(), BillingContext::modelId());
                 }
 
                 if ($attempt < $attempts) {

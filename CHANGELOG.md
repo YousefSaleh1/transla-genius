@@ -75,6 +75,7 @@ A breaking architectural release: the translation backend is now swappable behin
 
 ### Fixed
 
+- Usage-log rows for truncated, unusable and failed replies, and for timed-out requests, had no `model_class` or `model_id`: the provider dispatching them didn't know the record. A job now names its record for every billed request it makes.
 - A record deleted before its job ran left a `failed_jobs` row (`ModelNotFoundException`); `TranslateFields` now sets `$deleteWhenMissingModels`, so the job is dropped. A translation made while its record disappeared (deleted, soft-deleted, or hidden by a global scope) was billed and logged as a source change; it now has its own outcome, `missing`, and log line, and the job stops requesting.
 - `fullyTranslated()` / `notFullyTranslated()` counted an empty or whitespace-only target as translated, while the job treats it as missing, so `translagenius:backfill` could never repair it. The scopes now count null, `""` and whitespace-only targets as missing on all five drivers (a per-driver expression around Laravel's JSON extraction: `REGEXP` on MySQL/MariaDB, `~` on PostgreSQL, `trim()` with a character set on SQLite and SQL Server).
 - With the translation cache on, a cache outage (Redis refusing connections) stopped every translation: the error propagated before any provider call. A cache error is now a miss on read and a skipped write, with one warning per minute per process.

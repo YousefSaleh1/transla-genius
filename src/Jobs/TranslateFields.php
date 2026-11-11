@@ -21,6 +21,7 @@ use CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider;
 use CodingPartners\TranslaGenius\Review\ReviewManager;
 use CodingPartners\TranslaGenius\Review\ReviewSettings;
 use CodingPartners\TranslaGenius\Services\TranslationWriter;
+use CodingPartners\TranslaGenius\Support\BillingContext;
 use CodingPartners\TranslaGenius\Support\Locales;
 use CodingPartners\TranslaGenius\Support\ModelEvents;
 use CodingPartners\TranslaGenius\Support\OneJobPerRecord;
@@ -303,7 +304,8 @@ class TranslateFields implements ShouldQueue, TranslationJob
             // Review off: no review queries at all.
             $this->reviews = ReviewSettings::enabled() ? app(ReviewManager::class) : null;
 
-            $saved = $this->translateMissingPairs($translator, $writer, $currentLocale, $targetLanguages);
+            // Billed-request events the provider dispatches name this record.
+            $saved = BillingContext::for($this->model, fn () => $this->translateMissingPairs($translator, $writer, $currentLocale, $targetLanguages));
 
             if ($saved > 0) {
                 Log::debug('Translation completed successfully', [
