@@ -8,6 +8,7 @@ use CodingPartners\TranslaGenius\Events\TranslationFailed as TranslationFailedEv
 use CodingPartners\TranslaGenius\Events\TranslationStarted;
 use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
 use CodingPartners\TranslaGenius\Services\TranslationWriter;
+use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -42,7 +43,7 @@ use Throwable;
  */
 class TranslateFields implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, SerializesModels;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     /**
      * @var Model&\CodingPartners\TranslaGenius\Contracts\HasTranslatableAttributes

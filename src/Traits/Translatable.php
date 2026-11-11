@@ -2,6 +2,7 @@
 
 namespace CodingPartners\TranslaGenius\Traits;
 
+use CodingPartners\TranslaGenius\Support\TranslationJobDispatcher;
 use CodingPartners\TranslaGenius\Jobs\TranslateFields;
 use Illuminate\Database\Eloquent\Builder;
 use Spatie\Translatable\HasTranslations;
@@ -30,15 +31,13 @@ trait Translatable
     protected static function bootTranslatable()
     {
         static::created(function ($model) {
-            $jobClass = static::translationJobClass();
-            $jobClass::dispatch($model, $model->translatable);
+            TranslationJobDispatcher::dispatch(static::translationJobClass(), $model, $model->translatable);
         });
 
         static::updated(function ($model) {
             $translatableFields = $model->getTranslatableAttributes();
             if (!empty($translatableFields) && static::hasSourceLocaleChanged($model, $translatableFields)) {
-                $jobClass = static::translationJobClass();
-                $jobClass::dispatch($model, $translatableFields);
+                TranslationJobDispatcher::dispatch(static::translationJobClass(), $model, $translatableFields);
             }
         });
     }

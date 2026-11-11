@@ -2,6 +2,7 @@
 
 namespace CodingPartners\TranslaGenius\Tests\Support;
 
+use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -17,7 +18,7 @@ use Illuminate\Queue\SerializesModels;
  */
 class MarkerTranslationJob implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, SerializesModels;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     /** @var array<int, array{0: string, 1: mixed, 2: array}> */
     public static array $handledWith = [];

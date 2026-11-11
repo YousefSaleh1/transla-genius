@@ -2,6 +2,7 @@
 
 namespace CodingPartners\TranslaGenius\Console\Commands;
 
+use CodingPartners\TranslaGenius\Support\TranslationJobDispatcher;
 use CodingPartners\TranslaGenius\Traits\Translatable;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Model;
@@ -137,7 +138,7 @@ class BackfillCommand extends Command
 
         $buildQuery()->chunkById($chunkSize, function ($records) use (&$dispatched, $bar, $jobClass) {
             foreach ($records as $record) {
-                $jobClass::dispatch($record, $record->getTranslatableAttributes());
+                TranslationJobDispatcher::dispatch($jobClass, $record, $record->getTranslatableAttributes());
                 $dispatched++;
                 $bar->advance();
             }

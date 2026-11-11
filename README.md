@@ -87,6 +87,20 @@ GEMINI_API_KEY=your-gemini-key
 
 The first provider to succeed wins; later ones aren't called. Names are trimmed and empty items ignored, and the chain needs at least 2 entries. A missing chain, a chain that references itself, or an unknown name fails at resolution time with an error naming the problem. See [Provider Fallback / Chaining](#provider-fallback--chaining) for how failures are handled.
 
+### Queue Settings
+
+Translation jobs go to your app's default queue connection and queue unless you say otherwise:
+
+```env
+TRANSLATION_QUEUE_CONNECTION=redis
+TRANSLATION_QUEUE=translations
+TRANSLATION_DISPATCH_AFTER_COMMIT=true
+```
+
+These apply everywhere a job is dispatched: when a model is created or updated, and from `translagenius:backfill`. That includes a custom job from `translationJobClass()`, as long as it uses Laravel's `Queueable` trait (a job without it is still dispatched, on the app's defaults).
+
+`TRANSLATION_DISPATCH_AFTER_COMMIT` (default `true`) holds the job until the surrounding database transaction commits, and drops it if the transaction rolls back. Without it, a model created inside a transaction can be picked up by a worker before the commit, when the row isn't visible yet, or translated even though it was rolled back. Set it to `false` to fall back to your queue connection's own `after_commit` setting.
+
 ### Retries and Rate Limits
 
 Failed calls are retried in two layers, each configurable from `.env`:

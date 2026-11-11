@@ -173,6 +173,27 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Queue
+    |--------------------------------------------------------------------------
+    |
+    | Where and when translation jobs are dispatched, for every dispatch point
+    | (model create/update and `translagenius:backfill`).
+    |
+    |   connection    Queue connection; empty = the app's default.
+    |   queue         Queue name; empty = the connection's default.
+    |   after_commit  Dispatch only after the surrounding DB transaction
+    |                 commits (nothing at all on rollback). Default true. When
+    |                 false, the connection's own `after_commit` setting applies.
+    |
+    */
+    'queue' => [
+        'connection' => env('TRANSLATION_QUEUE_CONNECTION'),
+        'queue' => env('TRANSLATION_QUEUE'),
+        'after_commit' => env('TRANSLATION_DISPATCH_AFTER_COMMIT', true),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Retries
     |--------------------------------------------------------------------------
     |
