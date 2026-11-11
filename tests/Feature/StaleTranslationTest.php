@@ -35,6 +35,9 @@ class StaleTranslationTest extends TestCase
     /** Runs inside the fake before it answers (to simulate a concurrent edit). */
     private ?\Closure $beforeAnswer = null;
 
+    /** Target locale whose single requests answer 503 (to fail an attempt). */
+    private ?string $failingLocale = null;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -56,6 +59,10 @@ class StaleTranslationTest extends TestCase
                 preg_match('/ to (\w+)\./', $system, $m);
                 $this->requests[] = "single {$text} {$m[1]}";
                 $content = "{$text}|{$m[1]}";
+
+                if ($m[1] === $this->failingLocale) {
+                    return Http::response(['error' => ['message' => 'unavailable']], 503);
+                }
             }
 
             return Http::response(['choices' => [['message' => ['content' => $content], 'finish_reason' => 'stop']]]);
@@ -238,5 +245,121 @@ class StaleTranslationTest extends TestCase
         // As a worker would: the model is re-read from the database.
         $fresh = unserialize(serialize($job));
         $fresh->handle($this->app->make(TranslatorInterface::class), new TranslationWriter());
+    }
+
+    // --- target snapshots (retries, hand edits) ------------------------------
+
+    protected function queuedRetranslation(TestTranslatableModel $model, string $newSource): TranslateFields
+    {
+        Queue::fake();
+        $model->setTranslation('name', 'en', $newSource)->save();
+
+        return Queue::pushed(TranslateFields::class)->last();
+    }
+
+    /** Run a queued job like a worker attempt; a retryable failure is swallowed (the queue would retry). */
+    protected function attempt(TranslateFields $job): void
+    {
+        try {
+            $this->runQueued($job);
+        } catch (\CodingPartners\TranslaGenius\Exceptions\TranslationFailedException $e) {
+            $this->assertTrue($e->isRetryable());
+        }
+    }
+
+    public function test_a_retry_sends_no_requests_for_targets_already_overwritten()
+    {
+        $job = $this->queuedRetranslation($this->createTranslated(), 'B');
+        $model = TestTranslatableModel::first();
+
+        // Attempt 1: ar is re-translated and saved; es keeps failing.
+        $this->failingLocale = 'es';
+        $this->attempt($job);
+        $this->assertSame(['single B ar', 'single B es', 'single B es'], $this->takeRequests());
+        $this->assertSame(['ar' => 'B|ar', 'en' => 'B', 'es' => 'A|es'], $this->stored($model));
+
+        // Attempt 2 (same payload): ar no longer holds its stale value - 0 requests for it.
+        $this->failingLocale = null;
+        $this->attempt($job);
+        $this->assertSame(['single B es'], $this->takeRequests());
+        $this->assertSame(['ar' => 'B|ar', 'en' => 'B', 'es' => 'B|es'], $this->stored($model));
+    }
+
+    public function test_a_hand_edit_made_after_the_source_edit_but_before_the_job_survives()
+    {
+        $job = $this->queuedRetranslation($this->createTranslated(), 'B');
+        $model = TestTranslatableModel::first();
+
+        // A translator fixes "ar" for the new source before the job runs.
+        // (A target-only edit dispatches nothing on its own.)
+        $model->setTranslation('name', 'ar', 'Hand-written AR for B')->save();
+        $this->assertCount(1, Queue::pushed(TranslateFields::class));
+
+        $this->runQueued($job);
+
+        $this->assertSame(['single B es'], $this->takeRequests());
+        $this->assertSame(['ar' => 'Hand-written AR for B', 'en' => 'B', 'es' => 'B|es'], $this->stored($model));
+    }
+
+    public function test_a_hand_edit_made_while_the_job_is_translating_survives()
+    {
+        $job = $this->queuedRetranslation($this->createTranslated(), 'B');
+        $model = TestTranslatableModel::first();
+
+        // While the "ar" request is in flight, someone saves a hand-written "ar".
+        $this->beforeAnswer = function (Request $request) use ($model) {
+            if (str_contains($request['messages'][0]['content'], ' to ar.')) {
+                DB::table('test_translatable_models')->where('id', $model->id)
+                    ->update(['name' => json_encode(['en' => 'B', 'ar' => 'Hand-written AR for B', 'es' => 'A|es'])]);
+            }
+        };
+
+        Event::fake([TranslationCompleted::class]);
+        $this->runQueued($job);
+
+        // ar was requested but its result is not written; es carries on.
+        $this->assertSame(['single B ar', 'single B es'], $this->takeRequests());
+        $this->assertSame(['ar' => 'Hand-written AR for B', 'en' => 'B', 'es' => 'B|es'], $this->stored($model));
+        Event::assertDispatchedTimes(TranslationCompleted::class, 1);
+        Event::assertDispatched(TranslationCompleted::class, fn ($e) => $e->targetLocale === 'es');
+    }
+
+    public function test_target_snapshots_with_batching_on()
+    {
+        config(['translaGenius.batch.enabled' => true, 'translaGenius.supported_languages' => ['en', 'ar', 'es', 'fr']]);
+        $this->reresolve();
+        $model = $this->createTranslated();
+        $job = $this->queuedRetranslation($model, 'B');
+
+        // A hand edit to "fr" before the job: only ar and es are batched.
+        $model->refresh()->setTranslation('name', 'fr', 'Hand FR')->save();
+        $this->runQueued($job);
+
+        $this->assertSame(['batch B ar,es'], $this->takeRequests());
+        $this->assertSame(['ar' => 'B|ar', 'en' => 'B', 'es' => 'B|es', 'fr' => 'Hand FR'], $this->stored($model));
+
+        // Running the same job again (a retry) requests nothing at all.
+        $this->runQueued($job);
+        $this->assertSame([], $this->takeRequests());
+    }
+
+    public function test_target_snapshots_with_the_cache_on()
+    {
+        config(['cache.default' => 'array', 'translaGenius.cache' => ['enabled' => true, 'store' => 'array', 'ttl' => 3600]]);
+        Cache::store('array')->flush();
+        $this->reresolve();
+
+        // Warm the cache for "B" through another record.
+        TestTranslatableModel::create(['name' => ['en' => 'B'], 'description' => ['en' => 'D2']]);
+        $model = $this->createTranslated();
+        $job = $this->queuedRetranslation($model, 'B');
+
+        // Hand edit to "ar"; the cache holds a translation for it, but the
+        // stale-value check keeps the hand edit.
+        $model->refresh()->setTranslation('name', 'ar', 'Hand AR')->save();
+        $this->runQueued($job);
+
+        $this->assertSame([], $this->takeRequests(), 'es comes from the cache; ar is skipped.');
+        $this->assertSame(['ar' => 'Hand AR', 'en' => 'B', 'es' => 'B|es'], $this->stored($model));
     }
 }

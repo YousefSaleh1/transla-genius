@@ -104,7 +104,10 @@ trait Translatable
      *
      * @param \Illuminate\Database\Eloquent\Model $model
      * @param array<int, string> $translatableFields
-     * @return array<string, array{locale: string, text: string, keep: array<int, string>}>
+     * Each remaining target's stored value at this moment is snapshotted too
+     * (`targets`): it is overwritten only while it still holds that value.
+     *
+     * @return array<string, array{locale: string, text: string, keep: array<int, string>, targets: array<string, string>}>
      */
     protected static function staleTranslationPlan($model, array $translatableFields): array
     {
@@ -133,7 +136,17 @@ trait Translatable
                 }
             }
 
-            $plan[$field] = ['locale' => $sourceLocale, 'text' => $newSource, 'keep' => $keep];
+            // Each stale target's stored value, as of this save. The job only
+            // overwrites a target that still holds exactly this value, so a
+            // retry skips what it already replaced and a later hand edit wins.
+            $targets = [];
+            foreach (get_supported_languages($sourceLocale) as $locale) {
+                if (!in_array($locale, $keep, true)) {
+                    $targets[$locale] = (string) ($current[$locale] ?? '');
+                }
+            }
+
+            $plan[$field] = ['locale' => $sourceLocale, 'text' => $newSource, 'keep' => $keep, 'targets' => $targets];
         }
 
         return $plan;

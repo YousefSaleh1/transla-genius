@@ -355,6 +355,23 @@ class TranslateFields implements ShouldQueue
             (array) ($plan['keep'] ?? [])
         ));
 
+        // Only targets still holding their stale value: one an earlier attempt
+        // of this job already replaced, or a person edited since, is left
+        // alone - and costs no request. (A plan without target snapshots, from
+        // an older payload, treats every target as stale.)
+        $staleValues = $plan['targets'] ?? null;
+        if (is_array($staleValues)) {
+            $targets = array_values(array_filter(
+                $targets,
+                fn (string $locale) => !array_key_exists($locale, $staleValues)
+                    || (string) $this->model->getTranslation($field, $locale, false) === $staleValues[$locale]
+            ));
+        }
+
+        if ($targets === []) {
+            return 0;
+        }
+
         return $this->translateField(
             $translator,
             $writer,
@@ -362,7 +379,7 @@ class TranslateFields implements ShouldQueue
             $plan['text'],
             $plan['locale'],
             $targets,
-            ['locale' => $plan['locale'], 'text' => $plan['text']],
+            ['locale' => $plan['locale'], 'text' => $plan['text'], 'targets' => is_array($staleValues) ? $staleValues : null],
         );
     }
 
@@ -420,10 +437,11 @@ class TranslateFields implements ShouldQueue
                 $result = $batch->resultFor($locale, $carriesTokens);
                 $tokensAttributed = $tokensAttributed || $carriesTokens;
 
-                if (!$this->savePair($writer, $field, $currentLocale, $locale, $result, $snapshot)) {
+                $outcome = $this->savePair($writer, $field, $currentLocale, $locale, $result, $snapshot);
+                if ($outcome === false) {
                     return $saved;
                 }
-                $saved++;
+                $saved += $outcome ? 1 : 0;
             }
 
             $missing = array_values(array_filter($missing, fn ($locale) => !isset($batch->translations[$locale])));
@@ -436,20 +454,28 @@ class TranslateFields implements ShouldQueue
 
             $result = $translator->translate($sourceText, $currentLocale, $locale, $field, $this->modelContextName());
 
-            if (!$this->savePair($writer, $field, $currentLocale, $locale, $result, $snapshot)) {
+            $outcome = $this->savePair($writer, $field, $currentLocale, $locale, $result, $snapshot);
+            if ($outcome === false) {
                 return $saved;
             }
-            $saved++;
+            $saved += $outcome ? 1 : 0;
         }
 
         return $saved;
     }
 
     /**
-     * Save one pair, then announce it. Returns false when a re-translation
-     * was discarded because the source changed again (nothing is announced).
+     * Save one pair, then announce it.
      *
-     * @param array{locale: string, text: string}|null $snapshot
+     * For a re-translation ($snapshot), the write only lands if the stored
+     * source still matches and the stored target still holds its stale value
+     * (TranslationWriter::applyRetranslation()). Returns true when saved; null
+     * when this target changed since the plan (already re-translated by an
+     * earlier attempt, or edited by hand) and was left alone; false when the
+     * source changed again, so the rest of the field is abandoned. A result
+     * that was billed but not saved is reported (see reportDiscarded()).
+     *
+     * @param array{locale: string, text: string, targets?: array<string, string>|null}|null $snapshot
      */
     protected function savePair(
         TranslationWriter $writer,
@@ -458,32 +484,43 @@ class TranslateFields implements ShouldQueue
         string $targetLocale,
         TranslationResult $result,
         ?array $snapshot = null
-    ): bool {
-        $written = $writer->apply(
-            $this->model,
-            [$field => [$targetLocale => $result->text]],
-            $snapshot === null ? [] : [$field => $snapshot],
-        );
+    ): ?bool {
+        if ($snapshot === null) {
+            $writer->apply($this->model, [$field => [$targetLocale => $result->text]]);
+        } else {
+            $staleValues = $snapshot['targets'] ?? null;
+            $outcome = $writer->applyRetranslation(
+                $this->model,
+                $field,
+                $targetLocale,
+                $result->text,
+                ['locale' => $snapshot['locale'], 'text' => $snapshot['text']],
+                is_array($staleValues) && array_key_exists($targetLocale, $staleValues) ? $staleValues[$targetLocale] : null,
+            );
 
-        if ($snapshot !== null && $written === 0) {
-            // Billed, but not saved: report the request's tokens (carried by
-            // this pair's result, if any) so the usage log still has them.
-            if ($result->promptTokens !== null || $result->completionTokens !== null) {
-                TranslationRequestBilled::dispatch(
-                    TranslationRequestBilled::DISCARDED,
-                    $result->provider,
-                    $result->requestId,
-                    $result->promptTokens,
-                    $result->completionTokens,
-                    $sourceLocale,
-                    [$targetLocale],
-                    $field,
-                    get_class($this->model),
-                    $this->model->getKey(),
-                );
+            if ($outcome !== TranslationWriter::WRITTEN) {
+                $this->reportDiscarded($result, $field, $sourceLocale, $targetLocale);
+
+                if ($outcome === TranslationWriter::TARGET_CHANGED) {
+                    Log::info('Keeping a target that changed since the source edit (already re-translated, or edited by hand)', [
+                        'model_class' => get_class($this->model),
+                        'model_id' => $this->model->getKey(),
+                        'field' => $field,
+                        'locale' => $targetLocale,
+                    ]);
+
+                    // Only this pair is skipped; the rest of the field goes on.
+                    return null;
+                }
+
+                Log::info('TranslationWriter: discarding a re-translation; the source text changed again', [
+                    'model_class' => get_class($this->model),
+                    'model_id' => $this->model->getKey(),
+                    'field' => $field,
+                ]);
+
+                return false;
             }
-
-            return false;
         }
 
         TranslationCompleted::dispatch(
@@ -496,6 +533,30 @@ class TranslateFields implements ShouldQueue
         );
 
         return true;
+    }
+
+    /**
+     * Report a billed result that wasn't saved, so usage tracking still logs
+     * its tokens. Only the result that carries a request's tokens reports.
+     */
+    protected function reportDiscarded(TranslationResult $result, string $field, string $sourceLocale, string $targetLocale): void
+    {
+        if ($result->promptTokens === null && $result->completionTokens === null) {
+            return;
+        }
+
+        TranslationRequestBilled::dispatch(
+            TranslationRequestBilled::DISCARDED,
+            $result->provider,
+            $result->requestId,
+            $result->promptTokens,
+            $result->completionTokens,
+            $sourceLocale,
+            [$targetLocale],
+            $field,
+            get_class($this->model),
+            $this->model->getKey(),
+        );
     }
 
     protected function dispatchStarted(string $field, string $sourceLocale, string $targetLocale, string $sourceText): void

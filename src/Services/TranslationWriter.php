@@ -114,4 +114,53 @@ class TranslationWriter
             return $written;
         });
     }
+
+    public const WRITTEN = 'written';
+    public const SOURCE_CHANGED = 'source_changed';
+    public const TARGET_CHANGED = 'target_changed';
+    public const MISSING = 'missing';
+
+    /**
+     * Overwrite one stale target of a re-translation, under the row lock, only
+     * if both snapshots still hold:
+     *
+     * - the stored source text equals $source['text'] (else a newer edit owns
+     *   the field: SOURCE_CHANGED), and
+     * - the stored target equals $staleValue, the value it had when the plan
+     *   was made (else it was already replaced - by an earlier attempt of this
+     *   job - or edited by hand since: TARGET_CHANGED). Null skips this check.
+     *
+     * @param Model&\CodingPartners\TranslaGenius\Contracts\HasTranslatableAttributes $model
+     * @param string $field
+     * @param string $locale Target locale.
+     * @param string $text New translation.
+     * @param array{locale: string, text: string} $source Source snapshot.
+     * @param string|null $staleValue Target snapshot.
+     * @return string One of WRITTEN, SOURCE_CHANGED, TARGET_CHANGED, MISSING.
+     */
+    public function applyRetranslation(Model $model, string $field, string $locale, string $text, array $source, ?string $staleValue): string
+    {
+        return DB::transaction(function () use ($model, $field, $locale, $text, $source, $staleValue) {
+            $locked = $model->newQuery()->lockForUpdate()->find($model->getKey());
+
+            if (!$locked) {
+                return self::MISSING;
+            }
+
+            if ($locked->getTranslation($field, $source['locale'], false) !== $source['text']) {
+                return self::SOURCE_CHANGED;
+            }
+
+            if ($staleValue !== null && (string) $locked->getTranslation($field, $locale, false) !== $staleValue) {
+                return self::TARGET_CHANGED;
+            }
+
+            $locked->withoutEvents(function () use ($locked, $field, $locale, $text) {
+                $locked->setTranslation($field, $locale, $text);
+                $locked->save();
+            });
+
+            return self::WRITTEN;
+        });
+    }
 }
