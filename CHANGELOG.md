@@ -51,16 +51,20 @@ A breaking architectural release: the translation backend is now swappable behin
 
 ### Fixed
 
+- Failed provider calls were retried regardless of status: the HTTP client's retry callback was passed in its sleep-duration slot, so a 401 or 404 was sent 3 times per job attempt, and a persistent 5xx up to 9 times across the job's own retries. 4xx responses other than 429 now fail on the first response at every layer.
+- A translation cut off at the provider's output token limit (`finish_reason` `length`) was saved as if complete. It now fails with a non-retryable `TranslationFailedException` that names `TRANSLATION_MAX_TOKENS`; the job isn't retried, the `TranslationFailed` event fires, and a fallback chain moves on to its next provider.
 - `TranslationResult->provider` now reports the `translaGenius.providers` key the provider was resolved under (for example `gemini`). It was hardcoded to `openrouter`, so pointing the OpenAI-compatible provider at any other service logged usage under the wrong provider name and looked up the wrong cost rates.
 - `TranslateFields` no longer re-requests translations that already exist. `prepareTranslations()` read each field through the model's magic accessor (`$model->{$field}`), which Spatie's `HasTranslations` resolves to the current locale's string only. Every other locale's existing translation was invisible to the job, so every save re-translated (and re-billed) every non-current locale. It now reads the full locale map via `getTranslations($field)`, and existing field/locale pairs are skipped as intended.
 - The HTTP timeout is now actually applied to translation requests. It was defined in config (`api.timeout` in 3.x, now `translaGenius.providers.openrouter.timeout` / `TRANSLATION_API_TIMEOUT`) but silently ignored.
 - `TranslateFields` now has explicit `$tries`/`backoff()` and a `failed()` handler; translation failures propagate to the queue's native retry/failure handling instead of being silently swallowed.
 - Added pessimistic locking (`lockForUpdate()`) around the job's write step to prevent a concurrent update's translation from being overwritten by a stale one.
 - Stopped logging raw stack traces (a plausible path for the API key to end up in application logs via HTTP-client exception trace arguments).
-- Fixed test-suite defects: a config-shape mismatch between the test fixture and production code, a test file missing its `.php` extension (silently excluded from every run), and a stale assertion string - see the Phase 1/2a audit notes for detail.
 
 ### Changed
 
+- Retry defaults: 1 quick HTTP retry (`TRANSLATION_HTTP_RETRIES`) for connection errors, 429 and 5xx, then the queue's 3 attempts (`TRANSLATION_JOB_TRIES`, backoff `TRANSLATION_JOB_BACKOFF`). A 429's `Retry-After` is honored: waited out in-request up to `TRANSLATION_HTTP_RETRY_AFTER_MAX` seconds (default 10), otherwise used as the queue release delay. Fallback chain members make no HTTP retries by default (`TRANSLATION_FALLBACK_HTTP_RETRIES=0`), so failover is immediate. Worst case per field/locale is 6 requests.
+- `TRANSLATION_MAX_TOKENS` is unset by default (was 200), so no limit is sent and each provider's own default applies. Set it to cap output.
+- `temperature` is optional: a null or empty value isn't sent. Only the `openrouter` preset still defaults it (0.3); the other presets leave it to the model.
 - `Services\AutoTranslationService` → split into `Providers\OpenAiCompatibleProvider` (HTTP transport, prompt construction, response parsing - the OpenRouter-specific implementation) and `Services\Translator` (a thin class that resolves the configured provider and delegates).
 - Introduced `Exceptions\TranslationFailedException`, replacing the misused `Illuminate\Http\Exceptions\HttpResponseException`.
 - The translation prompt now uses the chat API's `system`/`user` message roles instead of one concatenated string.
