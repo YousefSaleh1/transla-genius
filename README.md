@@ -1139,7 +1139,7 @@ The package follows [semantic versioning](https://semver.org). Within a major ve
 
 Not covered, and may change in any release:
 
-- anything marked `@internal`: the whole `Support\` namespace, `Console\Concerns\`, the protected helpers of `TranslateFields`, and the methods marked so on `ReviewManager`, `CachingProvider` and the service provider;
+- anything marked `@internal`: the whole `Support\` namespace, `Console\Concerns\`, the protected helpers of `TranslateFields`, `TranslationWriter`'s methods, and the methods marked so on `ReviewManager`, `CachingProvider` and the service provider. Type-hinting `TranslationWriter` in a custom job's `handle()`, as in the custom job example, stays supported;
 - the wording of the built-in prompts, log messages and command output, and the exact SQL the scopes generate;
 - a preset's default model, which follows what the provider offers. Set the `*_MODEL` variable to pin one.
 

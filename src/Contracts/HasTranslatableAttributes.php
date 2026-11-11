@@ -19,7 +19,7 @@ use Spatie\Translatable\HasTranslations;
  * Traits\Translatable already has the methods this interface names -
  * declaring `implements HasTranslatableAttributes` on your model is optional
  * and purely for IDE/static-analysis benefit, never required. The actual
- * runtime enforcement is a guard clause in TranslationWriter::apply(),
+ * runtime enforcement is a guard clause in TranslationWriter,
  * not this interface.
  */
 interface HasTranslatableAttributes

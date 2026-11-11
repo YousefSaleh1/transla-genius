@@ -7,7 +7,6 @@ use CodingPartners\TranslaGenius\Support\Text;
 use CodingPartners\TranslaGenius\Traits\Translatable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 
 /**
@@ -27,97 +26,15 @@ use InvalidArgumentException;
  * row lock does the work everywhere" - it doesn't, on SQLite specifically.
  *
  * Knows nothing about queues, jobs, or how the translations were computed:
- * "given a model and a [field => [locale => text]] map, apply whatever
- * isn't already there." That narrow, self-contained shape is what makes it
- * usable outside the job (a manual backfill command, for instance) and
- * testable without a Translator/provider in the picture at all.
+ * each method writes one field/locale pair and returns what happened
+ * (WRITTEN, SOURCE_CHANGED, TARGET_CHANGED, MISSING), so the job can bill
+ * and announce exactly what was saved.
+ *
+ * Type-hinting this class in a custom job's handle() (as TranslateFields
+ * does) is supported; its methods are @internal and may change.
  */
 class TranslationWriter
 {
-    /**
-     * Persist $translations onto $model.
-     *
-     * Without $sourceSnapshots (create, backfill, filling gaps): a pair that
-     * already has a value is skipped - an existing translation is never
-     * overwritten.
-     *
-     * With a snapshot for a field (re-translation after its source text
-     * changed): that field's pairs overwrite what's stored, but only if, under
-     * the row lock, the stored source text still equals the snapshot the
-     * translation was made from. If the source changed again in the meantime,
-     * a newer job owns the field, so this field's pairs are discarded.
-     *
-     * @param  Model&HasTranslatableAttributes  $model
-     * @param  array<string, array<string, string>>  $translations  Map of
-     *                                                              field => [locale => text] to apply.
-     * @param  array<string, array{locale: string, text: string}>  $sourceSnapshots
-     *                                                                               field => the source locale and text its translations were made from.
-     * @return int Number of pairs written.
-     *
-     * @throws InvalidArgumentException if $model doesn't use the
-     *                                  Translatable trait (or otherwise doesn't implement
-     *                                  getTranslation()/setTranslation()) - PHP's type system can't
-     *                                  express this precondition on a trait, so it's enforced here
-     *                                  instead, with a clear message rather than the confusing
-     *                                  BadMethodCallException that would otherwise surface deep
-     *                                  inside the transaction below.
-     */
-    public function apply(Model $model, array $translations, array $sourceSnapshots = []): int
-    {
-        if (empty($translations)) {
-            return 0;
-        }
-
-        if (! method_exists($model, 'getTranslation') || ! method_exists($model, 'setTranslation')) {
-            throw new InvalidArgumentException(sprintf(
-                '%s must use the %s trait (getTranslation()/setTranslation() are missing).',
-                get_class($model),
-                Translatable::class
-            ));
-        }
-
-        return DB::transaction(function () use ($model, $translations, $sourceSnapshots) {
-            $locked = $model->newQuery()->lockForUpdate()->whereKey($model->getKey())->first();
-
-            // Model was deleted between dispatch and execution - nothing to save.
-            if (! $locked) {
-                return 0;
-            }
-
-            $written = 0;
-
-            $locked->withoutEvents(function () use ($locked, $translations, $sourceSnapshots, &$written) {
-                foreach ($translations as $field => $values) {
-                    $snapshot = $sourceSnapshots[$field] ?? null;
-
-                    if ($snapshot !== null
-                        && $locked->getTranslation($field, $snapshot['locale'], false) !== $snapshot['text']) {
-                        Log::info('TranslationWriter: discarding a re-translation; the source text changed again', [
-                            'model_class' => get_class($locked),
-                            'model_id' => $locked->getKey(),
-                            'field' => $field,
-                        ]);
-
-                        continue;
-                    }
-
-                    foreach ($values as $locale => $value) {
-                        if ($snapshot !== null || Text::isBlank($locked->getTranslation($field, $locale, false))) {
-                            $locked->setTranslation($field, $locale, $value);
-                            $written++;
-                        }
-                    }
-                }
-
-                if ($locked->isDirty()) {
-                    $locked->save();
-                }
-            });
-
-            return $written;
-        });
-    }
-
     public const WRITTEN = 'written';
 
     public const SOURCE_CHANGED = 'source_changed';
@@ -143,9 +60,15 @@ class TranslationWriter
      * @param  string  $text  The translation.
      * @param  array{locale: string, text: string}  $source  The source it was made from.
      * @return string One of WRITTEN, SOURCE_CHANGED, TARGET_CHANGED, MISSING.
+     *
+     * @throws InvalidArgumentException If $model doesn't use the Translatable trait.
+     *
+     * @internal Called by TranslateFields; not covered by the backward compatibility promise.
      */
     public function fillMissing(Model $model, string $field, string $locale, string $text, array $source): string
     {
+        $this->assertTranslatable($model);
+
         return DB::transaction(function () use ($model, $field, $locale, $text, $source) {
             $locked = $model->newQuery()->lockForUpdate()->whereKey($model->getKey())->first();
 
@@ -186,9 +109,15 @@ class TranslationWriter
      * @param  array{locale: string, text: string}  $source  Source snapshot.
      * @param  string|null  $staleValue  Target snapshot.
      * @return string One of WRITTEN, SOURCE_CHANGED, TARGET_CHANGED, MISSING.
+     *
+     * @throws InvalidArgumentException If $model doesn't use the Translatable trait.
+     *
+     * @internal Called by TranslateFields; not covered by the backward compatibility promise.
      */
     public function applyRetranslation(Model $model, string $field, string $locale, string $text, array $source, ?string $staleValue): string
     {
+        $this->assertTranslatable($model);
+
         return DB::transaction(function () use ($model, $field, $locale, $text, $source, $staleValue) {
             $locked = $model->newQuery()->lockForUpdate()->whereKey($model->getKey())->first();
 
@@ -211,5 +140,24 @@ class TranslationWriter
 
             return self::WRITTEN;
         });
+    }
+
+    /**
+     * PHP's type system can't require a trait, so the precondition is
+     * checked here, before any query, with a clear message instead of the
+     * BadMethodCallException that would otherwise surface inside the
+     * transaction.
+     *
+     * @throws InvalidArgumentException
+     */
+    private function assertTranslatable(Model $model): void
+    {
+        if (! method_exists($model, 'getTranslation') || ! method_exists($model, 'setTranslation')) {
+            throw new InvalidArgumentException(sprintf(
+                '%s must use the %s trait (getTranslation()/setTranslation() are missing).',
+                get_class($model),
+                Translatable::class
+            ));
+        }
     }
 }

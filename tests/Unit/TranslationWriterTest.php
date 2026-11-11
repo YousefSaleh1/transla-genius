@@ -8,32 +8,38 @@ use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Unit test for TranslationWriter's Phase 4a Task 5 guard clause.
- *
- * Pure PHP, no framework bootstrap - the guard fires before any query is
- * built (no DB connection is ever touched for a model that fails it), so
- * this doesn't need Eloquent's connection resolver set up at all.
+ * TranslationWriter's guard clause, on the two methods the job writes
+ * through. Pure PHP, no framework bootstrap: the guard fires before any
+ * query is built, so no database connection is ever touched for a model
+ * that fails it.
  */
 class TranslationWriterTest extends TestCase
 {
-    public function test_rejects_a_model_that_does_not_use_the_translatable_trait()
+    public function test_fill_missing_rejects_a_model_that_does_not_use_the_translatable_trait()
     {
-        $model = new class extends Model {};
-
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessageMatches('/must use the .*Translatable trait/');
 
-        (new TranslationWriter)->apply($model, ['name' => ['ar' => 'test']]);
+        (new TranslationWriter)->fillMissing(new class extends Model {}, 'name', 'ar', 'x', ['locale' => 'en', 'text' => 'y']);
     }
 
-    public function test_empty_translations_short_circuits_before_the_guard()
+    public function test_apply_retranslation_rejects_a_model_that_does_not_use_the_translatable_trait()
     {
-        // Passing an empty array is a no-op regardless of the model - the
-        // guard (and any DB interaction) is never reached.
-        $model = new class extends Model {};
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/must use the .*Translatable trait/');
 
-        (new TranslationWriter)->apply($model, []);
+        (new TranslationWriter)->applyRetranslation(new class extends Model {}, 'name', 'ar', 'x', ['locale' => 'en', 'text' => 'y'], null);
+    }
 
-        $this->addToAssertionCount(1); // reaching here without an exception is the assertion
+    /** The job writes only through these two; nothing else is public. */
+    public function test_the_public_methods_are_the_ones_the_job_uses()
+    {
+        $methods = array_map(
+            fn (\ReflectionMethod $m) => $m->getName(),
+            (new \ReflectionClass(TranslationWriter::class))->getMethods(\ReflectionMethod::IS_PUBLIC)
+        );
+        sort($methods);
+
+        $this->assertSame(['applyRetranslation', 'fillMissing'], $methods);
     }
 }

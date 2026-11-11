@@ -81,7 +81,7 @@ class TranslateFields implements ShouldQueue, TranslationJob
      * field => [locale (source locale), text (the new source, as a
      * snapshot), keep (target locales that save set itself)]. Their other
      * target locales are re-translated and overwritten - see
-     * Translatable::staleTranslationPlan() and TranslationWriter::apply().
+     * Translatable::staleTranslationPlan() and TranslationWriter::applyRetranslation().
      *
      * @var array<string, array{locale: string, text: string, keep: array<int, string>, targets?: array<string, string>}>
      */
