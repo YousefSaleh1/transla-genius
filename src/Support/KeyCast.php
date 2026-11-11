@@ -2,7 +2,8 @@
 
 namespace CodingPartners\TranslaGenius\Support;
 
-use Illuminate\Database\ConnectionInterface;
+use Illuminate\Contracts\Database\Query\Expression as ExpressionContract;
+use Illuminate\Database\Connection;
 use Illuminate\Database\Query\Expression;
 
 /**
@@ -18,7 +19,7 @@ use Illuminate\Database\Query\Expression;
  */
 final class KeyCast
 {
-    public static function asString(ConnectionInterface $connection, string $column): Expression
+    public static function asString(Connection $connection, string $column): ExpressionContract
     {
         $wrapped = $connection->getQueryGrammar()->wrap($column);
 
@@ -29,6 +30,6 @@ final class KeyCast
             default => 'TEXT', // sqlite and anything else that follows its rules
         };
 
-        return new Expression("CAST({$wrapped} AS {$type})");
+        return new Expression("CAST({$wrapped} AS {$type})"); // @phpstan-ignore argument.type (not a literal string, but safe: wrap() quotes the column, and $type is one of the four fixed strings above)
     }
 }

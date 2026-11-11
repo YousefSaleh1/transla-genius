@@ -102,7 +102,7 @@ class CachingProvider implements BatchTranslationProviderInterface
             }
         }
 
-        if (count($misses) < 2 || ! $this->supportsBatching()) {
+        if (count($misses) < 2 || ! $this->inner instanceof BatchTranslationProviderInterface || ! $this->inner->supportsBatching()) {
             return new TranslationBatchResult(
                 translations: $translations,
                 provider: $providers[0] ?? null,

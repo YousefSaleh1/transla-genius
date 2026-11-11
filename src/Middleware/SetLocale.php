@@ -53,6 +53,8 @@ class SetLocale
 
     /**
      * Parse the Accept-Language header into an array of languages.
+     *
+     * @return array<int, string>
      */
     protected function parseAcceptLanguageHeader(?string $header): array
     {

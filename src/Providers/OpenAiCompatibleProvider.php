@@ -152,12 +152,12 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
     protected int $retryAfterMax;
 
     /**
-     * @param  array{name?: string, key?: string, url?: string, model?: string, temperature?: float|null, max_tokens?: int|null, timeout?: int, auth_header?: string, headers?: array<string, string>, token_limit_param?: string, http_retries?: int, retry_after_max?: int, prompt?: string|null, reasoning_effort?: string|null, body?: array<string, mixed>}  $config
-     *                                                                                                                                                                                                                                                                                                                                                                     Provider configuration array - one translagenius.providers.* entry
-     *                                                                                                                                                                                                                                                                                                                                                                     from config/translagenius.php. `name` is injected by the service
-     *                                                                                                                                                                                                                                                                                                                                                                     provider (the entry's config key). Every key is optional; missing
-     *                                                                                                                                                                                                                                                                                                                                                                     key/url are caught explicitly in translate() rather than left
-     *                                                                                                                                                                                                                                                                                                                                                                     to fail as an opaque HTTP error.
+     * @param  array<string, mixed>  $config
+     *                                        Provider configuration array - one translagenius.providers.* entry
+     *                                        from config/translagenius.php. `name` is injected by the service
+     *                                        provider (the entry's config key). Every key is optional; missing
+     *                                        key/url are caught explicitly in translate() rather than left
+     *                                        to fail as an opaque HTTP error.
      */
     public function __construct(array $config)
     {

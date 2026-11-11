@@ -2,6 +2,7 @@
 
 namespace CodingPartners\TranslaGenius\Contracts;
 
+use CodingPartners\TranslaGenius\Traits\Translatable;
 use Spatie\Translatable\HasTranslations;
 
 /**
@@ -16,7 +17,7 @@ use Spatie\Translatable\HasTranslations;
  * (`Model&HasTranslatableAttributes`) for static analysis and documentation.
  *
  * You do not need to `implements` this yourself. Any model using
- * Traits\Translatable already has the two methods this interface names -
+ * Traits\Translatable already has the methods this interface names -
  * declaring `implements HasTranslatableAttributes` on your model is optional
  * and purely for IDE/static-analysis benefit, never required. The actual
  * runtime enforcement is a guard clause in TranslationWriter::apply(),
@@ -50,4 +51,39 @@ interface HasTranslatableAttributes
      * @see HasTranslations::setTranslation()
      */
     public function setTranslation(string $key, string $locale, $value);
+
+    /**
+     * Every locale's value of a translatable attribute.
+     *
+     * @param  array<int, string>|null  $allowedLocales
+     * @return array<string, mixed>
+     *
+     * @see HasTranslations::getTranslations()
+     */
+    public function getTranslations(?string $key = null, ?array $allowedLocales = null): array;
+
+    /**
+     * Remove one locale's value of a translatable attribute.
+     *
+     * @return mixed Spatie's HasTranslations returns the model for chaining.
+     *
+     * @see HasTranslations::forgetTranslation()
+     */
+    public function forgetTranslation(string $key, string $locale);
+
+    /**
+     * The translatable attribute names (the model's $translatable).
+     *
+     * @return array<int, string>
+     *
+     * @see Translatable::getTranslatableAttributes()
+     */
+    public function getTranslatableAttributes(): array;
+
+    /**
+     * The job class this model dispatches (Traits\Translatable).
+     *
+     * @return class-string<TranslationJob>
+     */
+    public static function getTranslationJobClass(): string;
 }

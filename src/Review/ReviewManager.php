@@ -2,6 +2,7 @@
 
 namespace CodingPartners\TranslaGenius\Review;
 
+use CodingPartners\TranslaGenius\Contracts\HasTranslatableAttributes;
 use CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface;
 use CodingPartners\TranslaGenius\DTOs\TranslationResult;
 use CodingPartners\TranslaGenius\Events\TranslationApproved;
@@ -46,6 +47,7 @@ class ReviewManager
      * applies the visibility setting (`clear` removes the published value so
      * the fallback shows), and records the published value as it now stands.
      *
+     * @param  Model&HasTranslatableAttributes  $model
      * @return string A TranslationWriter outcome constant.
      */
     public function propose(
@@ -61,7 +63,7 @@ class ReviewManager
         $review = null;
 
         $outcome = DB::transaction(function () use ($model, $field, $locale, $result, $sourceLocale, $sourceText, $staleValue, &$superseded, &$review) {
-            $locked = $model->newQuery()->lockForUpdate()->find($model->getKey());
+            $locked = $model->newQuery()->lockForUpdate()->whereKey($model->getKey())->first();
 
             if (! $locked) {
                 return TranslationWriter::MISSING;
@@ -142,6 +144,7 @@ class ReviewManager
      * re-translation) - pairs rejected for their current source text, so a
      * rejection leaves the locale missing until it is asked for again.
      *
+     * @param  Model&HasTranslatableAttributes  $model
      * @return array<string, array<int, string>>
      */
     public function pairsToSkip(Model $model, string $sourceLocale, bool $includeRejected): array
@@ -169,7 +172,11 @@ class ReviewManager
 
     // --- reviewing ------------------------------------------------------------
 
-    /** Pending reviews, as a query the app can filter and paginate. */
+    /**
+     * Pending reviews, as a query the app can filter and paginate.
+     *
+     * @return Builder<TranslationReview>
+     */
     public function pending(): Builder
     {
         return TranslationReview::query()->pending();
@@ -379,6 +386,7 @@ class ReviewManager
     }
 
     /**
+     * @param  Builder<TranslationReview>  $query
      * @return array<int, TranslationReview> The rows marked superseded.
      */
     protected function supersede(Builder $query): array
@@ -408,15 +416,21 @@ class ReviewManager
         return $locked;
     }
 
+    /**
+     * @return (Model&HasTranslatableAttributes)|null
+     */
     protected function lockOwner(TranslationReview $review): ?Model
     {
         $class = Relation::getMorphedModel($review->translatable_type) ?? $review->translatable_type;
 
-        if (! class_exists($class)) {
+        if (! is_subclass_of($class, Model::class)) {
             return null;
         }
 
-        return $class::query()->lockForUpdate()->find($review->translatable_id);
+        /** @var (Model&HasTranslatableAttributes)|null $owner A review is only ever created for a model using the Translatable trait. */
+        $owner = $class::query()->lockForUpdate()->whereKey($review->translatable_id)->first();
+
+        return $owner;
     }
 
     protected function setReviewer(TranslationReview $review, ?Model $reviewer): void

@@ -2,12 +2,15 @@
 
 namespace CodingPartners\TranslaGenius\Console\Commands;
 
+use CodingPartners\TranslaGenius\Console\Concerns\ReadsStringInput;
 use CodingPartners\TranslaGenius\Models\TranslationReview;
 use Illuminate\Console\Command;
 
 /** Counts of pending reviews per model / field / locale. */
 class ReviewListCommand extends Command
 {
+    use ReadsStringInput;
+
     protected $signature = 'translagenius:review:list
         {model? : Only this model class}
         {--field= : Only this field}
@@ -19,19 +22,20 @@ class ReviewListCommand extends Command
     {
         $query = TranslationReview::query()->pending();
 
-        if ($model = $this->argument('model')) {
+        if ($model = $this->stringArgument('model')) {
             $query->forModel($model);
         }
-        if ($field = $this->option('field')) {
+        if ($field = $this->stringOption('field')) {
             $query->field($field);
         }
-        if ($locale = $this->option('locale')) {
+        if ($locale = $this->stringOption('locale')) {
             $query->locale($locale);
         }
 
         $rows = $query->selectRaw('translatable_type, field, locale, COUNT(*) as pending, MIN(created_at) as oldest')
             ->groupBy('translatable_type', 'field', 'locale')
             ->orderBy('translatable_type')->orderBy('field')->orderBy('locale')
+            ->toBase()
             ->get();
 
         if ($rows->isEmpty()) {

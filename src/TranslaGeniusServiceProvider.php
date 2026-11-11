@@ -53,7 +53,7 @@ class TranslaGeniusServiceProvider extends ServiceProvider
         // The app's configured locale, captured before anything can change
         // it: app()->setLocale() also rewrites config('app.locale'), so a
         // long-running process (a queue worker) can't rely on reading it later.
-        $configuredLocale = (string) $this->app['config']->get('app.locale', 'en');
+        $configuredLocale = (string) $this->app->make('config')->get('app.locale', 'en');
         $this->app->instance('translagenius.configured_locale', $configuredLocale);
 
         $this->app->singleton(TranslationProviderInterface::class, function ($app) {
@@ -62,7 +62,7 @@ class TranslaGeniusServiceProvider extends ServiceProvider
 
             $provider = $this->resolveProvider($app, $name);
 
-            return $this->wrapWithCache($app, $provider, $this->cacheProfiles[$name]);
+            return $this->wrapWithCache($app, $provider, $this->cacheProfileFor($name));
         });
 
         $this->app->singleton(Translator::class);
@@ -204,6 +204,16 @@ class TranslaGeniusServiceProvider extends ServiceProvider
      * @var array<string, array<string, mixed>>
      */
     protected array $cacheProfiles = [];
+
+    /**
+     * The cache profile resolveProvider() recorded for $name.
+     *
+     * @return array<string, mixed>
+     */
+    protected function cacheProfileFor(string $name): array
+    {
+        return $this->cacheProfiles[$name];
+    }
 
     /**
      * The output-affecting part of one provider entry, for the cache key.
@@ -383,12 +393,12 @@ class TranslaGeniusServiceProvider extends ServiceProvider
      */
     protected function registerUsageTrackingListener(): void
     {
-        if (! $this->app['config']->get('translagenius.usage_tracking.enabled', false)) {
+        if (! $this->app->make('config')->get('translagenius.usage_tracking.enabled', false)) {
             return;
         }
 
-        $this->app['events']->listen(TranslationCompleted::class, LogTranslationUsage::class);
-        $this->app['events']->listen(
+        $this->app->make('events')->listen(TranslationCompleted::class, LogTranslationUsage::class);
+        $this->app->make('events')->listen(
             TranslationRequestBilled::class,
             [LogTranslationUsage::class, 'handleBilled']
         );

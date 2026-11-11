@@ -76,7 +76,7 @@ class TranslationWriter
         }
 
         return DB::transaction(function () use ($model, $translations, $sourceSnapshots) {
-            $locked = $model->newQuery()->lockForUpdate()->find($model->getKey());
+            $locked = $model->newQuery()->lockForUpdate()->whereKey($model->getKey())->first();
 
             // Model was deleted between dispatch and execution - nothing to save.
             if (! $locked) {
@@ -145,7 +145,7 @@ class TranslationWriter
     public function applyRetranslation(Model $model, string $field, string $locale, string $text, array $source, ?string $staleValue): string
     {
         return DB::transaction(function () use ($model, $field, $locale, $text, $source, $staleValue) {
-            $locked = $model->newQuery()->lockForUpdate()->find($model->getKey());
+            $locked = $model->newQuery()->lockForUpdate()->whereKey($model->getKey())->first();
 
             if (! $locked) {
                 return self::MISSING;

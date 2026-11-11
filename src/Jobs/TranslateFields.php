@@ -75,7 +75,7 @@ class TranslateFields implements ShouldQueue, TranslationJob
      * target locales are re-translated and overwritten - see
      * Translatable::staleTranslationPlan() and TranslationWriter::apply().
      *
-     * @var array<string, array{locale: string, text: string, keep: array<int, string>}>
+     * @var array<string, array{locale: string, text: string, keep: array<int, string>, targets?: array<string, string>}>
      */
     protected array $retranslate;
 
@@ -359,7 +359,7 @@ class TranslateFields implements ShouldQueue, TranslationJob
      * changes while this job is translating, TranslationWriter discards the
      * result under its lock.
      *
-     * @param  array{locale: string, text: string, keep: array<int, string>}  $plan
+     * @param  array{locale: string, text: string, keep: array<int, string>, targets?: array<string, string>}  $plan
      * @return int Pairs saved.
      */
     protected function retranslateField(TranslatorInterface $translator, TranslationWriter $writer, string $field, array $plan): int
@@ -383,7 +383,7 @@ class TranslateFields implements ShouldQueue, TranslationJob
 
         $targets = array_values(array_diff(
             get_supported_languages($plan['locale']),
-            (array) ($plan['keep'] ?? [])
+            $plan['keep']
         ));
 
         // Only targets still holding their stale value: one an earlier attempt
@@ -689,7 +689,7 @@ class TranslateFields implements ShouldQueue, TranslationJob
      *
      * @param  mixed  $value  The field's current value (array or scalar).
      * @param  string  $currentLocale  Locale to key a scalar $value under.
-     * @return array<string, string>
+     * @return array<string, mixed>
      */
     protected function normalizeFieldTranslations($value, string $currentLocale): array
     {

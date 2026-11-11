@@ -2,11 +2,14 @@
 
 namespace CodingPartners\TranslaGenius\Traits;
 
+use CodingPartners\TranslaGenius\Contracts\HasTranslatableAttributes;
+use CodingPartners\TranslaGenius\Contracts\TranslationJob;
 use CodingPartners\TranslaGenius\Jobs\TranslateFields;
 use CodingPartners\TranslaGenius\Models\TranslationReview;
 use CodingPartners\TranslaGenius\Support\KeyCast;
 use CodingPartners\TranslaGenius\Support\TranslationJobDispatcher;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Database\Connection;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Spatie\Translatable\HasTranslations;
@@ -61,7 +64,7 @@ trait Translatable
      * visibility, which would force every existing `protected` override
      * (including the one documented in the README) to change too.
      *
-     * @return class-string<ShouldQueue>
+     * @return class-string<TranslationJob>
      *
      * @see self::getTranslationJobClass() The public accessor for this.
      */
@@ -76,7 +79,7 @@ trait Translatable
      * on create/update, including a model's own override, without that
      * override point itself needing to be public.
      *
-     * @return class-string<ShouldQueue>
+     * @return class-string<TranslationJob>
      *
      * @see self::translationJobClass() The overridable extension point this exposes.
      */
@@ -86,16 +89,6 @@ trait Translatable
     }
 
     /**
-     * Whether any translatable field's value for the current locale actually
-     * changed on this save. Guards the `updated` listener so a save that
-     * only touches non-source-locale data (or non-translatable columns)
-     * doesn't trigger a needless re-translation dispatch.
-     *
-     * @param  Model  $model
-     * @param  array<int, string>  $translatableFields
-     * @return bool
-     */
-    /**
      * For each translatable field whose current-locale (source) text changed
      * in this save, what the job must re-translate: the source locale, the
      * new source text as a snapshot, and the target locales this same save
@@ -104,10 +97,11 @@ trait Translatable
      * stale and gets re-translated and overwritten. Fields whose source didn't
      * change aren't in the plan.
      *
-     * @param  Model  $model
+     * Each remaining target's stored value at this moment is snapshotted too
+     * (`targets`): it is overwritten only while it still holds that value.
+     *
+     * @param  Model&HasTranslatableAttributes  $model
      * @param  array<int, string>  $translatableFields
-     *                                                  Each remaining target's stored value at this moment is snapshotted too
-     *                                                  (`targets`): it is overwritten only while it still holds that value.
      * @return array<string, array{locale: string, text: string, keep: array<int, string>, targets: array<string, string>}>
      */
     protected static function staleTranslationPlan($model, array $translatableFields): array
@@ -153,6 +147,15 @@ trait Translatable
         return $plan;
     }
 
+    /**
+     * Whether any translatable field's value for the current locale actually
+     * changed on this save. Guards the `updated` listener so a save that
+     * only touches non-source-locale data (or non-translatable columns)
+     * doesn't trigger a needless re-translation dispatch.
+     *
+     * @param  Model&HasTranslatableAttributes  $model
+     * @param  array<int, string>  $translatableFields
+     */
     protected static function hasSourceLocaleChanged($model, array $translatableFields): bool
     {
         $currentLocale = get_current_locale();
@@ -177,10 +180,12 @@ trait Translatable
     /**
      * Get the names of the attributes that are translatable.
      * Helper method to ensure consistency.
+     *
+     * @return array<int, string>
      */
     public function getTranslatableAttributes(): array
     {
-        return property_exists($this, 'translatable') && is_array($this->translatable)
+        return is_array($this->translatable ?? null)
             ? $this->translatable
             : [];
     }
@@ -194,7 +199,8 @@ trait Translatable
      *
      * @param  string|null  $sourceLocale  Locale content is authored in; its targets
      *                                     are every other supported locale. Null = the current locale.
-     * @return Builder
+     * @param  Builder<static>  $query
+     * @return Builder<static>
      *
      * @see self::scopeNotFullyTranslated() The inverse.
      */
@@ -234,7 +240,8 @@ trait Translatable
      *
      * @param  string|null  $sourceLocale  Locale content is authored in; its targets
      *                                     are every other supported locale. Null = the current locale.
-     * @return Builder
+     * @param  Builder<static>  $query
+     * @return Builder<static>
      *
      * @see self::scopeFullyTranslated() The inverse.
      */
@@ -264,12 +271,15 @@ trait Translatable
      * translations are what fullyTranslated()/notFullyTranslated() look at;
      * this looks at the pending ones.
      *
-     * @return Builder
+     * @param  Builder<static>  $query
+     * @return Builder<static>
      */
     public function scopePendingReview(Builder $query, ?string $field = null, ?string $locale = null)
     {
         $model = $query->getModel();
-        $ownerKey = KeyCast::asString($query->getConnection(), $model->getQualifiedKeyName());
+        /** @var Connection $connection Every Laravel database connection extends it. */
+        $connection = $query->getConnection();
+        $ownerKey = KeyCast::asString($connection, $model->getQualifiedKeyName());
 
         // A correlated subquery: no list of ids is ever bound, so it works at
         // any queue size (a bound id list would hit SQL Server's ~2,100

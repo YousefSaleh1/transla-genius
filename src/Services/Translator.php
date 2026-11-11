@@ -86,7 +86,7 @@ class Translator implements BatchTranslatorInterface
         ?string $field = null,
         ?string $model = null,
     ): TranslationBatchResult {
-        if (! $this->canBatch()) {
+        if (! $this->provider instanceof BatchTranslationProviderInterface || ! $this->provider->supportsBatching()) {
             return TranslationBatchResult::empty();
         }
 

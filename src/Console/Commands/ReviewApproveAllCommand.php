@@ -2,6 +2,7 @@
 
 namespace CodingPartners\TranslaGenius\Console\Commands;
 
+use CodingPartners\TranslaGenius\Console\Concerns\ReadsStringInput;
 use CodingPartners\TranslaGenius\Models\TranslationReview;
 use CodingPartners\TranslaGenius\Review\ReviewManager;
 use Illuminate\Console\Command;
@@ -13,6 +14,8 @@ use Illuminate\Console\Command;
  */
 class ReviewApproveAllCommand extends Command
 {
+    use ReadsStringInput;
+
     protected $signature = 'translagenius:review:approve-all
         {model : Model class whose pending translations to approve}
         {--field= : Only this field}
@@ -23,13 +26,13 @@ class ReviewApproveAllCommand extends Command
 
     public function handle(ReviewManager $reviews): int
     {
-        $model = $this->argument('model');
-        $field = $this->option('field') ?: null;
-        $locale = $this->option('locale') ?: null;
+        $model = $this->stringArgument('model') ?? '';
+        $field = $this->stringOption('field');
+        $locale = $this->stringOption('locale');
 
         $count = TranslationReview::query()->pending()->forModel($model)
-            ->when($field, fn ($q) => $q->field($field))
-            ->when($locale, fn ($q) => $q->locale($locale))
+            ->when($field, fn ($q, string $field) => $q->field($field))
+            ->when($locale, fn ($q, string $locale) => $q->locale($locale))
             ->count();
 
         $this->info("{$count} pending translation(s) for [{$model}]".($field ? " field [{$field}]" : '').($locale ? " locale [{$locale}]" : '').'.');

@@ -83,6 +83,7 @@
         "test": "vendor/bin/phpunit",
         "test-coverage": "vendor/bin/phpunit --coverage-html coverage",
         "lint": "pint --test src tests",
-        "format": "pint src tests"
+        "format": "pint src tests",
+        "analyse": "phpstan analyse --memory-limit=1G"
     }
 }

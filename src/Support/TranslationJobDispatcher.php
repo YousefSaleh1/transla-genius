@@ -2,6 +2,7 @@
 
 namespace CodingPartners\TranslaGenius\Support;
 
+use CodingPartners\TranslaGenius\Contracts\HasTranslatableAttributes;
 use CodingPartners\TranslaGenius\Contracts\TranslationJob;
 use CodingPartners\TranslaGenius\DTOs\TranslationJobPayload;
 use CodingPartners\TranslaGenius\Exceptions\InvalidTranslationJobException;
@@ -26,11 +27,14 @@ final class TranslationJobDispatcher
     private static array $warned = [];
 
     /**
-     * @param  class-string<TranslationJob>  $jobClass  Constructed with one
-     *                                                  TranslationJobPayload built from the arguments below.
+     * $jobClass is constructed with one TranslationJobPayload built from the
+     * other arguments. $retranslate lists the fields whose source text changed
+     * in this save - see Translatable.
+     *
+     * @param  class-string  $jobClass
+     * @param  Model&HasTranslatableAttributes  $model
      * @param  array<int, string>  $fields
-     * @param  array<string, array{locale: string, text: string, keep: array<int, string>}>  $retranslate
-     *                                                                                                     Fields whose source text changed in this save - see Translatable.
+     * @param  array<string, array{locale: string, text: string, keep: array<int, string>, targets?: array<string, string>}>  $retranslate
      * @param  string|null  $sourceLocale  The locale the content was written in;
      *                                     null = self::sourceLocale(), resolved now, at dispatch time.
      * @param  array<string, mixed>  $options  Extra job options (TranslateFields::$options).

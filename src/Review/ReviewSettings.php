@@ -98,7 +98,11 @@ class ReviewSettings
         return strtolower(trim((string) $value)) === self::CLEAR ? self::CLEAR : self::KEEP;
     }
 
-    /** A config list that may come from .env as "a,b" or from config as an array. */
+    /**
+     * A config list that may come from .env as "a,b" or from config as an array.
+     *
+     * @return array<int, string>
+     */
     protected static function list(mixed $value): array
     {
         $items = is_array($value) ? $value : explode(',', (string) $value);

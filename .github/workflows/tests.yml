@@ -73,9 +73,6 @@ jobs:
           extensions: mbstring, pdo, pdo_sqlite, pdo_mysql, pdo_pgsql${{ matrix.db == 'sqlsrv' && ', pdo_sqlsrv' || '' }}
           coverage: none
 
-      # Audits the committed composer.lock, before this cell's require/update
-      # steps re-resolve dependencies. One cell is enough: the lock is the same
-      # file everywhere.
       # pdo_sqlsrv needs Microsoft's ODBC driver, which the runner image doesn't
       # ship ("This extension requires the Microsoft ODBC Driver for SQL Server").
       # Commands from Microsoft's official Ubuntu instructions:
@@ -99,12 +96,18 @@ jobs:
           sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18
           odbcinst -q -d
 
+      # Audits the committed composer.lock, before this cell's require/update
+      # steps re-resolve dependencies. One cell is enough: the lock is the same
+      # file everywhere.
       - name: Audit locked dependencies
         if: matrix.php == '8.4' && matrix.laravel == '^13.0' && matrix.stability == 'prefer-stable' && matrix.db == 'sqlite'
         run: composer audit --locked --no-interaction
 
+      # Larastan needs Laravel 12.4.1 or later, which would lift prefer-lowest
+      # off 12.0. It only runs in the lint job, so the test cells drop it.
       - name: Require Laravel ${{ matrix.laravel }} with testbench ${{ matrix.testbench }}
         run: |
+          composer remove --dev larastan/larastan --no-update --no-interaction
           composer require "laravel/framework:${{ matrix.laravel }}" --no-update --no-interaction
           composer require --dev "orchestra/testbench:${{ matrix.testbench }}" --no-update --no-interaction
 
@@ -158,3 +161,31 @@ jobs:
       - name: Run test suite
         # The live group calls real provider APIs; it is opt-in, never run in CI.
         run: vendor/bin/phpunit --exclude-group live
+
+  lint:
+    name: Pint and Larastan (PHP 8.4 - Laravel 13)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          coverage: none
+
+      - name: Require Laravel 13 with testbench 11
+        run: |
+          composer require "laravel/framework:^13.0" --no-update --no-interaction
+          composer require --dev "orchestra/testbench:^11.0" --no-update --no-interaction
+
+      - name: Install dependencies
+        run: composer update --prefer-stable --prefer-dist --no-interaction --no-progress
+
+      - name: Pint
+        run: composer lint
+
+      - name: Larastan
+        run: composer analyse -- --no-progress --error-format=github

@@ -2,11 +2,12 @@
 
 namespace CodingPartners\TranslaGenius\Console\Commands;
 
+use CodingPartners\TranslaGenius\Console\Concerns\ReadsStringInput;
+use CodingPartners\TranslaGenius\Contracts\HasTranslatableAttributes;
 use CodingPartners\TranslaGenius\Jobs\TranslateFields;
 use CodingPartners\TranslaGenius\Support\TranslationJobDispatcher;
 use CodingPartners\TranslaGenius\Traits\Translatable;
 use Illuminate\Console\Command;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -48,6 +49,8 @@ use Illuminate\Database\Eloquent\Model;
  */
 class BackfillCommand extends Command
 {
+    use ReadsStringInput;
+
     protected $signature = 'translagenius:backfill
         {model : Fully-qualified Eloquent model class name that uses the Translatable trait}
         {--chunk=100 : Number of records to load per chunk via chunkById()}
@@ -71,7 +74,7 @@ class BackfillCommand extends Command
      */
     public function handle(): int
     {
-        $modelClass = $this->argument('model');
+        $modelClass = $this->stringArgument('model') ?? '';
 
         $validationError = $this->validateModelClass($modelClass);
 
@@ -89,7 +92,7 @@ class BackfillCommand extends Command
             return self::FAILURE;
         }
 
-        /** @var Model&Translatable $modelInstance */
+        /** @var Model&HasTranslatableAttributes $modelInstance validateModelClass() checked it extends Model and uses Translatable. */
         $modelInstance = new $modelClass;
         $translatableFields = $modelInstance->getTranslatableAttributes();
 
@@ -99,19 +102,17 @@ class BackfillCommand extends Command
             return self::SUCCESS;
         }
 
-        /** @var class-string<ShouldQueue> $jobClass */
-        $jobClass = $modelClass::getTranslationJobClass();
+        $jobClass = $modelInstance::getTranslationJobClass();
         $jobClassLabel = class_basename($jobClass);
 
         // There's no request here, so the source locale is explicit:
         // --source, then TRANSLATION_SOURCE_LOCALE, then app.locale.
-        $sourceLocale = trim((string) $this->option('source'));
-        $sourceLocale = $sourceLocale !== '' ? $sourceLocale : TranslationJobDispatcher::defaultSourceLocale();
+        $sourceLocale = $this->stringOption('source') ?? TranslationJobDispatcher::defaultSourceLocale();
         $targetLocales = get_supported_languages($sourceLocale);
 
         $this->line("Source locale: {$sourceLocale}; target locale(s): ".implode(', ', $targetLocales));
 
-        $buildQuery = fn () => $modelClass::query()->notFullyTranslated($sourceLocale);
+        $buildQuery = fn () => $modelInstance->newQuery()->scopes(['notFullyTranslated' => [$sourceLocale]]);
 
         $matchingCount = $buildQuery()->count();
 

@@ -2,6 +2,7 @@
 
 namespace CodingPartners\TranslaGenius\Models;
 
+use CodingPartners\TranslaGenius\Contracts\HasTranslatableAttributes;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
@@ -32,6 +33,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $reviewer_id
  * @property Carbon|null $reviewed_at
  * @property string|null $note
+ * @property-read (Model&HasTranslatableAttributes)|null $translatable The owning record (a model using the Translatable trait).
  */
 class TranslationReview extends Model
 {
@@ -52,13 +54,21 @@ class TranslationReview extends Model
         'reviewed_at' => 'datetime',
     ];
 
-    /** The record this translation belongs to. */
+    /**
+     * The record this translation belongs to.
+     *
+     * @return MorphTo<Model, $this>
+     */
     public function translatable(): MorphTo
     {
         return $this->morphTo();
     }
 
-    /** Whoever approved or rejected it, if the app passed a reviewer. */
+    /**
+     * Whoever approved or rejected it, if the app passed a reviewer.
+     *
+     * @return MorphTo<Model, $this>
+     */
     public function reviewer(): MorphTo
     {
         return $this->morphTo();
@@ -75,41 +85,71 @@ class TranslationReview extends Model
         return $this->status === self::PENDING;
     }
 
+    /**
+     * @param  Builder<TranslationReview>  $query
+     * @return Builder<TranslationReview>
+     */
     public function scopePending(Builder $query): Builder
     {
         return $query->where('status', self::PENDING);
     }
 
-    /** Rows for one record. */
+    /**
+     * Rows for one record.
+     *
+     * @param  Builder<TranslationReview>  $query
+     * @return Builder<TranslationReview>
+     */
     public function scopeFor(Builder $query, Model $model): Builder
     {
         return $query->where('translatable_type', $model->getMorphClass())
             ->where('translatable_id', (string) $model->getKey());
     }
 
-    /** Rows for every record of a model class (or morph alias). */
+    /**
+     * Rows for every record of a model class (or morph alias).
+     *
+     * @param  Builder<TranslationReview>  $query
+     * @return Builder<TranslationReview>
+     */
     public function scopeForModel(Builder $query, string $modelClass): Builder
     {
-        $type = class_exists($modelClass) ? (new $modelClass)->getMorphClass() : $modelClass;
+        $type = is_subclass_of($modelClass, Model::class) ? (new $modelClass)->getMorphClass() : $modelClass;
 
         return $query->where('translatable_type', $type);
     }
 
+    /**
+     * @param  Builder<TranslationReview>  $query
+     * @return Builder<TranslationReview>
+     */
     public function scopeField(Builder $query, string $field): Builder
     {
         return $query->where('field', $field);
     }
 
+    /**
+     * @param  Builder<TranslationReview>  $query
+     * @return Builder<TranslationReview>
+     */
     public function scopeLocale(Builder $query, string $locale): Builder
     {
         return $query->where('locale', $locale);
     }
 
+    /**
+     * @param  Builder<TranslationReview>  $query
+     * @return Builder<TranslationReview>
+     */
     public function scopeProvider(Builder $query, string $provider): Builder
     {
         return $query->where('provider', $provider);
     }
 
+    /**
+     * @param  Builder<TranslationReview>  $query
+     * @return Builder<TranslationReview>
+     */
     public function scopeOlderThan(Builder $query, \DateTimeInterface $moment): Builder
     {
         return $query->where('created_at', '<', $moment);

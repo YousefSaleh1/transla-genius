@@ -44,9 +44,11 @@ final class FallbackProvider implements BatchTranslationProviderInterface
     protected array $providers;
 
     /**
-     * @param  array<int, TranslationProviderInterface>  $providers  Ordered
-     *                                                               chain, tried first-to-last. At least 2 required - a single
-     *                                                               provider needs no fallback wrapper.
+     * $providers is the ordered chain, tried first-to-last. At least 2 are
+     * required - a single provider needs no fallback wrapper. Typed as mixed
+     * because each element is checked here, at runtime.
+     *
+     * @param  array<int, mixed>  $providers
      *
      * @throws InvalidArgumentException If fewer than 2 providers are given,
      *                                  or any element doesn't implement TranslationProviderInterface.
@@ -160,7 +162,7 @@ final class FallbackProvider implements BatchTranslationProviderInterface
         $anyTruncated = false;
 
         foreach ($this->providers as $position => $provider) {
-            if (! $this->canBatch($provider)) {
+            if (! $provider instanceof BatchTranslationProviderInterface || ! $provider->supportsBatching()) {
                 $hasSingleOnlyMember = true;
 
                 continue;

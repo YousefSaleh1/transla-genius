@@ -2,6 +2,7 @@
 
 namespace CodingPartners\TranslaGenius\Console\Commands;
 
+use CodingPartners\TranslaGenius\Console\Concerns\ReadsStringInput;
 use Illuminate\Console\Command;
 use Illuminate\Database\ConnectionInterface;
 use Throwable;
@@ -23,6 +24,8 @@ use Throwable;
  */
 class CheckCommand extends Command
 {
+    use ReadsStringInput;
+
     protected $signature = 'translagenius:check {--connection= : The database connection to check (defaults to the app default)}';
 
     protected $description = 'Verify the published config file and that the database connection supports the JSON queries TranslaGenius needs';
@@ -38,7 +41,7 @@ class CheckCommand extends Command
     {
         $configOk = $this->checkPublishedConfig();
 
-        $connection = $this->laravel['db']->connection($this->option('connection'));
+        $connection = $this->laravel->make('db')->connection($this->stringOption('connection'));
         $driver = $connection->getDriverName();
 
         $this->info("Checking connection [{$connection->getName()}] (driver: {$driver})...");

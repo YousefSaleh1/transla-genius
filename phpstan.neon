@@ -1,0 +1,19 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+
+parameters:
+    level: 8
+    paths:
+        - src
+        # The Translatable trait is only analysed through a class that uses it.
+        - tests/TestModels/TestTranslatableModel.php
+    # The package's own config file is a config file too (env() is fine there).
+    configDirectories:
+        - src/config
+    ignoreErrors:
+        # Left untyped on purpose, as consuming apps declare it, so the trait's
+        # guards against a missing or non-array $translatable are analysed as
+        # they run in a real app.
+        -
+            identifier: missingType.property
+            path: tests/TestModels/TestTranslatableModel.php
