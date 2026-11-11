@@ -17,10 +17,10 @@ use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
 use CodingPartners\TranslaGenius\Review\ReviewManager;
 use CodingPartners\TranslaGenius\Review\ReviewSettings;
 use CodingPartners\TranslaGenius\Services\TranslationWriter;
+use CodingPartners\TranslaGenius\Support\Setting;
 use CodingPartners\TranslaGenius\Support\Text;
 use CodingPartners\TranslaGenius\Support\TranslationJobDispatcher;
 use CodingPartners\TranslaGenius\Traits\Translatable;
-use CodingPartners\TranslaGenius\TranslaGeniusServiceProvider;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\Eloquent\Model;
@@ -122,15 +122,7 @@ class TranslateFields implements ShouldQueue, TranslationJob
      */
     public function backoff(): array
     {
-        $configured = config('translagenius.retries.job_backoff', '10,30');
-        $values = is_array($configured) ? $configured : explode(',', (string) $configured);
-
-        $delays = array_values(array_map(
-            'intval',
-            array_filter(array_map('trim', $values), fn ($value) => $value !== '')
-        ));
-
-        return $delays === [] ? [10, 30] : $delays;
+        return Setting::intList(config('translagenius.retries.job_backoff', '10,30'), [10, 30]);
     }
 
     /**
@@ -146,10 +138,7 @@ class TranslateFields implements ShouldQueue, TranslationJob
         $this->retranslate = $payload->retranslate;
         $this->sourceLocale = $payload->sourceLocale;
         $this->options = $payload->options;
-        $this->tries = max(1, TranslaGeniusServiceProvider::intSetting(
-            config('translagenius.retries.job_tries'),
-            3
-        ));
+        $this->tries = Setting::int(config('translagenius.retries.job_tries'), 3, 1);
     }
 
     /**

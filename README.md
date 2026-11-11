@@ -238,6 +238,8 @@ Each preset reads its own variables and defaults to the service's official endpo
 
 Every preset also reads `TRANSLATION_API_TIMEOUT` (seconds, default 10), `TRANSLATION_TEMPERATURE` and `TRANSLATION_MAX_TOKENS`; see [Output limit and temperature](#output-limit-and-temperature).
 
+In every numeric setting, an empty or non-numeric value (`TRANSLATION_API_TIMEOUT=`) means the default. `TRANSLATION_API_TIMEOUT=0` is allowed and means no timeout, but avoid it: a provider that never answers then holds the queue worker until the queue's own timeout kills the job.
+
 The default models were checked against each provider's documentation when they were chosen. Providers retire and replace models, so set the `*_MODEL` variable to pin the one you want. `mistral-small-latest` is an alias: Mistral may move it to a newer model, and price, without notice.
 
 `gpt-6-luna` is the cheapest text model on OpenAI's [models page](https://developers.openai.com/api/docs/models), and every model listed there reasons before answering. That is why the `openai` preset sends no temperature or token limit by default and sets `reasoning_effort` to `none`.

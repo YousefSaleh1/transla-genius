@@ -5,6 +5,7 @@ namespace CodingPartners\TranslaGenius\Listeners;
 use CodingPartners\TranslaGenius\Events\TranslationCompleted;
 use CodingPartners\TranslaGenius\Events\TranslationRequestBilled;
 use CodingPartners\TranslaGenius\Models\TranslationUsageLog;
+use CodingPartners\TranslaGenius\Support\Setting;
 
 /**
  * Writes one Models\TranslationUsageLog row per Events\TranslationCompleted,
@@ -94,10 +95,10 @@ class LogTranslationUsage
         }
 
         $rates = config("translagenius.providers.{$provider}", []);
-        // An empty string (e.g. `OPENAI_COST_PER_1K_PROMPT_TOKENS=` in .env)
-        // means "not configured", not a rate of 0.
-        $promptRate = ($rates['cost_per_1k_prompt_tokens'] ?? '') === '' ? null : $rates['cost_per_1k_prompt_tokens'];
-        $completionRate = ($rates['cost_per_1k_completion_tokens'] ?? '') === '' ? null : $rates['cost_per_1k_completion_tokens'];
+        // An empty or non-numeric rate (e.g. `OPENAI_COST_PER_1K_PROMPT_TOKENS=`
+        // in .env) means "not configured", not a rate of 0.
+        $promptRate = Setting::nullableFloat($rates['cost_per_1k_prompt_tokens'] ?? null);
+        $completionRate = Setting::nullableFloat($rates['cost_per_1k_completion_tokens'] ?? null);
 
         if ($promptRate === null && $completionRate === null) {
             return null;
@@ -114,11 +115,11 @@ class LogTranslationUsage
         $cost = 0.0;
 
         if ($promptRate !== null) {
-            $cost += ($promptTokens / 1000) * (float) $promptRate;
+            $cost += ($promptTokens / 1000) * $promptRate;
         }
 
         if ($completionRate !== null) {
-            $cost += ($completionTokens / 1000) * (float) $completionRate;
+            $cost += ($completionTokens / 1000) * $completionRate;
         }
 
         return number_format($cost, 6, '.', '');

@@ -19,6 +19,7 @@ use CodingPartners\TranslaGenius\Providers\FallbackProvider;
 use CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider;
 use CodingPartners\TranslaGenius\Review\ReviewManager;
 use CodingPartners\TranslaGenius\Services\Translator;
+use CodingPartners\TranslaGenius\Support\Setting;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
 use RuntimeException;
@@ -317,12 +318,13 @@ class TranslaGeniusServiceProvider extends ServiceProvider
     }
 
     /**
-     * An integer setting read from env-backed config: null or '' (an empty
-     * `VAR=` in .env) means "use the default".
+     * An integer setting read from env-backed config: null, '' (an empty
+     * `VAR=` in .env) or a non-numeric value means "use the default". See
+     * Support\Setting.
      */
     public static function intSetting(mixed $value, int $default): int
     {
-        return $value === null || $value === '' ? $default : max(0, (int) $value);
+        return Setting::int($value, $default);
     }
 
     /**

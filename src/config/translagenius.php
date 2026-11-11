@@ -85,6 +85,9 @@ return [
     |
     | Timeout, temperature and max_tokens are shared across presets through
     | TRANSLATION_API_TIMEOUT, TRANSLATION_TEMPERATURE and TRANSLATION_MAX_TOKENS.
+    | An empty or non-numeric value in any numeric setting means its default.
+    | A timeout of 0 means no timeout at all: a provider that never answers
+    | then holds the queue worker until the queue's own timeout kills it.
     |
     | For an API that doesn't speak the OpenAI chat-completions format
     | (DeepL, AWS Translate, Azure Translator), implement the interface and

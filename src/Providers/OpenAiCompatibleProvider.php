@@ -9,6 +9,7 @@ use CodingPartners\TranslaGenius\DTOs\TranslationRequest;
 use CodingPartners\TranslaGenius\DTOs\TranslationResult;
 use CodingPartners\TranslaGenius\Events\TranslationRequestBilled;
 use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
+use CodingPartners\TranslaGenius\Support\Setting;
 use CodingPartners\TranslaGenius\Support\Text;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
@@ -165,9 +166,10 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
         $this->apiKey = (string) ($config['key'] ?? '');
         $this->apiUrl = (string) ($config['url'] ?? '');
         $this->model = (string) ($config['model'] ?? '');
-        $this->temperature = ($config['temperature'] ?? '') === '' ? null : (float) $config['temperature'];
-        $this->maxTokens = ($config['max_tokens'] ?? '') === '' ? null : max(1, (int) $config['max_tokens']);
-        $this->timeout = (int) ($config['timeout'] ?? 10);
+        $this->temperature = Setting::nullableFloat($config['temperature'] ?? null);
+        $this->maxTokens = Setting::nullableInt($config['max_tokens'] ?? null, 1);
+        // 0 is allowed and means no timeout; empty or non-numeric is the default.
+        $this->timeout = Setting::int($config['timeout'] ?? null, 10);
         $this->name = isset($config['name']) ? (string) $config['name'] : null;
         $this->prompt = trim((string) ($config['prompt'] ?? '')) === '' ? null : (string) $config['prompt'];
         $this->batch = (bool) (filter_var($config['batch'] ?? false, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? false);
@@ -187,8 +189,8 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
             $this->extraBody = array_diff_key($this->extraBody, array_flip(self::PROTECTED_BODY_FIELDS));
         }
         $this->authHeader = (string) ($config['auth_header'] ?? 'Authorization') ?: 'Authorization';
-        $this->httpRetries = max(0, (int) ($config['http_retries'] ?? 1));
-        $this->retryAfterMax = max(0, (int) ($config['retry_after_max'] ?? 10));
+        $this->httpRetries = Setting::int($config['http_retries'] ?? null, 1);
+        $this->retryAfterMax = Setting::int($config['retry_after_max'] ?? null, 10);
         $this->tokenLimitParam = (string) ($config['token_limit_param'] ?? 'max_tokens') ?: 'max_tokens';
         $this->headers = array_filter(
             (array) ($config['headers'] ?? []),
