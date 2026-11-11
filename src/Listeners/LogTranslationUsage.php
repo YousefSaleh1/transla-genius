@@ -50,6 +50,7 @@ class LogTranslationUsage
             'prompt_tokens' => $event->result->promptTokens,
             'completion_tokens' => $event->result->completionTokens,
             'estimated_cost' => $this->estimateCost($event),
+            'request_id' => $event->result->requestId,
         ]);
     }
 

@@ -57,6 +57,12 @@ return [
     |                            or another header name to send the raw key in.
     |   headers                  Extra request headers; null/empty values are dropped.
     |   reasoning_effort         Sent only when set (e.g. 'none', 'low'); empty = omit.
+    |   batch                    Override TRANSLATION_BATCH for this entry (true/false);
+    |                            unset = the package-wide setting.
+    |   batch_prompt             Batch prompt for this entry; unset = package-wide.
+    |   batch_response_format    'json_schema', 'json_object' or unset (prompt only):
+    |                            how a batch reply is constrained to JSON. Shipped
+    |                            only where the provider documents support.
     |   body                     Extra request-body fields (config only). Can't set
     |                            model, messages or stream; configured temperature,
     |                            token limit and reasoning_effort take precedence.
@@ -84,6 +90,7 @@ return [
             'timeout' => env('TRANSLATION_API_TIMEOUT', 10),
             'temperature' => env('TRANSLATION_TEMPERATURE', 0.3),
             'reasoning_effort' => env('OPENROUTER_REASONING_EFFORT'),
+            'batch' => env('OPENROUTER_BATCH'),
             'max_tokens' => env('TRANSLATION_MAX_TOKENS'),
             // Optional attribution headers documented by OpenRouter.
             'headers' => [
@@ -103,6 +110,8 @@ return [
             'timeout' => env('TRANSLATION_API_TIMEOUT', 10),
             'temperature' => env('TRANSLATION_TEMPERATURE'),
             'reasoning_effort' => env('OPENAI_REASONING_EFFORT', 'none'),
+            'batch' => env('OPENAI_BATCH'),
+            'batch_response_format' => 'json_schema',
             'max_tokens' => env('TRANSLATION_MAX_TOKENS'),
             // OpenAI deprecates max_tokens in favor of max_completion_tokens.
             'token_limit_param' => 'max_completion_tokens',
@@ -120,6 +129,7 @@ return [
             'timeout' => env('TRANSLATION_API_TIMEOUT', 10),
             'temperature' => env('TRANSLATION_TEMPERATURE'),
             'reasoning_effort' => env('GEMINI_REASONING_EFFORT'),
+            'batch' => env('GEMINI_BATCH'),
             'max_tokens' => env('TRANSLATION_MAX_TOKENS'),
             'cost_per_1k_prompt_tokens' => env('GEMINI_COST_PER_1K_PROMPT_TOKENS'),
             'cost_per_1k_completion_tokens' => env('GEMINI_COST_PER_1K_COMPLETION_TOKENS'),
@@ -134,6 +144,8 @@ return [
             'timeout' => env('TRANSLATION_API_TIMEOUT', 10),
             'temperature' => env('TRANSLATION_TEMPERATURE'),
             'reasoning_effort' => env('DEEPSEEK_REASONING_EFFORT', 'none'),
+            'batch' => env('DEEPSEEK_BATCH'),
+            'batch_response_format' => 'json_object',
             'max_tokens' => env('TRANSLATION_MAX_TOKENS'),
             'cost_per_1k_prompt_tokens' => env('DEEPSEEK_COST_PER_1K_PROMPT_TOKENS'),
             'cost_per_1k_completion_tokens' => env('DEEPSEEK_COST_PER_1K_COMPLETION_TOKENS'),
@@ -149,6 +161,7 @@ return [
             'timeout' => env('TRANSLATION_API_TIMEOUT', 10),
             'temperature' => env('TRANSLATION_TEMPERATURE'),
             'reasoning_effort' => env('MISTRAL_REASONING_EFFORT'),
+            'batch' => env('MISTRAL_BATCH'),
             'max_tokens' => env('TRANSLATION_MAX_TOKENS'),
             'cost_per_1k_prompt_tokens' => env('MISTRAL_COST_PER_1K_PROMPT_TOKENS'),
             'cost_per_1k_completion_tokens' => env('MISTRAL_COST_PER_1K_COMPLETION_TOKENS'),
@@ -165,6 +178,8 @@ return [
             'timeout' => env('TRANSLATION_API_TIMEOUT', 10),
             'temperature' => env('TRANSLATION_TEMPERATURE'),
             'reasoning_effort' => env('TRANSLATION_REASONING_EFFORT'),
+            'batch' => env('TRANSLATION_CUSTOM_BATCH'),
+            'batch_response_format' => env('TRANSLATION_BATCH_RESPONSE_FORMAT'),
             'max_tokens' => env('TRANSLATION_MAX_TOKENS'),
             'token_limit_param' => env('TRANSLATION_TOKEN_LIMIT_PARAM', 'max_tokens'),
             'auth_header' => env('TRANSLATION_AUTH_HEADER', 'Authorization'),
@@ -201,6 +216,28 @@ return [
     |
     */
     'prompt' => env('TRANSLATION_SYSTEM_PROMPT'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Batching
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, all missing target locales of one field are translated in
+    | a single request that asks for a JSON object keyed by locale code,
+    | instead of one request per locale. Fewer requests and less repeated
+    | prompt overhead, against bigger replies and depending on the model
+    | following the JSON format. Locales a reply misses or garbles are
+    | translated one at a time; a reply that isn't JSON at all sends the whole
+    | field one at a time. Off by default for now (opt in: TRANSLATION_BATCH).
+    |
+    | The batch prompt follows the same rules as `prompt`, with
+    | {target_locales} (comma-separated) instead of {target_locale}.
+    |
+    */
+    'batch' => [
+        'enabled' => env('TRANSLATION_BATCH', false),
+        'prompt' => env('TRANSLATION_BATCH_PROMPT'),
+    ],
 
     /*
     |--------------------------------------------------------------------------

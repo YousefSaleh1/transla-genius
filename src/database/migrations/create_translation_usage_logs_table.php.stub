@@ -30,10 +30,15 @@ return new class extends Migration
             $table->unsignedInteger('prompt_tokens')->nullable();
             $table->unsignedInteger('completion_tokens')->nullable();
             $table->decimal('estimated_cost', 10, 6)->nullable();
+            // Shared by every row one API request produced (several, for a
+            // batch request). Only one of those rows carries the request's
+            // token counts and cost; the others are null.
+            $table->string('request_id', 64)->nullable();
             $table->timestamps();
 
             $table->index(['model_class', 'model_id']);
             $table->index('provider');
+            $table->index('request_id');
         });
     }
 

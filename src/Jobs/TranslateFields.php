@@ -2,7 +2,9 @@
 
 namespace CodingPartners\TranslaGenius\Jobs;
 
+use CodingPartners\TranslaGenius\Contracts\BatchTranslatorInterface;
 use CodingPartners\TranslaGenius\Contracts\TranslatorInterface;
+use CodingPartners\TranslaGenius\DTOs\TranslationResult;
 use CodingPartners\TranslaGenius\Events\TranslationCompleted;
 use CodingPartners\TranslaGenius\Events\TranslationFailed as TranslationFailedEvent;
 use CodingPartners\TranslaGenius\Events\TranslationStarted;
@@ -225,11 +227,17 @@ class TranslateFields implements ShouldQueue
      * saves without model events, so it doesn't re-trigger the `updated`
      * listener that dispatched this job.
      *
-     * Dispatches Events\TranslationStarted immediately before, and
-     * Events\TranslationCompleted immediately after (once the pair is saved),
-     * each individual translate() call. If translate() throws, only
-     * TranslationStarted will have fired for that attempt - see failed() for
-     * the corresponding failure event.
+     * Batching (TRANSLATION_BATCH): when the translator can batch and a field
+     * is missing two or more locales, they are requested together first.
+     * Every valid locale of the reply is saved at once; the locales it missed
+     * are then translated one call at a time. See translateField().
+     *
+     * Events: TranslationStarted fires once per pair, immediately before the
+     * first request that attempts it (for a batch, before the batch request;
+     * a one-at-a-time retry of the same pair doesn't fire it again).
+     * TranslationCompleted fires once per pair, after that pair is saved. If a
+     * request throws, only TranslationStarted will have fired for its pairs -
+     * see failed() for the corresponding failure event.
      *
      * @param TranslatorInterface $translator
      * @param TranslationWriter $writer
@@ -253,37 +261,137 @@ class TranslateFields implements ShouldQueue
                 continue;
             }
 
-            foreach ($targetLanguages as $targetLanguage) {
-                if (!empty($fieldTranslations[$targetLanguage])) {
-                    continue;
-                }
+            $missing = array_values(array_filter(
+                $targetLanguages,
+                fn (string $locale) => empty($fieldTranslations[$locale])
+            ));
 
-                TranslationStarted::dispatch(
-                    get_class($this->model),
-                    $this->model->getKey(),
-                    $field,
-                    $currentLocale,
-                    $targetLanguage,
-                    $sourceText,
-                );
-
-                $result = $translator->translate($sourceText, $currentLocale, $targetLanguage, $field, $this->modelContextName());
-
-                $writer->apply($this->model, [$field => [$targetLanguage => $result->text]]);
-                $saved++;
-
-                TranslationCompleted::dispatch(
-                    get_class($this->model),
-                    $this->model->getKey(),
-                    $field,
-                    $currentLocale,
-                    $targetLanguage,
-                    $result,
-                );
-            }
+            $saved += $this->translateField($translator, $writer, $field, $sourceText, $currentLocale, $missing);
         }
 
         return $saved;
+    }
+
+    /**
+     * Translate one field into its missing locales: a batch request first when
+     * possible, then one request per locale still missing.
+     *
+     * Token accounting stays exact (see TranslationBatchResult::resultFor()):
+     * a batch's token counts are carried by the first pair it completes and
+     * the batch's other pairs get null. If the batch reply yielded nothing
+     * usable, its billed tokens are added to this field's first pair that a
+     * one-at-a-time request completes instead, so they're never lost.
+     *
+     * @param TranslatorInterface $translator
+     * @param TranslationWriter $writer
+     * @param string $field
+     * @param string $sourceText
+     * @param string $currentLocale
+     * @param array<int, string> $missing Locales to translate, in order.
+     * @return int Pairs saved.
+     */
+    protected function translateField(
+        TranslatorInterface $translator,
+        TranslationWriter $writer,
+        string $field,
+        string $sourceText,
+        string $currentLocale,
+        array $missing
+    ): int {
+        $saved = 0;
+        $started = [];
+        $unusedBatchTokens = null;
+
+        if (count($missing) > 1 && $translator instanceof BatchTranslatorInterface && $translator->canBatch()) {
+            foreach ($missing as $locale) {
+                $this->dispatchStarted($field, $currentLocale, $locale, $sourceText);
+                $started[$locale] = true;
+            }
+
+            $batch = $translator->translateBatch($sourceText, $currentLocale, $missing, $field, $this->modelContextName());
+            $tokensAttributed = false;
+
+            foreach ($missing as $locale) {
+                if (!isset($batch->translations[$locale])) {
+                    continue;
+                }
+
+                $result = $batch->resultFor($locale, !$tokensAttributed);
+                $tokensAttributed = true;
+
+                $this->savePair($writer, $field, $currentLocale, $locale, $result);
+                $saved++;
+            }
+
+            if (!$tokensAttributed && $batch->hasTokens()) {
+                $unusedBatchTokens = [$batch->promptTokens, $batch->completionTokens];
+            }
+
+            $missing = array_values(array_filter($missing, fn ($locale) => !isset($batch->translations[$locale])));
+        }
+
+        foreach ($missing as $locale) {
+            if (!isset($started[$locale])) {
+                $this->dispatchStarted($field, $currentLocale, $locale, $sourceText);
+            }
+
+            $result = $translator->translate($sourceText, $currentLocale, $locale, $field, $this->modelContextName());
+
+            if ($unusedBatchTokens !== null) {
+                $result = $this->withAddedTokens($result, ...$unusedBatchTokens);
+                $unusedBatchTokens = null;
+            }
+
+            $this->savePair($writer, $field, $currentLocale, $locale, $result);
+            $saved++;
+        }
+
+        return $saved;
+    }
+
+    /**
+     * Save one pair, then announce it.
+     */
+    protected function savePair(TranslationWriter $writer, string $field, string $sourceLocale, string $targetLocale, TranslationResult $result): void
+    {
+        $writer->apply($this->model, [$field => [$targetLocale => $result->text]]);
+
+        TranslationCompleted::dispatch(
+            get_class($this->model),
+            $this->model->getKey(),
+            $field,
+            $sourceLocale,
+            $targetLocale,
+            $result,
+        );
+    }
+
+    protected function dispatchStarted(string $field, string $sourceLocale, string $targetLocale, string $sourceText): void
+    {
+        TranslationStarted::dispatch(
+            get_class($this->model),
+            $this->model->getKey(),
+            $field,
+            $sourceLocale,
+            $targetLocale,
+            $sourceText,
+        );
+    }
+
+    /**
+     * $result with extra token counts added (null + n = n; null + null = null).
+     */
+    protected function withAddedTokens(TranslationResult $result, ?int $promptTokens, ?int $completionTokens): TranslationResult
+    {
+        $add = fn (?int $a, ?int $b) => $a === null && $b === null ? null : (int) $a + (int) $b;
+
+        return new TranslationResult(
+            text: $result->text,
+            provider: $result->provider,
+            promptTokens: $add($result->promptTokens, $promptTokens),
+            completionTokens: $add($result->completionTokens, $completionTokens),
+            requestId: $result->requestId,
+        );
     }
 
     /**

@@ -31,6 +31,9 @@ A breaking architectural release: the translation backend is now swappable behin
 
 ### Added
 
+- Opt-in batching (`TRANSLATION_BATCH`, default off; per preset `OPENAI_BATCH` etc., or `batch` on an entry): all missing target locales of one field are translated in a single request that returns a JSON object keyed by locale, instead of one request per locale. Replies are validated strictly; missing or invalid locales are requested one at a time, and a reply that isn't JSON sends the whole field one at a time. `openai` batches use a strict `json_schema` response format and `deepseek` uses `json_object`, the two presets whose docs confirm it; the others rely on the prompt. The batch prompt is configurable (`TRANSLATION_BATCH_PROMPT`, `batch_prompt`) with a `{target_locales}` placeholder.
+- `Contracts\BatchTranslationProviderInterface` (optional capability, implemented by `OpenAiCompatibleProvider` and `FallbackProvider`) and `Contracts\BatchTranslatorInterface` (implemented by `Services\Translator`). Providers that only implement `TranslationProviderInterface` keep working, one call per locale.
+- `TranslationResult::$requestId`, and a `request_id` column on `translation_usage_logs`. With batching, one request yields several log rows sharing a `request_id`; its tokens and cost are stored on exactly one of them, so summed usage equals what was billed. **If you already published the usage migration, add the nullable `request_id` column** (string, 64) yourself.
 - `TRANSLATION_QUEUE_CONNECTION` / `TRANSLATION_QUEUE` (empty = the app's defaults) and `TRANSLATION_DISPATCH_AFTER_COMMIT` (default `true`), applied wherever a translation job is dispatched: model create/update and `translagenius:backfill`, including a `translationJobClass()` override that uses `Queueable`. `TranslateFields` now uses `Queueable`.
 - A configurable system prompt for OpenAI-compatible providers: `prompt` in the config (or `TRANSLATION_SYSTEM_PROMPT`), overridable per provider entry, with `{source_locale}`, `{target_locale}`, `{field}` and `{model}` placeholders. Unknown placeholders are left as written, an empty value falls back to the built-in prompt (unchanged), and field content is only ever sent as the `user` message.
 - `reasoning_effort` per provider entry, sent only when set, with a variable per preset (`OPENAI_REASONING_EFFORT`, ...). `openai` and `deepseek` default to `none`; the others send nothing unless configured.
@@ -57,6 +60,7 @@ A breaking architectural release: the translation backend is now swappable behin
 
 ### Fixed
 
+- A custom job class without `Queueable` silently ignored `TRANSLATION_QUEUE_CONNECTION` / `TRANSLATION_QUEUE`; one warning naming the class is now logged per class per process.
 - A retried translation job no longer re-translates (and re-bills) the field/locale pairs that had already succeeded: each pair is now saved as soon as it is translated. A partly translated record is reported by `notFullyTranslated()` while the job is in flight or after it fails.
 - Translation jobs dispatched inside a database transaction no longer run before the commit (where `SerializesModels` couldn't find the row) or after a rollback, by default.
 - Failed provider calls were retried regardless of status: the HTTP client's retry callback was passed in its sleep-duration slot, so a 401 or 404 was sent 3 times per job attempt, and a persistent 5xx up to 9 times across the job's own retries. 4xx responses other than 429 now fail on the first response at every layer.

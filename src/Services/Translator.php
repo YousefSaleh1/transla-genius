@@ -2,8 +2,12 @@
 
 namespace CodingPartners\TranslaGenius\Services;
 
+use CodingPartners\TranslaGenius\Contracts\BatchTranslationProviderInterface;
+use CodingPartners\TranslaGenius\Contracts\BatchTranslatorInterface;
 use CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface;
 use CodingPartners\TranslaGenius\Contracts\TranslatorInterface;
+use CodingPartners\TranslaGenius\DTOs\TranslationBatchRequest;
+use CodingPartners\TranslaGenius\DTOs\TranslationBatchResult;
 use CodingPartners\TranslaGenius\DTOs\TranslationRequest;
 use CodingPartners\TranslaGenius\DTOs\TranslationResult;
 
@@ -22,7 +26,7 @@ use CodingPartners\TranslaGenius\DTOs\TranslationResult;
  *
  * @see \CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface
  */
-class Translator implements TranslatorInterface
+class Translator implements BatchTranslatorInterface
 {
     /**
      * @param TranslationProviderInterface $provider The backend to delegate
@@ -55,5 +59,48 @@ class Translator implements TranslatorInterface
         ?string $model = null,
     ): TranslationResult {
         return $this->provider->translate(new TranslationRequest($text, $sourceLocale, $targetLocale, $field, $model));
+    }
+
+    /**
+     * True when the bound provider implements BatchTranslationProviderInterface
+     * and has batching enabled. A single-call-only provider never batches:
+     * TranslateFields then translates each locale with its own translate().
+     *
+     * @return bool
+     */
+    public function canBatch(): bool
+    {
+        return $this->provider instanceof BatchTranslationProviderInterface
+            && $this->provider->supportsBatching();
+    }
+
+    /**
+     * Translate one text into several locales in one provider request. When
+     * the provider can't batch, nothing is requested and an empty result is
+     * returned, so the caller translates every locale one at a time.
+     *
+     * @param string $text
+     * @param string $sourceLocale
+     * @param array<int, string> $targetLocales
+     * @param string|null $field
+     * @param string|null $model
+     * @return TranslationBatchResult
+     *
+     * @throws \CodingPartners\TranslaGenius\Exceptions\TranslationFailedException
+     */
+    public function translateBatch(
+        string $text,
+        string $sourceLocale,
+        array $targetLocales,
+        ?string $field = null,
+        ?string $model = null,
+    ): TranslationBatchResult {
+        if (!$this->canBatch()) {
+            return TranslationBatchResult::empty();
+        }
+
+        return $this->provider->translateBatch(
+            new TranslationBatchRequest($text, $sourceLocale, array_values($targetLocales), $field, $model)
+        );
     }
 }

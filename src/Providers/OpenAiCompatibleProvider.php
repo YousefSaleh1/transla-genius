@@ -2,7 +2,9 @@
 
 namespace CodingPartners\TranslaGenius\Providers;
 
-use CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface;
+use CodingPartners\TranslaGenius\Contracts\BatchTranslationProviderInterface;
+use CodingPartners\TranslaGenius\DTOs\TranslationBatchRequest;
+use CodingPartners\TranslaGenius\DTOs\TranslationBatchResult;
 use CodingPartners\TranslaGenius\DTOs\TranslationRequest;
 use CodingPartners\TranslaGenius\DTOs\TranslationResult;
 use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
@@ -28,7 +30,7 @@ use Illuminate\Support\Str;
  * than reading the global config() facade directly - makes this class
  * constructible and testable with a plain array, no app config needed.
  */
-class OpenAiCompatibleProvider implements TranslationProviderInterface
+class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
 {
     /**
      * The built-in system prompt, used when no `prompt` is configured.
@@ -44,6 +46,30 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
      * `body` can't reach it at all.
      */
     public const PROTECTED_BODY_FIELDS = ['model', 'messages', 'stream'];
+
+    /**
+     * The built-in system prompt for batch requests (one text, several target
+     * locales, answered as a JSON object keyed by locale). Placeholders:
+     * {source_locale}, {target_locales} (comma-separated), {field}, {model}.
+     * Mentions "json" explicitly, which some JSON modes require.
+     */
+    public const DEFAULT_BATCH_PROMPT = "You are a translation engine. Translate the user's message from {source_locale} into each of these languages: {target_locales}. "
+        . 'Respond with a single json object and nothing else: one key per language code listed above, each holding the translated text as a string. '
+        . 'No explanation, commentary, code fences, or additional formatting. '
+        . 'For example, for "de, fr": {"de": "...", "fr": "..."}';
+
+    /** @var bool Whether translateBatch() is used (config `batch`). */
+    protected bool $batch;
+
+    /** @var string|null Configured batch prompt template, or null for DEFAULT_BATCH_PROMPT. */
+    protected ?string $batchPrompt;
+
+    /**
+     * @var string|null response_format for batch requests: "json_schema"
+     *      (Structured Outputs), "json_object" (JSON mode), or null to rely on
+     *      the prompt alone. Only set where the provider documents support.
+     */
+    protected ?string $batchResponseFormat;
 
     /**
      * @var string|null Configured system prompt template, or null for
@@ -142,6 +168,10 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
         $this->timeout = (int) ($config['timeout'] ?? 10);
         $this->name = isset($config['name']) ? (string) $config['name'] : null;
         $this->prompt = trim((string) ($config['prompt'] ?? '')) === '' ? null : (string) $config['prompt'];
+        $this->batch = (bool) (filter_var($config['batch'] ?? false, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? false);
+        $this->batchPrompt = trim((string) ($config['batch_prompt'] ?? '')) === '' ? null : (string) $config['batch_prompt'];
+        $format = strtolower(trim((string) ($config['batch_response_format'] ?? '')));
+        $this->batchResponseFormat = in_array($format, ['json_schema', 'json_object'], true) ? $format : null;
         $this->reasoningEffort = trim((string) ($config['reasoning_effort'] ?? '')) === '' ? null : trim((string) $config['reasoning_effort']);
         $this->extraBody = (array) ($config['body'] ?? []);
 
@@ -180,6 +210,110 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
      */
     public function translate(TranslationRequest $request): TranslationResult
     {
+        $this->assertConfigured();
+
+        $requestId = (string) Str::uuid();
+        $response = $this->send($this->requestBody($this->renderPrompt($request), $request->text));
+        $this->assertNotTruncated($response);
+
+        $content = $response->json('choices.0.message.content');
+
+        if (empty($content)) {
+            Log::warning('OpenAiCompatibleProvider: API returned empty or invalid content', [
+                'status' => $response->status(),
+            ]);
+
+            throw new TranslationFailedException(
+                'AI model returned an empty or invalid response',
+                statusCode: $response->status(),
+                retryable: true
+            );
+        }
+
+        Log::info('OpenAiCompatibleProvider: translation successful');
+
+        return new TranslationResult(
+            text: $content,
+            provider: $this->name,
+            promptTokens: $response->json('usage.prompt_tokens'),
+            completionTokens: $response->json('usage.completion_tokens'),
+            requestId: $requestId,
+        );
+    }
+
+    /**
+     * Whether batching is enabled for this entry (`batch`, or the package-wide
+     * TRANSLATION_BATCH).
+     *
+     * @return bool
+     */
+    public function supportsBatching(): bool
+    {
+        return $this->batch;
+    }
+
+    /**
+     * Translate one text into every requested locale with a single request,
+     * asking for a JSON object keyed by locale code.
+     *
+     * Only requested locales whose value is a non-empty string are returned;
+     * extra keys are ignored. A reply that isn't a JSON object (one
+     * surrounding code fence is tolerated) returns no translations, so the
+     * caller translates each locale on its own. HTTP failures and truncation
+     * throw exactly as in translate().
+     *
+     * @param TranslationBatchRequest $request
+     * @return TranslationBatchResult
+     *
+     * @throws TranslationFailedException
+     */
+    public function translateBatch(TranslationBatchRequest $request): TranslationBatchResult
+    {
+        $this->assertConfigured();
+
+        $requestId = (string) Str::uuid();
+        $body = $this->requestBody($this->renderBatchPrompt($request), $request->text);
+
+        if ($this->batchResponseFormat !== null) {
+            $body['response_format'] = $this->responseFormat($request->targetLocales);
+        }
+
+        $response = $this->send($body);
+        $this->assertNotTruncated($response);
+
+        $decoded = $this->decodeJsonObject((string) $response->json('choices.0.message.content'));
+        $translations = [];
+
+        foreach ($request->targetLocales as $locale) {
+            $value = $decoded[$locale] ?? null;
+
+            if (is_string($value) && trim($value) !== '') {
+                $translations[$locale] = $value;
+            }
+        }
+
+        if (count($translations) < count($request->targetLocales)) {
+            Log::warning('OpenAiCompatibleProvider: batch reply incomplete; remaining locales will be requested one at a time', [
+                'requested' => count($request->targetLocales),
+                'valid' => count($translations),
+                'parsed' => $decoded !== null,
+            ]);
+        }
+
+        return new TranslationBatchResult(
+            translations: $translations,
+            provider: $this->name,
+            promptTokens: $response->json('usage.prompt_tokens'),
+            completionTokens: $response->json('usage.completion_tokens'),
+            requestId: $requestId,
+        );
+    }
+
+    /**
+     * @throws TranslationFailedException If the key or URL is missing.
+     */
+    protected function assertConfigured(): void
+    {
         if (empty($this->apiKey) || empty($this->apiUrl)) {
             Log::error('OpenAiCompatibleProvider: missing API key or URL configuration.');
 
@@ -188,10 +322,21 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
                 retryable: false
             );
         }
+    }
 
-        $systemPrompt = $this->renderPrompt($request);
-
-        $body = $this->requestBody($request, $systemPrompt);
+    /**
+     * POST $body, retrying connection errors, 429 and 5xx up to $httpRetries
+     * times (a 429's Retry-After is honored if it's at most $retryAfterMax
+     * seconds). Returns the first successful response.
+     *
+     * @param array<string, mixed> $body
+     * @return Response
+     *
+     * @throws TranslationFailedException On a connection failure or an
+     *         unsuccessful response once retries are used up.
+     */
+    protected function send(array $body): Response
+    {
         $attempts = $this->httpRetries + 1;
 
         for ($attempt = 1; ; $attempt++) {
@@ -220,7 +365,7 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
             }
 
             if (!$response->failed()) {
-                break;
+                return $response;
             }
 
             $status = $response->status();
@@ -259,10 +404,20 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
                 retryAfter: $retryAfter,
             );
         }
+    }
 
-        $content = $response->json('choices.0.message.content');
-
-        // Checked before the empty-content case: a model that spends its whole
+    /**
+     * A response that stopped at the output token limit is a failure, never a
+     * translation - see TranslationFailedException's message for the fix.
+     *
+     * @param Response $response
+     * @return void
+     *
+     * @throws TranslationFailedException If finish_reason is "length".
+     */
+    protected function assertNotTruncated(Response $response): void
+    {
+        // Checked before reading content: a model that spends its whole
         // budget (reasoning tokens count too) returns little or no content
         // with "length", and that is the actionable cause. Retrying with the
         // same limit gives the same result, so this is not retryable - and as
@@ -279,27 +434,6 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
                 retryable: false
             );
         }
-
-        if (empty($content)) {
-            Log::warning('OpenAiCompatibleProvider: API returned empty or invalid content', [
-                'status' => $response->status(),
-            ]);
-
-            throw new TranslationFailedException(
-                'AI model returned an empty or invalid response',
-                statusCode: $response->status(),
-                retryable: true
-            );
-        }
-
-        Log::info('OpenAiCompatibleProvider: translation successful');
-
-        return new TranslationResult(
-            text: $content,
-            provider: $this->name,
-            promptTokens: $response->json('usage.prompt_tokens'),
-            completionTokens: $response->json('usage.completion_tokens'),
-        );
     }
 
     /**
@@ -327,13 +461,84 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
     }
 
     /**
-     * The chat-completions request body.
+     * Fill the batch prompt template. Same rules as renderPrompt(), with
+     * {target_locales} (comma-separated) in place of {target_locale}.
      *
-     * @param TranslationRequest $request
-     * @param string $systemPrompt
+     * @param TranslationBatchRequest $request
+     * @return string
+     */
+    protected function renderBatchPrompt(TranslationBatchRequest $request): string
+    {
+        return strtr($this->batchPrompt ?? self::DEFAULT_BATCH_PROMPT, [
+            '{source_locale}' => $request->sourceLocale,
+            '{target_locales}' => implode(', ', $request->targetLocales),
+            '{field}' => (string) $request->field,
+            '{model}' => (string) $request->model,
+        ]);
+    }
+
+    /**
+     * response_format for a batch request: a strict JSON schema requiring
+     * exactly the requested locales as strings, or plain JSON mode.
+     *
+     * @param array<int, string> $locales
      * @return array<string, mixed>
      */
-    protected function requestBody(TranslationRequest $request, string $systemPrompt): array
+    protected function responseFormat(array $locales): array
+    {
+        if ($this->batchResponseFormat === 'json_object') {
+            return ['type' => 'json_object'];
+        }
+
+        return [
+            'type' => 'json_schema',
+            'json_schema' => [
+                'name' => 'translations',
+                'strict' => true,
+                'schema' => [
+                    'type' => 'object',
+                    'properties' => array_fill_keys($locales, ['type' => 'string']),
+                    'required' => array_values($locales),
+                    'additionalProperties' => false,
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * Parse a reply that should be one JSON object. Tolerates exactly one
+     * surrounding Markdown code fence; anything else that isn't a JSON object
+     * returns null.
+     *
+     * @param string $content
+     * @return array<string, mixed>|null
+     */
+    protected function decodeJsonObject(string $content): ?array
+    {
+        $content = trim($content);
+
+        if (preg_match('/^```(?:json)?\s*\n(.*)\n```$/si', $content, $m) === 1) {
+            $content = trim($m[1]);
+        }
+
+        if ($content === '' || $content[0] !== '{') {
+            return null;
+        }
+
+        $decoded = json_decode($content, true);
+
+        return is_array($decoded) && !array_is_list($decoded) ? $decoded : null;
+    }
+
+    /**
+     * The chat-completions request body. Instructions only ever go in the
+     * `system` message and the text being translated only in the `user` one.
+     *
+     * @param string $systemPrompt
+     * @param string $text
+     * @return array<string, mixed>
+     */
+    protected function requestBody(string $systemPrompt, string $text): array
     {
         // Extra `body` fields first, so everything below takes precedence;
         // protected fields were already stripped in the constructor.
@@ -341,7 +546,7 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
             'model' => $this->model,
             'messages' => [
                 ['role' => 'system', 'content' => $systemPrompt],
-                ['role' => 'user', 'content' => $request->text],
+                ['role' => 'user', 'content' => $text],
             ],
         ]);
 

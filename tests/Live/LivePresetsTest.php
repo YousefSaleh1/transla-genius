@@ -50,8 +50,10 @@ class LivePresetsTest extends Orchestra
      * @param array<int, string> $required Each item is one env var, or
      *        alternatives separated by "|".
      */
-    #[DataProvider('presets')]
-    public function test_preset_translates_a_short_string(string $preset, array $required)
+    /**
+     * @param array<int, string> $required
+     */
+    protected function skipUnlessConfigured(string $preset, array $required): void
     {
         foreach ($required as $alternatives) {
             $set = array_filter(explode('|', $alternatives), fn ($name) => (string) getenv($name) !== '');
@@ -60,6 +62,12 @@ class LivePresetsTest extends Orchestra
                 $this->markTestSkipped("Set {$alternatives} to run the live {$preset} test.");
             }
         }
+    }
+
+    #[DataProvider('presets')]
+    public function test_preset_translates_a_short_string(string $preset, array $required)
+    {
+        $this->skipUnlessConfigured($preset, $required);
 
         putenv("TRANSLATION_PROVIDER={$preset}");
         $_ENV['TRANSLATION_PROVIDER'] = $_SERVER['TRANSLATION_PROVIDER'] = $preset;
@@ -99,6 +107,53 @@ class LivePresetsTest extends Orchestra
             var_export($response->json('choices.0.finish_reason'), true),
             var_export($result->promptTokens, true),
             var_export($result->completionTokens, true)
+        ));
+    }
+
+    /**
+     * One batch request per preset: 3 target locales, all 3 must come back
+     * valid from that single request (batching is forced on for the preset,
+     * whatever TRANSLATION_BATCH says).
+     *
+     * @param array<int, string> $required
+     */
+    #[DataProvider('presets')]
+    public function test_preset_translates_three_locales_in_one_batch_request(string $preset, array $required)
+    {
+        $this->skipUnlessConfigured($preset, $required);
+
+        $this->app['config']->set('translaGenius', require __DIR__ . '/../../src/config/translaGenius.php');
+        $this->app['config']->set("translaGenius.providers.{$preset}.batch", true);
+        $this->app['config']->set('translaGenius.default', $preset);
+        $this->app->forgetInstance(TranslationProviderInterface::class);
+
+        Http::record();
+
+        $provider = $this->app->make(TranslationProviderInterface::class);
+        $batch = $provider->translateBatch(new \CodingPartners\TranslaGenius\DTOs\TranslationBatchRequest(
+            'Good morning, how are you today?',
+            'en',
+            ['es', 'fr', 'de'],
+        ));
+
+        $this->assertCount(1, Http::recorded(), 'Expected exactly one request.');
+        $this->assertSame(['es', 'fr', 'de'], array_keys($batch->translations), 'Every locale must come back valid.');
+        foreach ($batch->translations as $text) {
+            $this->assertNotSame('', trim($text));
+        }
+        $this->assertSame($preset, $batch->provider);
+
+        [$request, $response] = Http::recorded()->last();
+        $this->assertNotSame('length', $response->json('choices.0.finish_reason'));
+
+        fwrite(STDERR, sprintf(
+            "\n  [live batch %s] %s, response_format %s -> %s (tokens: %s/%s)\n",
+            $preset,
+            config("translaGenius.providers.{$preset}.model"),
+            json_encode($request->data()['response_format']['type'] ?? 'none'),
+            json_encode($batch->translations, JSON_UNESCAPED_UNICODE),
+            var_export($batch->promptTokens, true),
+            var_export($batch->completionTokens, true)
         ));
     }
 }

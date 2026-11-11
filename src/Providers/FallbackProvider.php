@@ -2,7 +2,10 @@
 
 namespace CodingPartners\TranslaGenius\Providers;
 
+use CodingPartners\TranslaGenius\Contracts\BatchTranslationProviderInterface;
 use CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface;
+use CodingPartners\TranslaGenius\DTOs\TranslationBatchRequest;
+use CodingPartners\TranslaGenius\DTOs\TranslationBatchResult;
 use CodingPartners\TranslaGenius\DTOs\TranslationRequest;
 use CodingPartners\TranslaGenius\DTOs\TranslationResult;
 use CodingPartners\TranslaGenius\Exceptions\AllProvidersFailedException;
@@ -35,7 +38,7 @@ use InvalidArgumentException;
  * @see \CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface
  * @see \CodingPartners\TranslaGenius\Exceptions\AllProvidersFailedException
  */
-final class FallbackProvider implements TranslationProviderInterface
+final class FallbackProvider implements BatchTranslationProviderInterface
 {
     /** @var array<int, TranslationProviderInterface> */
     protected array $providers;
@@ -115,5 +118,88 @@ final class FallbackProvider implements TranslationProviderInterface
         }
 
         throw new AllProvidersFailedException($failures);
+    }
+
+    /**
+     * True if at least one member can batch right now.
+     *
+     * @return bool
+     */
+    public function supportsBatching(): bool
+    {
+        foreach ($this->providers as $provider) {
+            if ($this->canBatch($provider)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The batch rule for a chain:
+     *
+     * - Members that can batch are tried in order; the first one that returns
+     *   wins, even with a partial batch. Its missing locales are then
+     *   translated one at a time through the whole chain (translate()), so
+     *   they get every member's chance, primary first.
+     * - A member that throws (an HTTP failure, a truncated reply) hands over
+     *   to the next batch-capable member, exactly like translate().
+     * - Members that can't batch are skipped here; they still serve the
+     *   one-at-a-time calls.
+     * - If no batch attempt succeeds: when some member can't batch, an empty
+     *   batch is returned so every locale goes through the chain one at a time;
+     *   when every member could batch and all failed, AllProvidersFailedException.
+     *
+     * @param TranslationBatchRequest $request
+     * @return TranslationBatchResult
+     *
+     * @throws AllProvidersFailedException
+     */
+    public function translateBatch(TranslationBatchRequest $request): TranslationBatchResult
+    {
+        $failures = [];
+        $hasSingleOnlyMember = false;
+
+        foreach ($this->providers as $position => $provider) {
+            if (!$this->canBatch($provider)) {
+                $hasSingleOnlyMember = true;
+                continue;
+            }
+
+            try {
+                return $provider->translateBatch($request);
+            } catch (TranslationFailedException $e) {
+                Log::warning('FallbackProvider: provider failed a batch, trying next in chain', [
+                    'provider' => get_class($provider),
+                    'position' => $position,
+                    'status_code' => $e->getStatusCode(),
+                    'retryable' => $e->isRetryable(),
+                    'message' => $e->getMessage(),
+                ]);
+
+                $failures[] = [
+                    'provider' => get_class($provider),
+                    'message' => $e->getMessage(),
+                    'status_code' => $e->getStatusCode(),
+                    'retryable' => $e->isRetryable(),
+                ];
+            }
+        }
+
+        if ($hasSingleOnlyMember || $failures === []) {
+            return TranslationBatchResult::empty();
+        }
+
+        throw new AllProvidersFailedException($failures);
+    }
+
+    /**
+     * @param TranslationProviderInterface $provider
+     * @return bool
+     */
+    protected function canBatch(TranslationProviderInterface $provider): bool
+    {
+        return $provider instanceof BatchTranslationProviderInterface && $provider->supportsBatching();
     }
 }

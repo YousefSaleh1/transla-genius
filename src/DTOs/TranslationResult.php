@@ -33,6 +33,9 @@ final readonly class TranslationResult
      * @param int|null $completionTokens Completion token usage, if the
      *        provider reports token-level usage metadata.
      *
+     * @param string|null $requestId Identifies the API request this result
+     *        came from. Every pair translated by one batch request shares it.
+     *
      * @throws \InvalidArgumentException If $text is empty or all whitespace.
      */
     public function __construct(
@@ -40,6 +43,7 @@ final readonly class TranslationResult
         public ?string $provider = null,
         public ?int $promptTokens = null,
         public ?int $completionTokens = null,
+        public ?string $requestId = null,
     ) {
         if (trim($text) === '') {
             throw new InvalidArgumentException(

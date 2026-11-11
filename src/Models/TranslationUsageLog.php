@@ -21,8 +21,15 @@ use Illuminate\Database\Eloquent\Model;
  * a misleading `0`. Filter it out explicitly (`whereNotNull('estimated_cost')`)
  * before summing/averaging cost, so unrated rows don't silently read as free.
  *
+ * With batching, one request translates several locales, so it yields
+ * several rows sharing a `request_id`. The request's prompt/completion tokens
+ * and cost are stored on exactly one of them and are null on the rest, so a
+ * plain SUM() equals what the provider billed. Group by `request_id` to see
+ * per-request totals.
+ *
  * @property int $id
  * @property string|null $provider The TranslationResult::$provider that produced this row.
+ * @property string|null $request_id The API request this row came from. Rows from one batch request share it; only one of them carries the request's tokens and cost.
  * @property string|null $model_class Fully-qualified class of the translated model.
  * @property string|null $model_id Primary key of the translated model.
  * @property string|null $field The translatable attribute name.

@@ -132,6 +132,34 @@ Anything else in braces is left as written. Field context noticeably helps: a pr
 
 The prompt is only ever sent as the `system` message, and the text being translated is only ever sent as the `user` message. Only the four placeholders above are substituted, and none of them is the field's content, so no prompt can move content into the system role.
 
+### Batching
+
+By default every field and target language is its own request: 2 translatable fields and 5 target languages is 10 requests per save, each resending the system prompt. With batching on, all the missing languages of one field go in a single request that asks for a JSON object keyed by language code, so the same save is 2 requests.
+
+```env
+TRANSLATION_BATCH=true
+```
+
+It's off by default for now. The tradeoff:
+
+- **For:** far fewer requests, and the prompt and source text are sent once per field instead of once per language.
+- **Against:** each reply is bigger, which raises the odds of hitting an output limit, and you depend on the model returning well-formed JSON.
+
+To limit the second risk, a reply is checked strictly. Only the requested language codes are taken, each must be a non-empty string, and anything else in the reply is ignored. A language that's missing or invalid is then requested on its own, and a reply that isn't a JSON object at all sends the whole field one language at a time. A reply cut off at the token limit fails like any truncated translation (see `TRANSLATION_MAX_TOKENS`), and a fallback chain moves to its next provider. Each language is saved as soon as it's valid, so nothing from a batch is lost if a later request fails. A field missing only one language is sent as a normal single request, and fields are never combined into one request.
+
+Where a provider documents a JSON response mode for the preset's default model, batch requests use it:
+
+| Preset | `response_format` | Source |
+|---|---|---|
+| `openai` | `json_schema` (strict, requiring exactly the requested languages) | [Chat Completions reference](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create); the [`gpt-6-luna` page](https://developers.openai.com/api/docs/models/gpt-6-luna) lists Structured Outputs |
+| `deepseek` | `json_object` | [Chat completion reference](https://api-docs.deepseek.com/api/create-chat-completion) and [JSON Output guide](https://api-docs.deepseek.com/guides/json_mode), which uses `deepseek-flash` and requires the word "json" in the prompt (the batch prompt includes it) |
+| `gemini`, `mistral`, `openrouter` | none: the prompt alone | Their docs describe JSON output generally or per model, but not for these default models |
+| `custom` | `TRANSLATION_BATCH_RESPONSE_FORMAT` (`json_schema`, `json_object`, or unset) | Your endpoint |
+
+Turn batching on or off for one preset with `OPENAI_BATCH`, `GEMINI_BATCH`, ... (`TRANSLATION_CUSTOM_BATCH` for `custom`), or `batch` on a provider entry. The batch prompt is configurable like the single one, through `TRANSLATION_BATCH_PROMPT` or `batch_prompt` on an entry. It uses the same placeholder rules, with `{target_locales}` (comma-separated, e.g. `ar, es, fr`) instead of `{target_locale}`. Instructions stay in the `system` message and the field's text in the `user` message.
+
+A custom provider that only implements `TranslationProviderInterface` keeps working: it gets one call per language. To batch, implement `Contracts\BatchTranslationProviderInterface` too. In a fallback chain, members that can batch are tried in order for the batch, and the first that answers wins, even with only some languages. Members that can't batch are skipped for the batch but still serve the one-language requests, which go through the whole chain, primary first. If no member manages a batch, every language goes through the chain one at a time.
+
 ### Queue Settings
 
 Translation jobs go to your app's default queue connection and queue unless you say otherwise:
@@ -446,6 +474,8 @@ Event::listen(function (TranslationFailed $event) {
 });
 ```
 
+Both events fire exactly once per field/language pair, batching or not. With batching, `TranslationStarted` fires for every language of the batch just before the batch request, and isn't repeated if a language then needs a request of its own. Each `TranslationCompleted` carries a `TranslationResult` with that language's text and the `requestId` of the request that produced it. When one request produced several pairs, only the first of those results carries the request's `promptTokens`/`completionTokens`; the rest have null.
+
 The `TranslationCompleted` example above is what "Usage & Cost Tracking" below does out of the box (with cost estimation and a queryable model) - write your own listener like this only if you need something it doesn't cover, e.g. your own table shape or per-tenant billing logic.
 
 These are only dispatched from the automatic model-save lifecycle (the `Translatable` trait's job), not from direct `TranslatorInterface`/facade use - that context has no model or field to report.
@@ -508,6 +538,8 @@ TranslationUsageLog::selectRaw('provider, sum(prompt_tokens) as prompt, sum(comp
     ->groupBy('provider')
     ->get();
 ```
+
+With batching, one request translates several languages and yields several rows. They share a `request_id`, and the request's tokens and cost are stored on exactly one of them (the first pair it completed); the others have null tokens and cost, so a plain `SUM()` equals what the provider billed. If a batch reply couldn't be used at all, its billed tokens are added to the field's first row from the one-language requests that followed. Every row has a `request_id`, so `groupBy('request_id')` gives per-request totals.
 
 Only successful translations (`TranslationCompleted`) are logged - not `TranslationFailed`. This feature is scoped to usage/cost, and a failed attempt has no token counts or cost to report; if you also want failure-rate visibility, listen to `TranslationFailed` yourself (see "Lifecycle Events" above) rather than expecting it in this table.
 

@@ -352,4 +352,74 @@ class ShippedPresetsTest extends Orchestra
         $this->translate();
         Http::assertSent(fn (Request $r) => str_contains($r->url(), 'api.openai.com') && !array_key_exists('reasoning_effort', $r->data()));
     }
+
+    protected function batchReply(): void
+    {
+        Http::fake(fn (Request $r) => Http::response(['choices' => [['message' => [
+            'content' => json_encode(['ar' => 'A', 'es' => 'E']),
+        ], 'finish_reason' => 'stop']]]));
+    }
+
+    protected function translateBatch(): \CodingPartners\TranslaGenius\DTOs\TranslationBatchResult
+    {
+        $provider = $this->app->make(TranslationProviderInterface::class);
+        $this->assertTrue($provider->supportsBatching());
+
+        return $provider->translateBatch(new \CodingPartners\TranslaGenius\DTOs\TranslationBatchRequest('Hello', 'en', ['ar', 'es']));
+    }
+
+    public function test_batching_is_off_by_default_and_on_with_translation_batch()
+    {
+        $this->withEnv(['TRANSLATION_PROVIDER' => 'gemini', 'GEMINI_API_KEY' => 'k']);
+        $this->assertFalse($this->app->make(TranslationProviderInterface::class)->supportsBatching());
+
+        $this->withEnv(['TRANSLATION_BATCH' => 'true']);
+        $this->assertTrue($this->app->make(TranslationProviderInterface::class)->supportsBatching());
+
+        $this->withEnv(['GEMINI_BATCH' => 'false']);
+        $this->assertFalse($this->app->make(TranslationProviderInterface::class)->supportsBatching());
+    }
+
+    public function test_openai_batch_uses_a_strict_json_schema_of_the_requested_locales()
+    {
+        $this->batchReply();
+        $this->withEnv(['TRANSLATION_PROVIDER' => 'openai', 'OPENAI_API_KEY' => 'k', 'OPENAI_BATCH' => 'true']);
+
+        $this->assertSame(['ar' => 'A', 'es' => 'E'], $this->translateBatch()->translations);
+
+        Http::assertSent(fn (Request $r) => $r['response_format'] === [
+            'type' => 'json_schema',
+            'json_schema' => [
+                'name' => 'translations',
+                'strict' => true,
+                'schema' => [
+                    'type' => 'object',
+                    'properties' => ['ar' => ['type' => 'string'], 'es' => ['type' => 'string']],
+                    'required' => ['ar', 'es'],
+                    'additionalProperties' => false,
+                ],
+            ],
+        ]);
+    }
+
+    public function test_deepseek_batch_uses_json_object_mode_and_the_prompt_says_json()
+    {
+        $this->batchReply();
+        $this->withEnv(['TRANSLATION_PROVIDER' => 'deepseek', 'DEEPSEEK_API_KEY' => 'k', 'TRANSLATION_BATCH' => 'true']);
+
+        $this->translateBatch();
+
+        Http::assertSent(fn (Request $r) => $r['response_format'] === ['type' => 'json_object']
+            && str_contains($r['messages'][0]['content'], 'json'));
+    }
+
+    public function test_gemini_batch_relies_on_the_prompt_alone()
+    {
+        $this->batchReply();
+        $this->withEnv(['TRANSLATION_PROVIDER' => 'gemini', 'GEMINI_API_KEY' => 'k', 'TRANSLATION_BATCH' => 'true']);
+
+        $this->translateBatch();
+
+        Http::assertSent(fn (Request $r) => !array_key_exists('response_format', $r->data()));
+    }
 }

@@ -155,6 +155,15 @@ class TranslaGeniusServiceProvider extends ServiceProvider
         // built-in default if both are empty).
         $ownPrompt = trim((string) ($providerConfig['prompt'] ?? '')) !== '' ? $providerConfig['prompt'] : null;
         $providerConfig['prompt'] = $ownPrompt ?? $config->get('translaGenius.prompt');
+
+        // Same precedence for batching: an entry's own `batch` / `batch_prompt`
+        // when set, otherwise translaGenius.batch.enabled / .prompt.
+        $ownBatch = $providerConfig['batch'] ?? null;
+        $providerConfig['batch'] = ($ownBatch === null || $ownBatch === '')
+            ? $config->get('translaGenius.batch.enabled', false)
+            : $ownBatch;
+        $ownBatchPrompt = trim((string) ($providerConfig['batch_prompt'] ?? '')) !== '' ? $providerConfig['batch_prompt'] : null;
+        $providerConfig['batch_prompt'] = $ownBatchPrompt ?? $config->get('translaGenius.batch.prompt');
         $chainOverrides = $inChain
             ? ['http_retries' => self::intSetting($retries['fallback_http'] ?? null, 0), 'retry_after_max' => 0]
             : [];
