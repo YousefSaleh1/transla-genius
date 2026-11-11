@@ -39,7 +39,9 @@
     "require-dev": {
         "phpunit/phpunit": "^11.5",
         "orchestra/testbench": "^10.0 || ^11.0",
-        "psy/psysh": "^0.12.0"
+        "psy/psysh": "^0.12.0",
+        "laravel/pint": "^1.32",
+        "larastan/larastan": "^3.10"
     },
     "license": "MIT",
     "autoload": {
@@ -79,6 +81,8 @@
     "minimum-stability": "stable",
     "scripts": {
         "test": "vendor/bin/phpunit",
-        "test-coverage": "vendor/bin/phpunit --coverage-html coverage"
+        "test-coverage": "vendor/bin/phpunit --coverage-html coverage",
+        "lint": "pint --test src tests",
+        "format": "pint src tests"
     }
 }
