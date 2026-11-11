@@ -104,12 +104,14 @@ trait Translatable
      * stale and gets re-translated and overwritten. Fields whose source didn't
      * change aren't in the plan.
      *
-     * Each remaining target's stored value at this moment is snapshotted too
-     * (`targets`): it is overwritten only while it still holds that value.
+     * The new source and each remaining target's stored value are snapshotted
+     * as hashes (`source_hash`, `target_hashes`), which keeps the queued job
+     * small however long the text is: a target is overwritten only while its
+     * value still hashes the same.
      *
      * @param  Model&HasTranslatableAttributes  $model
      * @param  array<int, string>  $translatableFields
-     * @return array<string, array{locale: string, text: string, keep: array<int, string>, targets: array<string, string>}>
+     * @return array<string, array{locale: string, source_hash: string, keep: array<int, string>, target_hashes: array<string, string>}>
      */
     protected static function staleTranslationPlan($model, array $translatableFields): array
     {
@@ -144,11 +146,11 @@ trait Translatable
             $targets = [];
             foreach (Locales::targets($sourceLocale) as $locale) {
                 if (! in_array($locale, $keep, true)) {
-                    $targets[$locale] = (string) ($current[$locale] ?? '');
+                    $targets[$locale] = Text::hash((string) ($current[$locale] ?? ''));
                 }
             }
 
-            $plan[$field] = ['locale' => $sourceLocale, 'text' => $newSource, 'keep' => $keep, 'targets' => $targets];
+            $plan[$field] = ['locale' => $sourceLocale, 'source_hash' => Text::hash($newSource), 'keep' => $keep, 'target_hashes' => $targets];
         }
 
         return $plan;

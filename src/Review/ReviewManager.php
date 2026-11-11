@@ -44,7 +44,7 @@ class ReviewManager
      *
      * Under the record's lock: refuses if the stored source no longer equals
      * $sourceText (SOURCE_CHANGED) or, for a re-translation, if the target no
-     * longer holds $staleValue (TARGET_CHANGED) - the same rules as a direct
+     * longer hashes to $staleHash (TARGET_CHANGED) - the same rules as a direct
      * write. Supersedes any earlier pending row for the same field/locale,
      * applies the visibility setting (`clear` removes the published value so
      * the fallback shows), and records the published value as it now stands.
@@ -61,12 +61,12 @@ class ReviewManager
         TranslationResult $result,
         string $sourceLocale,
         string $sourceText,
-        ?string $staleValue = null,
+        ?string $staleHash = null,
     ): string {
         $superseded = [];
         $review = null;
 
-        $outcome = DB::transaction(function () use ($model, $field, $locale, $result, $sourceLocale, $sourceText, $staleValue, &$superseded, &$review) {
+        $outcome = DB::transaction(function () use ($model, $field, $locale, $result, $sourceLocale, $sourceText, $staleHash, &$superseded, &$review) {
             $locked = $model->newQuery()->lockForUpdate()->whereKey($model->getKey())->first();
 
             if (! $locked) {
@@ -77,7 +77,7 @@ class ReviewManager
                 return TranslationWriter::SOURCE_CHANGED;
             }
 
-            if ($staleValue !== null && (string) $locked->getTranslation($field, $locale, false) !== $staleValue) {
+            if ($staleHash !== null && Text::hash((string) $locked->getTranslation($field, $locale, false)) !== $staleHash) {
                 return TranslationWriter::TARGET_CHANGED;
             }
 
@@ -327,9 +327,9 @@ class ReviewManager
             [$review->field],
             [$review->field => [
                 'locale' => $review->source_locale,
-                'text' => $sourceText,
+                'source_hash' => Text::hash($sourceText),
                 'keep' => $others,
-                'targets' => [$review->locale => (string) $owner->getTranslation($review->field, $review->locale, false)],
+                'target_hashes' => [$review->locale => Text::hash((string) $owner->getTranslation($review->field, $review->locale, false))],
             ]],
             $review->source_locale,
         );
@@ -390,7 +390,7 @@ class ReviewManager
 
     public static function hash(string $text): string
     {
-        return hash('sha256', $text);
+        return Text::hash($text);
     }
 
     /**

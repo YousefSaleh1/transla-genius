@@ -217,7 +217,7 @@ flowchart TD
 ```
 
 1. **Create.** The `created` listener dispatches a job for every translatable field. The job fills each missing field/language pair and never overwrites an existing translation.
-2. **Update.** When a field's text in the source language changes, its other languages are stale. The job re-translates and overwrites them, except any language set in the same save, which is kept as written. A language edited by hand after the source edit is not overwritten, and if the source changes again before the job finishes, the older job's results are discarded. Fields whose source didn't change are left alone.
+2. **Update.** When a field's text in the source language changes, its other languages are stale. The job carries hashes of the new source and of each stale translation, not the text, so it stays a few KB however long the fields are (SQS, for example, refuses messages over 256 KB). The job re-translates and overwrites them, except any language set in the same save, which is kept as written. A language edited by hand after the source edit is not overwritten, and if the source changes again before the job finishes, the older job's results are discarded. Fields whose source didn't change are left alone.
 3. **Dispatch.** The source locale is recorded when the job is dispatched, not inside the worker. The job is queued on the configured connection and queue, after the surrounding transaction commits.
 4. **Translate.** The job asks the `Translator` for each missing pair. The `Translator` uses the configured provider, through the cache when it is on.
 5. **Save.** Each result is saved as soon as it arrives, under a row lock, without firing model events. With the review workflow on, it is stored as a pending review instead.

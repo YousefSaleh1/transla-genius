@@ -99,7 +99,7 @@ class TranslationWriter
      *
      * - the stored source text equals $source['text'] (else a newer edit owns
      *   the field: SOURCE_CHANGED), and
-     * - the stored target equals $staleValue, the value it had when the plan
+     * - the stored target hashes to $staleHash, the value it had when the plan
      *   was made (else it was already replaced - by an earlier attempt of this
      *   job - or edited by hand since: TARGET_CHANGED). Null skips this check.
      *
@@ -107,18 +107,18 @@ class TranslationWriter
      * @param  string  $locale  Target locale.
      * @param  string  $text  New translation.
      * @param  array{locale: string, text: string}  $source  Source snapshot.
-     * @param  string|null  $staleValue  Target snapshot.
+     * @param  string|null  $staleHash  Target snapshot: Support\Text::hash() of its value then.
      * @return string One of WRITTEN, SOURCE_CHANGED, TARGET_CHANGED, MISSING.
      *
      * @throws InvalidArgumentException If $model doesn't use the Translatable trait.
      *
      * @internal Called by TranslateFields; not covered by the backward compatibility promise.
      */
-    public function applyRetranslation(Model $model, string $field, string $locale, string $text, array $source, ?string $staleValue): string
+    public function applyRetranslation(Model $model, string $field, string $locale, string $text, array $source, ?string $staleHash): string
     {
         $this->assertTranslatable($model);
 
-        return DB::transaction(function () use ($model, $field, $locale, $text, $source, $staleValue) {
+        return DB::transaction(function () use ($model, $field, $locale, $text, $source, $staleHash) {
             $locked = $model->newQuery()->lockForUpdate()->whereKey($model->getKey())->first();
 
             if (! $locked) {
@@ -129,7 +129,7 @@ class TranslationWriter
                 return self::SOURCE_CHANGED;
             }
 
-            if ($staleValue !== null && (string) $locked->getTranslation($field, $locale, false) !== $staleValue) {
+            if ($staleHash !== null && Text::hash((string) $locked->getTranslation($field, $locale, false)) !== $staleHash) {
                 return self::TARGET_CHANGED;
             }
 

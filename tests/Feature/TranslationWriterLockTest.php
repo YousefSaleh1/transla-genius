@@ -3,6 +3,7 @@
 namespace CodingPartners\TranslaGenius\Tests\Feature;
 
 use CodingPartners\TranslaGenius\Services\TranslationWriter;
+use CodingPartners\TranslaGenius\Support\Text;
 use CodingPartners\TranslaGenius\Tests\TestCase;
 use CodingPartners\TranslaGenius\Tests\TestModels\TestTranslatableModel;
 use Illuminate\Database\Events\QueryExecuted;
@@ -72,17 +73,17 @@ class TranslationWriterLockTest extends TestCase
         $model = $this->record(['en' => 'Hello', 'ar' => 'OLD']);
         $writer = new TranslationWriter;
 
-        $this->assertSame(TranslationWriter::WRITTEN, $writer->applyRetranslation($model, 'name', 'ar', 'NEW', self::SOURCE, 'OLD'));
+        $this->assertSame(TranslationWriter::WRITTEN, $writer->applyRetranslation($model, 'name', 'ar', 'NEW', self::SOURCE, Text::hash('OLD')));
         $this->assertSame('NEW', $this->storedName($model)['ar']);
 
         // A hand edit since the plan was made survives.
         $this->concurrently($model, ['en' => 'Hello', 'ar' => 'BY HAND']);
-        $this->assertSame(TranslationWriter::TARGET_CHANGED, $writer->applyRetranslation($model, 'name', 'ar', 'NEWER', self::SOURCE, 'NEW'));
+        $this->assertSame(TranslationWriter::TARGET_CHANGED, $writer->applyRetranslation($model, 'name', 'ar', 'NEWER', self::SOURCE, Text::hash('NEW')));
         $this->assertSame('BY HAND', $this->storedName($model)['ar']);
 
         // So does a newer source.
         $this->concurrently($model, ['en' => 'Goodbye', 'ar' => 'BY HAND']);
-        $this->assertSame(TranslationWriter::SOURCE_CHANGED, $writer->applyRetranslation($model, 'name', 'ar', 'NEWEST', self::SOURCE, 'BY HAND'));
+        $this->assertSame(TranslationWriter::SOURCE_CHANGED, $writer->applyRetranslation($model, 'name', 'ar', 'NEWEST', self::SOURCE, Text::hash('BY HAND')));
     }
 
     /**
@@ -102,7 +103,7 @@ class TranslationWriterLockTest extends TestCase
 
         $writer = new TranslationWriter;
         $writer->fillMissing($model, 'name', 'es', 'Hola', self::SOURCE);
-        $writer->applyRetranslation($model, 'name', 'ar', 'NEW', self::SOURCE, 'OLD');
+        $writer->applyRetranslation($model, 'name', 'ar', 'NEW', self::SOURCE, Text::hash('OLD'));
 
         $this->assertCount(2, $selects);
         $driver = DB::connection()->getDriverName();

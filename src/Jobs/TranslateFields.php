@@ -85,7 +85,7 @@ class TranslateFields implements ShouldQueue, TranslationJob
      * target locales are re-translated and overwritten - see
      * Translatable::staleTranslationPlan() and TranslationWriter::applyRetranslation().
      *
-     * @var array<string, array{locale: string, text: string, keep: array<int, string>, targets?: array<string, string>}>
+     * @var array<string, array{locale: string, source_hash: string, keep: array<int, string>, target_hashes?: array<string, string>}>
      */
     protected array $retranslate;
 
@@ -454,14 +454,20 @@ class TranslateFields implements ShouldQueue, TranslationJob
      * changes while this job is translating, TranslationWriter discards the
      * result under its lock.
      *
-     * @param  array{locale: string, text: string, keep: array<int, string>, targets?: array<string, string>}  $plan
+     * @param  array<string, mixed>  $plan  See normalizePlan().
      * @return int Pairs saved.
      *
      * @internal May change in any release; see the class docblock.
      */
     protected function retranslateField(TranslatorInterface $translator, TranslationWriter $writer, string $field, array $plan): int
     {
-        if ($this->model->getTranslation($field, $plan['locale'], false) !== $plan['text']) {
+        $plan = self::normalizePlan($plan);
+
+        // The plan carries a hash of the source, not the text: the text is
+        // read from the record, and used only while it still hashes the same.
+        $sourceText = $this->model->getTranslation($field, $plan['locale'], false);
+
+        if (! is_string($sourceText) || Text::hash($sourceText) !== $plan['source_hash']) {
             Log::info('Skipping a stale re-translation: the source text changed again since this job was dispatched', [
                 'model_class' => get_class($this->model),
                 'model_id' => $this->model->getKey(),
@@ -471,12 +477,12 @@ class TranslateFields implements ShouldQueue, TranslationJob
             return 0;
         }
 
-        if (! $this->shouldTranslateField($field, $plan['text'])) {
+        if (! $this->shouldTranslateField($field, $sourceText)) {
             return 0;
         }
 
         // Pending reviews of the old source text are obsolete now.
-        $this->reviews?->supersedeForSourceChange($this->model, $field, $plan['text']);
+        $this->reviews?->supersedeForSourceChange($this->model, $field, $sourceText);
 
         $targets = array_values(array_diff(
             Locales::targets($plan['locale']),
@@ -487,12 +493,12 @@ class TranslateFields implements ShouldQueue, TranslationJob
         // of this job already replaced, or a person edited since, is left
         // alone - and costs no request. (A plan without target snapshots, from
         // an older payload, treats every target as stale.)
-        $staleValues = $plan['targets'] ?? null;
-        if (is_array($staleValues)) {
+        $staleHashes = $plan['target_hashes'] ?? null;
+        if (is_array($staleHashes)) {
             $targets = array_values(array_filter(
                 $targets,
-                fn (string $locale) => ! array_key_exists($locale, $staleValues)
-                    || (string) $this->model->getTranslation($field, $locale, false) === $staleValues[$locale]
+                fn (string $locale) => ! array_key_exists($locale, $staleHashes)
+                    || Text::hash((string) $this->model->getTranslation($field, $locale, false)) === $staleHashes[$locale]
             ));
         }
 
@@ -504,11 +510,36 @@ class TranslateFields implements ShouldQueue, TranslationJob
             $translator,
             $writer,
             $field,
-            $plan['text'],
+            $sourceText,
             $plan['locale'],
             $targets,
-            ['locale' => $plan['locale'], 'text' => $plan['text'], 'targets' => is_array($staleValues) ? $staleValues : null],
+            ['locale' => $plan['locale'], 'text' => $sourceText, 'target_hashes' => is_array($staleHashes) ? $staleHashes : null],
         );
+    }
+
+    /**
+     * A re-translation plan in the current shape. Plans queued by pre-release
+     * builds carried the full source text (`text`) and stale target values
+     * (`targets`); those are hashed here, so such a job still runs.
+     *
+     * @param  array<string, mixed>  $plan
+     * @return array{locale: string, source_hash: string, keep: array<int, string>, target_hashes?: array<string, string>}
+     */
+    protected static function normalizePlan(array $plan): array
+    {
+        $normalized = [
+            'locale' => (string) $plan['locale'],
+            'source_hash' => isset($plan['source_hash']) ? (string) $plan['source_hash'] : Text::hash((string) ($plan['text'] ?? '')),
+            'keep' => array_values((array) ($plan['keep'] ?? [])),
+        ];
+
+        if (isset($plan['target_hashes']) && is_array($plan['target_hashes'])) {
+            $normalized['target_hashes'] = $plan['target_hashes'];
+        } elseif (isset($plan['targets']) && is_array($plan['targets'])) {
+            $normalized['target_hashes'] = array_map(fn ($value) => Text::hash((string) $value), $plan['targets']);
+        }
+
+        return $normalized;
     }
 
     /**
@@ -607,7 +638,7 @@ class TranslateFields implements ShouldQueue, TranslationJob
      * that was billed but not saved is reported (see reportUnused()), and so
      * is one whose save throws - the exception then propagates as before.
      *
-     * @param  array{locale: string, text: string, targets?: array<string, string>|null}|null  $snapshot
+     * @param  array{locale: string, text: string, target_hashes?: array<string, string>|null}|null  $snapshot
      *
      * @internal May change in any release; see the class docblock.
      */
@@ -620,8 +651,8 @@ class TranslateFields implements ShouldQueue, TranslationJob
         ?array $snapshot = null,
         ?string $sourceText = null
     ): ?bool {
-        $staleValues = $snapshot['targets'] ?? null;
-        $staleValue = is_array($staleValues) && array_key_exists($targetLocale, $staleValues) ? $staleValues[$targetLocale] : null;
+        $staleHashes = $snapshot['target_hashes'] ?? null;
+        $staleHash = is_array($staleHashes) && array_key_exists($targetLocale, $staleHashes) ? $staleHashes[$targetLocale] : null;
         $pendingReview = $this->reviews !== null && ReviewSettings::appliesTo($this->model, $field, $targetLocale);
 
         try {
@@ -635,7 +666,7 @@ class TranslateFields implements ShouldQueue, TranslationJob
                     $result,
                     $snapshot['locale'] ?? $sourceLocale,
                     $snapshot['text'] ?? (string) $sourceText,
-                    $staleValue,
+                    $staleHash,
                 );
             } elseif ($snapshot === null) {
                 // Filling a gap: written only while the stored source is still
@@ -654,7 +685,7 @@ class TranslateFields implements ShouldQueue, TranslationJob
                     $targetLocale,
                     $result->text,
                     ['locale' => $snapshot['locale'], 'text' => $snapshot['text']],
-                    $staleValue,
+                    $staleHash,
                 );
             }
         } catch (Throwable $e) {

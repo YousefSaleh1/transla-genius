@@ -27,8 +27,8 @@ final class TranslationJobPayload
      * @param  string|null  $sourceLocale  The locale the content was authored in,
      *                                     decided at dispatch time (null: TRANSLATION_SOURCE_LOCALE, then
      *                                     app.locale - see TranslateFields).
-     * @param  array<string, array{locale: string, text: string, keep: array<int, string>, targets?: array<string, string>}>  $retranslate  Fields whose
-     *                                                                                                                                      source text changed and must be re-translated.
+     * @param  array<string, array{locale: string, source_hash: string, keep: array<int, string>, target_hashes?: array<string, string>}>  $retranslate  Fields whose
+     *                                                                                                                                                   source text changed and must be re-translated.
      * @param  array<string, mixed>  $options  e.g. include_rejected (backfill).
      */
     public function __construct(

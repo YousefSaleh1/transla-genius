@@ -12,6 +12,12 @@ namespace CodingPartners\TranslaGenius\Support;
  */
 final class Text
 {
+    /** The hash snapshots are compared by (sha256). */
+    public static function hash(string $text): string
+    {
+        return hash('sha256', $text);
+    }
+
     public static function isBlank(mixed $value): bool
     {
         return $value === null || (is_string($value) && trim($value) === '');
