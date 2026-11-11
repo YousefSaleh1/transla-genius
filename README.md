@@ -149,6 +149,8 @@ class Product extends Model
 }
 ```
 
+Accessors on translatable attributes work: the package compares and translates the stored values, so an accessor that trims or strips tags changes only what your app reads.
+
 Translatable columns are `json` columns:
 
 ```php

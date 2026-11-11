@@ -6,6 +6,7 @@ use CodingPartners\TranslaGenius\Console\Concerns\ReadsStringInput;
 use CodingPartners\TranslaGenius\Contracts\HasTranslatableAttributes;
 use CodingPartners\TranslaGenius\Jobs\TranslateFields;
 use CodingPartners\TranslaGenius\Support\Locales;
+use CodingPartners\TranslaGenius\Support\StoredTranslations;
 use CodingPartners\TranslaGenius\Support\Text;
 use CodingPartners\TranslaGenius\Support\TranslationJobDispatcher;
 use CodingPartners\TranslaGenius\Traits\Translatable;
@@ -200,7 +201,7 @@ class BackfillCommand extends Command
     protected function hasSourceText(Model $record, array $translatableFields, string $sourceLocale): bool
     {
         foreach ($translatableFields as $field) {
-            if (! Text::isBlank($record->getTranslation($field, $sourceLocale, false))) {
+            if (! Text::isBlank(StoredTranslations::get($record, $field, $sourceLocale))) {
                 return true;
             }
         }

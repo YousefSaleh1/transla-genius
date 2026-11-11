@@ -16,6 +16,7 @@ use CodingPartners\TranslaGenius\Models\TranslationReview;
 use CodingPartners\TranslaGenius\Providers\CachingProvider;
 use CodingPartners\TranslaGenius\Services\TranslationWriter;
 use CodingPartners\TranslaGenius\Support\Locales;
+use CodingPartners\TranslaGenius\Support\StoredTranslations;
 use CodingPartners\TranslaGenius\Support\Text;
 use CodingPartners\TranslaGenius\Support\TranslationJobDispatcher;
 use Illuminate\Database\Eloquent\Builder;
@@ -73,11 +74,11 @@ class ReviewManager
                 return TranslationWriter::MISSING;
             }
 
-            if ($locked->getTranslation($field, $sourceLocale, false) !== $sourceText) {
+            if (StoredTranslations::get($locked, $field, $sourceLocale) !== $sourceText) {
                 return TranslationWriter::SOURCE_CHANGED;
             }
 
-            if ($staleHash !== null && Text::hash((string) $locked->getTranslation($field, $locale, false)) !== $staleHash) {
+            if ($staleHash !== null && Text::hash((string) StoredTranslations::get($locked, $field, $locale)) !== $staleHash) {
                 return TranslationWriter::TARGET_CHANGED;
             }
 
@@ -85,7 +86,7 @@ class ReviewManager
                 TranslationReview::query()->for($locked)->field($field)->locale($locale)->pending()
             );
 
-            $published = (string) $locked->getTranslation($field, $locale, false);
+            $published = (string) StoredTranslations::get($locked, $field, $locale);
 
             if ($published !== '' && ReviewSettings::whilePending($locked, $field) === ReviewSettings::CLEAR) {
                 $locked->withoutEvents(function () use ($locked, $field, $locale) {
@@ -165,7 +166,7 @@ class ReviewManager
 
         foreach (TranslationReview::query()->for($model)->whereIn('status', $statuses)->get() as $row) {
             if ($row->status === TranslationReview::REJECTED) {
-                $current = (string) $model->getTranslation($row->field, $sourceLocale, false);
+                $current = (string) StoredTranslations::get($model, $row->field, $sourceLocale);
 
                 if (self::hash($current) !== $row->source_hash) {
                     continue; // rejected for an older source: the new one may be requested
@@ -218,13 +219,13 @@ class ReviewManager
             $review = $this->lockReview($review);
             $owner = $this->lockOwner($review);
 
-            if ($owner === null || self::hash((string) $owner->getTranslation($review->field, $review->source_locale, false)) !== $review->source_hash) {
+            if ($owner === null || self::hash((string) StoredTranslations::get($owner, $review->field, $review->source_locale)) !== $review->source_hash) {
                 $this->markSuperseded($review);
 
                 return ['stale', null];
             }
 
-            $current = (string) $owner->getTranslation($review->field, $review->locale, false);
+            $current = (string) StoredTranslations::get($owner, $review->field, $review->locale);
             if (! $force && $current !== (string) $review->published_snapshot) {
                 return ['conflict', $current];
             }
@@ -314,7 +315,7 @@ class ReviewManager
             return;
         }
 
-        $sourceText = (string) $owner->getTranslation($review->field, $review->source_locale, false);
+        $sourceText = (string) StoredTranslations::get($owner, $review->field, $review->source_locale);
         if (Text::isBlank($sourceText)) {
             return;
         }
@@ -329,7 +330,7 @@ class ReviewManager
                 'locale' => $review->source_locale,
                 'source_hash' => Text::hash($sourceText),
                 'keep' => $others,
-                'target_hashes' => [$review->locale => Text::hash((string) $owner->getTranslation($review->field, $review->locale, false))],
+                'target_hashes' => [$review->locale => Text::hash((string) StoredTranslations::get($owner, $review->field, $review->locale))],
             ]],
             $review->source_locale,
         );

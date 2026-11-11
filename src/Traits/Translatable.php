@@ -8,6 +8,7 @@ use CodingPartners\TranslaGenius\Jobs\TranslateFields;
 use CodingPartners\TranslaGenius\Models\TranslationReview;
 use CodingPartners\TranslaGenius\Support\KeyCast;
 use CodingPartners\TranslaGenius\Support\Locales;
+use CodingPartners\TranslaGenius\Support\StoredTranslations;
 use CodingPartners\TranslaGenius\Support\Text;
 use CodingPartners\TranslaGenius\Support\TranslationJobDispatcher;
 use Illuminate\Database\Connection;
@@ -126,7 +127,7 @@ trait Translatable
             $originalJson = $model->getRawOriginal($field);
             $original = is_string($originalJson) ? json_decode($originalJson, true) : [];
             $original = is_array($original) ? $original : [];
-            $current = $model->getTranslations($field);
+            $current = StoredTranslations::all($model, $field);
             $newSource = $current[$sourceLocale] ?? null;
 
             if (! is_string($newSource) || Text::isBlank($newSource) || ($original[$sourceLocale] ?? null) === $newSource) {

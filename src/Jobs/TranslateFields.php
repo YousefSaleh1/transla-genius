@@ -23,6 +23,7 @@ use CodingPartners\TranslaGenius\Services\TranslationWriter;
 use CodingPartners\TranslaGenius\Support\Locales;
 use CodingPartners\TranslaGenius\Support\OneJobPerRecord;
 use CodingPartners\TranslaGenius\Support\Setting;
+use CodingPartners\TranslaGenius\Support\StoredTranslations;
 use CodingPartners\TranslaGenius\Support\Text;
 use CodingPartners\TranslaGenius\Support\TranslationJobDispatcher;
 use CodingPartners\TranslaGenius\Traits\Translatable;
@@ -414,7 +415,7 @@ class TranslateFields implements ShouldQueue, TranslationJob
                 continue;
             }
 
-            $fieldTranslations = $this->normalizeFieldTranslations($this->model->getTranslations($field), $currentLocale);
+            $fieldTranslations = $this->normalizeFieldTranslations(StoredTranslations::all($this->model, $field), $currentLocale);
             $sourceText = $fieldTranslations[$currentLocale] ?? null;
 
             if (! is_string($sourceText) || Text::isBlank($sourceText)) {
@@ -486,7 +487,7 @@ class TranslateFields implements ShouldQueue, TranslationJob
 
         // The plan carries a hash of the source, not the text: the text is
         // read from the record, and used only while it still hashes the same.
-        $sourceText = $this->model->getTranslation($field, $plan['locale'], false);
+        $sourceText = StoredTranslations::get($this->model, $field, $plan['locale']);
 
         if (! is_string($sourceText) || Text::hash($sourceText) !== $plan['source_hash']) {
             Log::info('Skipping a stale re-translation: the source text changed again since this job was dispatched', [
@@ -519,7 +520,7 @@ class TranslateFields implements ShouldQueue, TranslationJob
             $targets = array_values(array_filter(
                 $targets,
                 fn (string $locale) => ! array_key_exists($locale, $staleHashes)
-                    || Text::hash((string) $this->model->getTranslation($field, $locale, false)) === $staleHashes[$locale]
+                    || Text::hash((string) StoredTranslations::get($this->model, $field, $locale)) === $staleHashes[$locale]
             ));
         }
 

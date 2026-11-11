@@ -3,6 +3,7 @@
 namespace CodingPartners\TranslaGenius\Services;
 
 use CodingPartners\TranslaGenius\Contracts\HasTranslatableAttributes;
+use CodingPartners\TranslaGenius\Support\StoredTranslations;
 use CodingPartners\TranslaGenius\Support\Text;
 use CodingPartners\TranslaGenius\Traits\Translatable;
 use Illuminate\Database\Eloquent\Model;
@@ -76,11 +77,11 @@ class TranslationWriter
                 return self::MISSING;
             }
 
-            if ($locked->getTranslation($field, $source['locale'], false) !== $source['text']) {
+            if (StoredTranslations::get($locked, $field, $source['locale']) !== $source['text']) {
                 return self::SOURCE_CHANGED;
             }
 
-            if (! Text::isBlank($locked->getTranslation($field, $locale, false))) {
+            if (! Text::isBlank(StoredTranslations::get($locked, $field, $locale))) {
                 return self::TARGET_CHANGED;
             }
 
@@ -125,11 +126,11 @@ class TranslationWriter
                 return self::MISSING;
             }
 
-            if ($locked->getTranslation($field, $source['locale'], false) !== $source['text']) {
+            if (StoredTranslations::get($locked, $field, $source['locale']) !== $source['text']) {
                 return self::SOURCE_CHANGED;
             }
 
-            if ($staleHash !== null && Text::hash((string) $locked->getTranslation($field, $locale, false)) !== $staleHash) {
+            if ($staleHash !== null && Text::hash((string) StoredTranslations::get($locked, $field, $locale)) !== $staleHash) {
                 return self::TARGET_CHANGED;
             }
 
