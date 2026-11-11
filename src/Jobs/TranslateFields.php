@@ -12,6 +12,7 @@ use CodingPartners\TranslaGenius\Events\TranslationCompleted;
 use CodingPartners\TranslaGenius\Events\TranslationFailed;
 use CodingPartners\TranslaGenius\Events\TranslationFailed as TranslationFailedEvent;
 use CodingPartners\TranslaGenius\Events\TranslationRequestBilled;
+use CodingPartners\TranslaGenius\Events\TranslationsPersisted;
 use CodingPartners\TranslaGenius\Events\TranslationStarted;
 use CodingPartners\TranslaGenius\Exceptions\PairsFailedException;
 use CodingPartners\TranslaGenius\Exceptions\TranslationConfigurationException;
@@ -21,6 +22,7 @@ use CodingPartners\TranslaGenius\Review\ReviewManager;
 use CodingPartners\TranslaGenius\Review\ReviewSettings;
 use CodingPartners\TranslaGenius\Services\TranslationWriter;
 use CodingPartners\TranslaGenius\Support\Locales;
+use CodingPartners\TranslaGenius\Support\ModelEvents;
 use CodingPartners\TranslaGenius\Support\OneJobPerRecord;
 use CodingPartners\TranslaGenius\Support\Setting;
 use CodingPartners\TranslaGenius\Support\StoredTranslations;
@@ -120,6 +122,13 @@ class TranslateFields implements ShouldQueue, TranslationJob
 
     /** Set when a failure means every further request would fail too (a bad key). */
     protected bool $stopRequesting = false;
+
+    /**
+     * Pairs written onto the record in this run, for TranslationsPersisted.
+     *
+     * @var array<int, array{field: string, locale: string}>
+     */
+    protected array $writtenPairs = [];
 
     /**
      * Number of attempts before the job is considered permanently failed
@@ -406,6 +415,7 @@ class TranslateFields implements ShouldQueue, TranslationJob
         $saved = 0;
         $this->failedPairs = [];
         $this->stopRequesting = false;
+        $this->writtenPairs = [];
         $skip = $this->reviews?->pairsToSkip($this->model, $currentLocale, (bool) ($this->options['include_rejected'] ?? false)) ?? [];
 
         foreach ($this->fields as $field) {
@@ -455,6 +465,9 @@ class TranslateFields implements ShouldQueue, TranslationJob
 
             $saved += $this->translateField($translator, $writer, $field, $sourceText, $currentLocale, $missing);
         }
+
+        // One notification for everything written, after the last write.
+        $this->announceWrites();
 
         // Every pair was tried; report the ones that failed, together. The
         // successful ones are saved already.
@@ -665,6 +678,33 @@ class TranslateFields implements ShouldQueue, TranslationJob
     }
 
     /**
+     * Once the job's writes are done: TranslationsPersisted with the record
+     * read again and the pairs written, and, with
+     * translagenius.fire_model_events (TRANSLATION_FIRE_MODEL_EVENTS), the
+     * model's `updated` and `saved` events, once. Nothing when nothing was
+     * written, or the record is gone.
+     *
+     * @internal May change in any release; see the class docblock.
+     */
+    protected function announceWrites(): void
+    {
+        if ($this->writtenPairs === []) {
+            return;
+        }
+
+        $fresh = $this->model->fresh();
+        if ($fresh === null) {
+            return;
+        }
+
+        if (filter_var(config('translagenius.fire_model_events', false), FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? false) {
+            ModelEvents::fireAfterTranslating($fresh, array_values(array_unique(array_column($this->writtenPairs, 'field'))));
+        }
+
+        TranslationsPersisted::dispatch($fresh, $this->writtenPairs);
+    }
+
+    /**
      * The pairs that failed so far in this run.
      *
      * @return array<int, array{field: string, locale: string, exception: TranslationFailedException}>
@@ -810,6 +850,10 @@ class TranslateFields implements ShouldQueue, TranslationJob
             ]);
 
             return false;
+        }
+
+        if (! $pendingReview) {
+            $this->writtenPairs[] = ['field' => $field, 'locale' => $targetLocale];
         }
 
         TranslationCompleted::dispatch(

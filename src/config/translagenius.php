@@ -325,6 +325,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Model Events
+    |--------------------------------------------------------------------------
+    |
+    | Translations are written without model events, one pair at a time, so
+    | observers aren't called once per pair. Every job that wrote something
+    | fires Events\TranslationsPersisted once. Set this to true to also fire
+    | the model's own `updated` and `saved` events once per job, for
+    | observers you can't change (they don't re-trigger translation).
+    |
+    */
+    'fire_model_events' => env('TRANSLATION_FIRE_MODEL_EVENTS', false),
+
+    /*
+    |--------------------------------------------------------------------------
     | Queue
     |--------------------------------------------------------------------------
     |

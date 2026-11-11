@@ -8,6 +8,7 @@ use CodingPartners\TranslaGenius\Jobs\TranslateFields;
 use CodingPartners\TranslaGenius\Models\TranslationReview;
 use CodingPartners\TranslaGenius\Support\KeyCast;
 use CodingPartners\TranslaGenius\Support\Locales;
+use CodingPartners\TranslaGenius\Support\ModelEvents;
 use CodingPartners\TranslaGenius\Support\StoredTranslations;
 use CodingPartners\TranslaGenius\Support\Text;
 use CodingPartners\TranslaGenius\Support\TranslationJobDispatcher;
@@ -46,6 +47,12 @@ trait Translatable
         });
 
         static::updated(function ($model) {
+            // The job's own once-per-job model events (TRANSLATION_FIRE_MODEL_EVENTS)
+            // announce translations it wrote; they aren't an edit to translate.
+            if (ModelEvents::firing()) {
+                return;
+            }
+
             $translatableFields = $model->getTranslatableAttributes();
             $retranslate = empty($translatableFields) ? [] : static::staleTranslationPlan($model, $translatableFields);
 

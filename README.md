@@ -746,6 +746,7 @@ All events are in `CodingPartners\TranslaGenius\Events`.
 | `TranslationApproved` | A review was published | `review`, `reviewer`, `edited` |
 | `TranslationRejected` | A review was rejected | `review`, `reviewer`, `note` |
 | `TranslationSuperseded` | A pending review became obsolete | `review`, `reason` (`source_changed` or `replaced`) |
+| `TranslationsPersisted` | Once per job, after its last write, when it saved anything | `model` (read again after the writes), `pairs` (`field`, `locale` each) |
 
 ```php
 use CodingPartners\TranslaGenius\Events\TranslationFailed;
@@ -762,6 +763,16 @@ Event::listen(function (TranslationFailed $event) {
 ```
 
 `TranslationStarted` and `TranslationCompleted` fire once per field/language pair, with or without batching. When one batch request produced several pairs, only the first result carries the request's token counts. The lifecycle events are dispatched only from the model-save flow, not from direct use of the facade or `TranslatorInterface`, which have no model to report.
+
+**Observers, search indexes and caches.** Translations are written one pair at a time without model events, so model observers (Laravel Scout, cache busting, auditing) don't run once per pair: a job of 3 fields x 8 languages would otherwise re-index the record 24 times. Listen to `TranslationsPersisted` instead, which fires once per job. With Scout:
+
+```php
+use CodingPartners\TranslaGenius\Events\TranslationsPersisted;
+
+Event::listen(TranslationsPersisted::class, fn (TranslationsPersisted $event) => $event->model->searchable());
+```
+
+For observers you can't change, set `TRANSLATION_FIRE_MODEL_EVENTS=true`: each job then also fires the model's `updated` and `saved` events once, after its writes, on the record as written (`getChanges()` lists the translated columns). Nothing is saved again, and these events don't start another translation job.
 
 ### Query scopes
 
@@ -1121,6 +1132,7 @@ Every variable the shipped config reads. All are optional except the key of the 
 | `TRANSLATION_QUEUE_CONNECTION` | the app's default connection | `queue.connection` |
 | `TRANSLATION_QUEUE` | the connection's default queue | `queue.queue` |
 | `TRANSLATION_DISPATCH_AFTER_COMMIT` | `true` | `queue.after_commit` |
+| `TRANSLATION_FIRE_MODEL_EVENTS` | `false` | `fire_model_events` |
 | `TRANSLATION_JOB_TIMEOUT` | derived per job, 120 to 900 | `queue.timeout` |
 | `TRANSLATION_HTTP_RETRIES` | `1` | `retries.http` |
 | `TRANSLATION_HTTP_RETRY_AFTER_MAX` | `10` | `retries.http_retry_after_max` |
