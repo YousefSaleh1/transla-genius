@@ -24,7 +24,7 @@ use Illuminate\Database\Eloquent\Model;
  * Resolves which job class to dispatch via
  * Traits\Translatable::getTranslationJobClass() - the public accessor for
  * the trait's `protected` translationJobClass() extension point - so a
- * model overriding it (Phase 4a) gets its own job dispatched here exactly
+ * model overriding it gets its own job dispatched here exactly
  * as it would from the automatic save-triggered flow, not silently
  * downgraded to the default TranslateFields.
  *

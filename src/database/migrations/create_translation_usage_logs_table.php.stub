@@ -12,8 +12,8 @@ use Illuminate\Support\Facades\Schema;
  * JSON-path handling, so this sidesteps that portability concern entirely.
  *
  * model_class/model_id/field are nullable: every row TranslationCompleted
- * produces today includes full model context (Phase 4c's design guarantees
- * it), but the column shape doesn't assume that stays true forever.
+ * produces today includes full model context, but the column shape doesn't
+ * assume that stays true forever.
  */
 return new class extends Migration
 {

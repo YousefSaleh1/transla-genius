@@ -163,7 +163,7 @@ final class FallbackProvider implements BatchTranslationProviderInterface
         $anyTruncated = false;
 
         foreach ($this->providers as $position => $provider) {
-            if (! $provider instanceof BatchTranslationProviderInterface || ! $provider->supportsBatching()) {
+            if (! $this->canBatch($provider)) {
                 $hasSingleOnlyMember = true;
 
                 continue;
@@ -207,6 +207,9 @@ final class FallbackProvider implements BatchTranslationProviderInterface
         throw new AllProvidersFailedException($failures);
     }
 
+    /**
+     * @phpstan-assert-if-true BatchTranslationProviderInterface $provider
+     */
     protected function canBatch(TranslationProviderInterface $provider): bool
     {
         return $provider instanceof BatchTranslationProviderInterface && $provider->supportsBatching();

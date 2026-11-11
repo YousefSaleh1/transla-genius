@@ -24,9 +24,10 @@ use CodingPartners\TranslaGenius\Providers\FallbackProvider;
 class AllProvidersFailedException extends TranslationFailedException
 {
     /**
+     * $failures has one entry per provider in the chain, in the order they
+     * were tried.
+     *
      * @param  array<int, array{provider: class-string, message: string, status_code: int|null, retryable: bool, retry_after?: int|null}>  $failures
-     *                                                                                                                                                One entry per provider in the chain, in the order they were
-     *                                                                                                                                                tried.
      */
     public function __construct(protected readonly array $failures)
     {

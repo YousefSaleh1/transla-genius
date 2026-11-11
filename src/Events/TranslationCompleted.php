@@ -16,7 +16,7 @@ use Illuminate\Foundation\Events\Dispatchable;
  * TranslationStarted for why direct TranslatorInterface/facade use outside
  * the job isn't covered. Carries the full TranslationResult, including its
  * token-count fields, so this is the intended hook for a usage-tracking
- * listener (Phase 3's ranked-feature list) without that listener needing to
+ * listener without that listener needing to
  * touch TranslateFields or TranslationWriter itself.
  *
  * @see TranslateFields

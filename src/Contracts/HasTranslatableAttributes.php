@@ -2,7 +2,6 @@
 
 namespace CodingPartners\TranslaGenius\Contracts;
 
-use CodingPartners\TranslaGenius\Traits\Translatable;
 use Spatie\Translatable\HasTranslations;
 
 /**
@@ -77,7 +76,7 @@ interface HasTranslatableAttributes
      *
      * @return array<int, string>
      *
-     * @see Translatable::getTranslatableAttributes()
+     * @see HasTranslations::getTranslatableAttributes()
      */
     public function getTranslatableAttributes(): array;
 

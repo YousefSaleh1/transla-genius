@@ -10,7 +10,6 @@ use CodingPartners\TranslaGenius\Support\KeyCast;
 use CodingPartners\TranslaGenius\Support\Locales;
 use CodingPartners\TranslaGenius\Support\Text;
 use CodingPartners\TranslaGenius\Support\TranslationJobDispatcher;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\Connection;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -58,9 +57,11 @@ trait Translatable
     /**
      * Which job class to dispatch on create/update. Override this on your
      * model to use a custom job (e.g. one with additional side effects)
-     * without forking this trait - the only requirement is that it accepts
-     * the same constructor signature as TranslateFields and is dispatchable
-     * (implements ShouldQueue, uses Dispatchable).
+     * without forking this trait. The class must implement
+     * Contracts\TranslationJob: it is constructed with one
+     * DTOs\TranslationJobPayload, and a class that doesn't implement the
+     * contract is rejected at dispatch. Extending TranslateFields satisfies
+     * it; use Laravel's Queueable trait so the queue settings apply.
      *
      * Stays `protected` - overriding it is a model's own internal
      * customization, not something meant to be called from outside the
@@ -151,36 +152,6 @@ trait Translatable
         }
 
         return $plan;
-    }
-
-    /**
-     * Whether any translatable field's value for the current locale actually
-     * changed on this save. Guards the `updated` listener so a save that
-     * only touches non-source-locale data (or non-translatable columns)
-     * doesn't trigger a needless re-translation dispatch.
-     *
-     * @param  Model&HasTranslatableAttributes  $model
-     * @param  array<int, string>  $translatableFields
-     */
-    protected static function hasSourceLocaleChanged($model, array $translatableFields): bool
-    {
-        $currentLocale = Locales::current();
-
-        foreach ($translatableFields as $field) {
-            if ($model->isDirty($field)) {
-                $originalJson = $model->getRawOriginal($field);
-                $originalTranslations = is_string($originalJson) ? json_decode($originalJson, true) : [];
-                $originalTranslations = is_array($originalTranslations) ? $originalTranslations : [];
-                $originalValue = $originalTranslations[$currentLocale] ?? null;
-                $newValue = $model->getTranslation($field, $currentLocale, false);
-
-                if ($originalValue !== $newValue) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
     }
 
     /**

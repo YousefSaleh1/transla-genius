@@ -30,6 +30,7 @@ A breaking architectural release: the translation backend is now swappable behin
 - **`Middleware\SetLocale` now requires constructor injection** (`Contracts\LocaleResolverInterface`) - if you were instantiating it directly (`new SetLocale()`) rather than letting Laravel resolve it from the container, that will break. Resolve it via the container (`app(SetLocale::class)`) or Laravel's normal middleware registration instead.
 - **`DTOs\TranslationResult` now throws `InvalidArgumentException` if constructed with empty/whitespace-only text.** A custom `TranslationProviderInterface` implementation that previously returned an empty result without throwing `TranslationFailedException` will now fail loudly at construction time instead of silently producing a result nothing downstream expected.
 - `Traits\Translatable::scopeFullyTranslated()`'s underlying SQL changed (now driver-agnostic `whereNotNull('field->locale')` instead of MySQL-only raw `JSON_EXTRACT`/`JSON_UNQUOTE`) - behavior is equivalent, but if you depended on the exact generated SQL for any reason, it's different now.
+- `Traits\Translatable::hasSourceLocaleChanged()` is removed. The `updated` listener stopped using it when edits started re-translating (it now builds a re-translation plan), so a model calling it from an override must drop the call.
 
 ### Added
 

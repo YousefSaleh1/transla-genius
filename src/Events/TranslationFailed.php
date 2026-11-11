@@ -9,9 +9,9 @@ use Illuminate\Foundation\Events\Dispatchable;
 /**
  * Fired once by TranslateFields::failed() - the job's single, well-defined
  * "this model's translation is permanently done, and it failed" point
- * (Phase 2c's replacement for the old catch-and-swallow behavior).
+ * (3.x caught and logged failures instead, so nothing could react to them).
  *
- * Deliberately not fired on every retryable throw inside handle(): Phase 2c
+ * Deliberately not fired on every retryable throw inside handle(): the job
  * already retries transient failures ($tries/backoff()) before a job ever
  * reaches failed(), so most of those attempts self-resolve and firing an
  * event per attempt would mean up to `$tries` events for one logical
