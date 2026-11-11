@@ -344,4 +344,31 @@ class BilledUsageTest extends Orchestra
         $this->assertLogMatchesBilling();
         $this->assertSame(['truncated primary ar,es,fr'], $this->unusedRows());
     }
+
+    public function test_a_billed_translation_whose_save_throws()
+    {
+        $model = TestTranslatableModel::create(['name' => ['en' => 'Hello'], 'description' => ['en' => '']]);
+        $failingWriter = new class extends TranslationWriter {
+            public function apply(\Illuminate\Database\Eloquent\Model $model, array $translations, array $sourceSnapshots = []): int
+            {
+                if (isset($translations['name']['es'])) {
+                    throw new \RuntimeException('database went away');
+                }
+
+                return parent::apply($model, $translations, $sourceSnapshots);
+            }
+        };
+
+        try {
+            (new TranslateFields($model, ['name'], [], 'en'))->handle($this->app->make(TranslatorInterface::class), $failingWriter);
+            $this->fail('The save failure must propagate.');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('database went away', $e->getMessage());
+        }
+
+        $this->assertCount(2, $this->billed); // ar (saved), es (billed, save threw); fr never sent
+        $this->assertLogMatchesBilling();
+        $this->assertSame(['unsaved primary es'], $this->unusedRows());
+        $this->assertSame(1, TranslationUsageLog::where('outcome', 'translated')->count());
+    }
 }

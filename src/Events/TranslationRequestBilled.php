@@ -16,7 +16,9 @@ use Illuminate\Foundation\Events\Dispatchable;
  *    locale, or an empty single reply).
  *  - failed: an error response that still reported usage.
  *  - discarded: a valid translation that wasn't saved because the source
- *    text changed again while it was being made.
+ *    text (or, on a re-translation, that target) changed while it was made.
+ *  - unsaved: a valid translation whose save threw (e.g. a database error);
+ *    the exception still propagates.
  *
  * Internal plumbing for usage tracking (Listeners\LogTranslationUsage); also
  * a public event, so apps can watch wasted spend.
@@ -29,6 +31,7 @@ class TranslationRequestBilled
     public const UNUSABLE = 'unusable';
     public const FAILED = 'failed';
     public const DISCARDED = 'discarded';
+    public const UNSAVED = 'unsaved';
 
     /**
      * @param string $outcome One of the constants above.

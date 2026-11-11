@@ -581,7 +581,8 @@ Translation-cache hits are logged too, as rows with `cached = true` and null tok
 | `truncated` | The reply stopped at the output token limit, single or batch. A truncated batch is then retried one language at a time; those requests get their own `translated` rows. |
 | `unusable` | A reply nothing could be taken from: a batch that wasn't valid JSON (or had no valid language), or an empty single reply. |
 | `failed` | An error response that still reported usage. |
-| `discarded` | A valid translation that wasn't saved, because the source text changed again while it was being made. |
+| `discarded` | A valid translation that wasn't saved, because the source text changed again while it was being made (or, on a re-translation, that language was edited by hand meanwhile). |
+| `unsaved` | A valid translation whose save failed (a database error, say). The error still fails the job as usual. |
 
 These rows carry the request's tokens and cost (costed with the rates of the provider that served it, which matters in a fallback chain) and its `request_id`. A batch request lists its languages comma-separated in `target_locale`. Each billed request is counted exactly once, so `SUM()` over the table equals what your providers billed, and `->where('outcome', 'translated')` isolates the spend that produced translations:
 

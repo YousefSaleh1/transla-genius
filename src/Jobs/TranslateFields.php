@@ -473,7 +473,8 @@ class TranslateFields implements ShouldQueue
      * when this target changed since the plan (already re-translated by an
      * earlier attempt, or edited by hand) and was left alone; false when the
      * source changed again, so the rest of the field is abandoned. A result
-     * that was billed but not saved is reported (see reportDiscarded()).
+     * that was billed but not saved is reported (see reportUnused()), and so
+     * is one whose save throws - the exception then propagates as before.
      *
      * @param array{locale: string, text: string, targets?: array<string, string>|null}|null $snapshot
      */
@@ -485,21 +486,32 @@ class TranslateFields implements ShouldQueue
         TranslationResult $result,
         ?array $snapshot = null
     ): ?bool {
-        if ($snapshot === null) {
-            $writer->apply($this->model, [$field => [$targetLocale => $result->text]]);
-        } else {
-            $staleValues = $snapshot['targets'] ?? null;
-            $outcome = $writer->applyRetranslation(
-                $this->model,
-                $field,
-                $targetLocale,
-                $result->text,
-                ['locale' => $snapshot['locale'], 'text' => $snapshot['text']],
-                is_array($staleValues) && array_key_exists($targetLocale, $staleValues) ? $staleValues[$targetLocale] : null,
-            );
+        try {
+            if ($snapshot === null) {
+                $writer->apply($this->model, [$field => [$targetLocale => $result->text]]);
+                $outcome = TranslationWriter::WRITTEN;
+            } else {
+                $staleValues = $snapshot['targets'] ?? null;
+                $outcome = $writer->applyRetranslation(
+                    $this->model,
+                    $field,
+                    $targetLocale,
+                    $result->text,
+                    ['locale' => $snapshot['locale'], 'text' => $snapshot['text']],
+                    is_array($staleValues) && array_key_exists($targetLocale, $staleValues) ? $staleValues[$targetLocale] : null,
+                );
+            }
+        } catch (Throwable $e) {
+            // The translation was billed but couldn't be saved: log its usage,
+            // then fail exactly as before.
+            $this->reportUnused($result, TranslationRequestBilled::UNSAVED, $field, $sourceLocale, $targetLocale);
 
+            throw $e;
+        }
+
+        if ($snapshot !== null) {
             if ($outcome !== TranslationWriter::WRITTEN) {
-                $this->reportDiscarded($result, $field, $sourceLocale, $targetLocale);
+                $this->reportUnused($result, TranslationRequestBilled::DISCARDED, $field, $sourceLocale, $targetLocale);
 
                 if ($outcome === TranslationWriter::TARGET_CHANGED) {
                     Log::info('Keeping a target that changed since the source edit (already re-translated, or edited by hand)', [
@@ -536,17 +548,18 @@ class TranslateFields implements ShouldQueue
     }
 
     /**
-     * Report a billed result that wasn't saved, so usage tracking still logs
-     * its tokens. Only the result that carries a request's tokens reports.
+     * Report a billed result that wasn't saved (discarded, or its save threw),
+     * so usage tracking still logs its tokens. Only the result that carries a
+     * request's tokens reports.
      */
-    protected function reportDiscarded(TranslationResult $result, string $field, string $sourceLocale, string $targetLocale): void
+    protected function reportUnused(TranslationResult $result, string $outcome, string $field, string $sourceLocale, string $targetLocale): void
     {
         if ($result->promptTokens === null && $result->completionTokens === null) {
             return;
         }
 
         TranslationRequestBilled::dispatch(
-            TranslationRequestBilled::DISCARDED,
+            $outcome,
             $result->provider,
             $result->requestId,
             $result->promptTokens,
