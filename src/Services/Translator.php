@@ -40,13 +40,20 @@ class Translator implements TranslatorInterface
      * @param string $text The source text to translate.
      * @param string $sourceLocale The locale $text is written in.
      * @param string $targetLocale The locale to translate $text into.
+     * @param string|null $field Optional context: the attribute being translated.
+     * @param string|null $model Optional context: the owning model's class basename.
      * @return TranslationResult
      *
      * @throws \CodingPartners\TranslaGenius\Exceptions\TranslationFailedException
      *         If the underlying provider cannot complete the translation.
      */
-    public function translate(string $text, string $sourceLocale, string $targetLocale): TranslationResult
-    {
-        return $this->provider->translate(new TranslationRequest($text, $sourceLocale, $targetLocale));
+    public function translate(
+        string $text,
+        string $sourceLocale,
+        string $targetLocale,
+        ?string $field = null,
+        ?string $model = null,
+    ): TranslationResult {
+        return $this->provider->translate(new TranslationRequest($text, $sourceLocale, $targetLocale, $field, $model));
     }
 }

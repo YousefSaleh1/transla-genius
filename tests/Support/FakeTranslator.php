@@ -19,7 +19,7 @@ class FakeTranslator implements TranslatorInterface
     {
     }
 
-    public function translate(string $text, string $sourceLocale, string $targetLocale): TranslationResult
+    public function translate(string $text, string $sourceLocale, string $targetLocale, ?string $field = null, ?string $model = null): TranslationResult
     {
         $this->calls[] = [$text, $sourceLocale, $targetLocale];
 

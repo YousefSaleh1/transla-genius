@@ -77,16 +77,16 @@ class TranslateFieldsJobTest extends TestCase
         // Mock the translator with expected calls and responses
         $mockTranslator = Mockery::mock(TranslatorInterface::class);
         $mockTranslator->shouldReceive('translate')
-            ->with('Test Name', 'en', 'ar')
+            ->with('Test Name', 'en', 'ar', 'name', 'TestTranslatableModel')
             ->andReturn($this->translationResult('اسم الاختبار'));
         $mockTranslator->shouldReceive('translate')
-            ->with('Test Name', 'en', 'es')
+            ->with('Test Name', 'en', 'es', 'name', 'TestTranslatableModel')
             ->andReturn($this->translationResult('Nombre de prueba'));
         $mockTranslator->shouldReceive('translate')
-            ->with('Test Description', 'en', 'ar')
+            ->with('Test Description', 'en', 'ar', 'description', 'TestTranslatableModel')
             ->andReturn($this->translationResult('وصف الاختبار'));
         $mockTranslator->shouldReceive('translate')
-            ->with('Test Description', 'en', 'es')
+            ->with('Test Description', 'en', 'es', 'description', 'TestTranslatableModel')
             ->andReturn($this->translationResult('Descripción de la prueba'));
 
         // Execute the job
@@ -126,13 +126,13 @@ class TranslateFieldsJobTest extends TestCase
         $mockTranslator = Mockery::mock(TranslatorInterface::class);
         // Should only be called for Spanish (Arabic already exists) and for description
         $mockTranslator->shouldReceive('translate')
-            ->with('Test Name', 'en', 'es')
+            ->with('Test Name', 'en', 'es', 'name', 'TestTranslatableModel')
             ->andReturn($this->translationResult('Nombre de prueba'));
         $mockTranslator->shouldReceive('translate')
-            ->with('Test Description', 'en', 'ar')
+            ->with('Test Description', 'en', 'ar', 'description', 'TestTranslatableModel')
             ->andReturn($this->translationResult('وصف الاختبار'));
         $mockTranslator->shouldReceive('translate')
-            ->with('Test Description', 'en', 'es')
+            ->with('Test Description', 'en', 'es', 'description', 'TestTranslatableModel')
             ->andReturn($this->translationResult('Descripción de la prueba'));
 
         // Execute the job
@@ -335,16 +335,16 @@ class TranslateFieldsJobTest extends TestCase
 
         $mockTranslator = Mockery::mock(TranslatorInterface::class);
         $mockTranslator->shouldReceive('translate')
-            ->with('Test Name', 'en', 'ar')
+            ->with('Test Name', 'en', 'ar', 'name', 'TestTranslatableModel')
             ->andReturn($this->translationResult('STALE ar (should not be saved)'));
         $mockTranslator->shouldReceive('translate')
-            ->with('Test Name', 'en', 'es')
+            ->with('Test Name', 'en', 'es', 'name', 'TestTranslatableModel')
             ->andReturn($this->translationResult('Nombre de prueba'));
         $mockTranslator->shouldReceive('translate')
-            ->with('Test Description', 'en', 'ar')
+            ->with('Test Description', 'en', 'ar', 'description', 'TestTranslatableModel')
             ->andReturn($this->translationResult('وصف الاختبار'));
         $mockTranslator->shouldReceive('translate')
-            ->with('Test Description', 'en', 'es')
+            ->with('Test Description', 'en', 'es', 'description', 'TestTranslatableModel')
             ->andReturn($this->translationResult('Descripción de la prueba'));
 
         $job = new TranslateFields($model, ['name', 'description']);
@@ -391,10 +391,10 @@ class TranslateFieldsJobTest extends TestCase
         // called with args that don't match any declared expectation.
         $mockTranslator = Mockery::mock(TranslatorInterface::class);
         $mockTranslator->shouldReceive('translate')
-            ->with('Test Name', 'en', 'ar')
+            ->with('Test Name', 'en', 'ar', 'name', 'TestTranslatableModel')
             ->andReturn($this->translationResult('اسم الاختبار'));
         $mockTranslator->shouldReceive('translate')
-            ->with('Test Name', 'en', 'es')
+            ->with('Test Name', 'en', 'es', 'name', 'TestTranslatableModel')
             ->andReturn($this->translationResult('Nombre de prueba'));
 
         $job = new TranslateFields($model, ['name', 'description']);

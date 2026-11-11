@@ -173,6 +173,27 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | System Prompt
+    |--------------------------------------------------------------------------
+    |
+    | Instructions sent as the `system` message for OpenAI-compatible providers.
+    | Null/empty uses the built-in prompt. Any entry under `providers` can set
+    | its own `prompt`, which wins over this one.
+    |
+    | Placeholders: {source_locale}, {target_locale}, {field} (the attribute,
+    | e.g. "name") and {model} (the model's class basename, e.g. "Product").
+    | Anything else in braces is left as written. The text being translated is
+    | never substituted into the prompt: it is always sent separately, as the
+    | `user` message, so a prompt can't move content into the system role.
+    |
+    | Short prompts can come from TRANSLATION_SYSTEM_PROMPT; put longer ones
+    | here in the published config.
+    |
+    */
+    'prompt' => env('TRANSLATION_SYSTEM_PROMPT'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Queue
     |--------------------------------------------------------------------------
     |

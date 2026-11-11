@@ -30,6 +30,19 @@ use Illuminate\Support\Str;
  */
 class OpenAiCompatibleProvider implements TranslationProviderInterface
 {
+    /**
+     * The built-in system prompt, used when no `prompt` is configured.
+     * Placeholders are filled by renderPrompt().
+     */
+    public const DEFAULT_PROMPT = "You are a translation engine. Translate the user's message from {source_locale} to {target_locale}. "
+        . 'Respond with only the translated text - no explanation, commentary, or additional formatting.';
+
+    /**
+     * @var string|null Configured system prompt template, or null for
+     *      DEFAULT_PROMPT. Only ever sent as the `system` message.
+     */
+    protected ?string $prompt;
+
     /** @var string API key sent as a Bearer token; blank fails fast in translate(). */
     protected string $apiKey;
 
@@ -108,6 +121,7 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
         $this->maxTokens = ($config['max_tokens'] ?? '') === '' ? null : max(1, (int) $config['max_tokens']);
         $this->timeout = (int) ($config['timeout'] ?? 10);
         $this->name = isset($config['name']) ? (string) $config['name'] : null;
+        $this->prompt = trim((string) ($config['prompt'] ?? '')) === '' ? null : (string) $config['prompt'];
         $this->authHeader = (string) ($config['auth_header'] ?? 'Authorization') ?: 'Authorization';
         $this->httpRetries = max(0, (int) ($config['http_retries'] ?? 1));
         $this->retryAfterMax = max(0, (int) ($config['retry_after_max'] ?? 10));
@@ -143,8 +157,7 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
             );
         }
 
-        $systemPrompt = "You are a translation engine. Translate the user's message from {$request->sourceLocale} to {$request->targetLocale}. "
-            . 'Respond with only the translated text - no explanation, commentary, or additional formatting.';
+        $systemPrompt = $this->renderPrompt($request);
 
         $body = $this->requestBody($request, $systemPrompt);
         $attempts = $this->httpRetries + 1;
@@ -255,6 +268,30 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
             promptTokens: $response->json('usage.prompt_tokens'),
             completionTokens: $response->json('usage.completion_tokens'),
         );
+    }
+
+    /**
+     * Fill the system prompt template for this request.
+     *
+     * Only these placeholders are substituted: {source_locale},
+     * {target_locale}, {field} (the attribute name) and {model} (the model's
+     * class basename) - the last two become '' when the caller gave no
+     * context. Anything else in braces is left exactly as written. The text
+     * being translated is never substituted: it is only ever sent as the
+     * `user` message (see requestBody()), so no prompt can pull field content
+     * into the system role.
+     *
+     * @param TranslationRequest $request
+     * @return string
+     */
+    protected function renderPrompt(TranslationRequest $request): string
+    {
+        return strtr($this->prompt ?? self::DEFAULT_PROMPT, [
+            '{source_locale}' => $request->sourceLocale,
+            '{target_locale}' => $request->targetLocale,
+            '{field}' => (string) $request->field,
+            '{model}' => (string) $request->model,
+        ]);
     }
 
     /**

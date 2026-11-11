@@ -87,6 +87,25 @@ GEMINI_API_KEY=your-gemini-key
 
 The first provider to succeed wins; later ones aren't called. Names are trimmed and empty items ignored, and the chain needs at least 2 entries. A missing chain, a chain that references itself, or an unknown name fails at resolution time with an error naming the problem. See [Provider Fallback / Chaining](#provider-fallback--chaining) for how failures are handled.
 
+### System Prompt
+
+The OpenAI-compatible presets tell the model what to do with a system prompt. To change it without code, set `TRANSLATION_SYSTEM_PROMPT`; longer prompts belong in a published config, as `prompt` (package-wide) or as `prompt` on one provider entry (which wins over the package-wide one). An empty value falls back to the built-in prompt:
+
+```env
+TRANSLATION_SYSTEM_PROMPT="Translate this {model} {field} from {source_locale} to {target_locale}. Keep brand names unchanged. Reply with only the translation."
+```
+
+| Placeholder | Filled with |
+|---|---|
+| `{source_locale}` | the source locale, e.g. `en` |
+| `{target_locale}` | the target locale, e.g. `ar` |
+| `{field}` | the attribute being translated, e.g. `name` (empty when translating via the facade) |
+| `{model}` | the model's class basename, e.g. `Product` (empty when translating via the facade) |
+
+Anything else in braces is left as written. Field context noticeably helps: a product `name` and a product `description` call for different wording.
+
+The prompt is only ever sent as the `system` message, and the text being translated is only ever sent as the `user` message. Only the four placeholders above are substituted, and none of them is the field's content, so no prompt can move content into the system role.
+
 ### Queue Settings
 
 Translation jobs go to your app's default queue connection and queue unless you say otherwise:

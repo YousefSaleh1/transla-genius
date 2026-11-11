@@ -149,6 +149,12 @@ class TranslaGeniusServiceProvider extends ServiceProvider
             'http_retries' => self::intSetting($retries['http'] ?? null, 1),
             'retry_after_max' => self::intSetting($retries['http_retry_after_max'] ?? null, 10),
         ];
+
+        // An entry's own non-empty `prompt` wins over the package-level one;
+        // an empty value at either level falls through (to the provider's
+        // built-in default if both are empty).
+        $ownPrompt = trim((string) ($providerConfig['prompt'] ?? '')) !== '' ? $providerConfig['prompt'] : null;
+        $providerConfig['prompt'] = $ownPrompt ?? $config->get('translaGenius.prompt');
         $chainOverrides = $inChain
             ? ['http_retries' => self::intSetting($retries['fallback_http'] ?? null, 0), 'retry_after_max' => 0]
             : [];

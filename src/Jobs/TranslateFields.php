@@ -267,7 +267,7 @@ class TranslateFields implements ShouldQueue
                     $sourceText,
                 );
 
-                $result = $translator->translate($sourceText, $currentLocale, $targetLanguage);
+                $result = $translator->translate($sourceText, $currentLocale, $targetLanguage, $field, $this->modelContextName());
 
                 $writer->apply($this->model, [$field => [$targetLanguage => $result->text]]);
                 $saved++;
@@ -304,6 +304,24 @@ class TranslateFields implements ShouldQueue
         }
 
         return true;
+    }
+
+    /**
+     * The model's class basename, passed as prompt context (e.g. "Product").
+     * An anonymous class has no meaningful name of its own, so its nearest
+     * named parent is used instead.
+     *
+     * @return string
+     */
+    protected function modelContextName(): string
+    {
+        $class = new \ReflectionClass($this->model);
+
+        while ($class->isAnonymous() && $class->getParentClass() !== false) {
+            $class = $class->getParentClass();
+        }
+
+        return $class->getShortName();
     }
 
     /**
