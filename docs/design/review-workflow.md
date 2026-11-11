@@ -132,7 +132,7 @@ For example a `translations_pending` JSON column next to each translatable colum
 
 **Source changes while pending.** The update hook already plans a re-translation for the changed field. In addition, every `pending` row for that field is marked `superseded` (its `source_hash` no longer matches), and the re-translation produces a new `pending` row. Approving a superseded row is refused, as in step 2 above.
 
-**Model deleted.** Pending rows for a deleted owner are left in place but filtered out of `pending()` by default; a `translagenius:review:prune` (or the app's own `deleting` listener) can clean them up. A soft-deleted owner keeps its rows.
+**Model deleted.** Pending rows for a deleted owner are left in place; approving one supersedes it (the owner can't be found, so there's nothing current to publish against). `pending()` doesn't filter them out in v1 (that would need a per-type join); the app's own `deleting` listener can remove them, and `prune` removes decided rows.
 
 ## 4. What's visible while a translation is pending
 
@@ -300,4 +300,18 @@ Recorded after review; these are final, and the body above has been updated to m
 7. **Per-locale filter** (resolves Open decision 7). `review.locales` is in v1.
 8. **Retention** (resolves Open decision 8). Decided review rows are kept, with a `prune` Artisan command; there is no automatic deletion.
 9. **Events** (resolves Open decision 9). `TranslationCompleted` keeps firing when a translation is produced, with a `pendingReview` flag; new events cover approval and rejection.
+
+## Implementation notes
+
+Decisions made during implementation where the body above was silent:
+
+- **Hand edit since production (approve-time conflict).** Each pending row records the published value of its field/locale at the moment it was produced (`published_snapshot`; `''` if none, or after a `clear`). Approval compares it under the record's lock. If it differs, someone published something by hand meanwhile, so approval refuses with `ReviewConflictException` and the row stays pending. `approve(..., force: true)` overwrites deliberately. This mirrors the 6c rule that a re-translation never overwrites a hand edit.
+- **Producing a pending row uses the same snapshot rules as a direct write.** The stored source must still equal the text the translation was made from, and on the re-translation path the target must still hold its stale value. Otherwise nothing is stored, and the billed usage is logged as `discarded`.
+- **What "rejected" blocks.** A job dispatched by a model save skips a pair whose latest decision is a rejection *for the current source text*. A later source edit makes that pair eligible again. Backfill (`include_rejected`), `retranslate()` and `on_reject = retranslate` request it explicitly.
+- **`retranslate()`** evicts the cache entry first, then dispatches a job that re-translates just that field/locale from the current source text. It uses the re-translation path with every other locale in `keep`.
+- **Cached edits ignore the "primary only" chain rule.** An approved edit is human-approved, so it's stored as the cache entry even if a backup provider produced the original.
+- **`review.fields`**: field names reviewed on every model, in addition to `review.models`. Model classes match by `instanceof`, so subclasses are covered.
+- **Scope query.** `pendingReview()` collects the pending owner ids first and then filters with `whereIn`, instead of comparing `translatable_id` (a string column, so UUID/ULID keys fit) to the owner's key inside SQL. PostgreSQL rejects `varchar = bigint`, and there's no CAST syntax shared by all five drivers.
+- **Superseded event reasons:** `source_changed` (the field's source text changed, or a stale approval) and `replaced` (a newer pending translation of the same field/locale).
+- **Migration.** Published under the existing `translagenius-migrations` tag, with a timestamp one second after the usage-log stub's, so both publish in a stable order.
 

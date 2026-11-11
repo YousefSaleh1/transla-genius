@@ -494,6 +494,153 @@ From then on it's selectable like any preset: `TRANSLATION_PROVIDER=deepl`, or a
 
 Each name in `chain` is resolved the normal way (through its own `driver`/config entry), so a chain can mix any providers - built-in or your own - with no special-casing required from them. Falls through to the next provider on *any* translation failure from the current one, not only a retryable one - an unusable primary (bad key, exhausted quota) is exactly the case a fallback exists for, and that's typically a non-retryable failure. If every provider in the chain fails, `Exceptions\AllProvidersFailedException` (a `TranslationFailedException` subclass, so it's handled by `TranslateFields` exactly like any other translation failure) is thrown with each provider's individual failure attached via `getFailures()`, for diagnosing which one(s) actually broke.
 
+## Review Workflow
+
+AI translations can wait for a human before they go live. With review on, a produced translation is stored as a **pending review** instead of being written to the model's translatable column, and it's published only when someone approves it. The package provides the storage, the rules and an API; the review screen and who may approve are your app's.
+
+### Turning it on
+
+```bash
+php artisan vendor:publish --tag=translagenius-migrations   # adds translation_reviews
+php artisan migrate
+```
+
+```env
+TRANSLATION_REVIEW=true
+# Optional: review only these target languages; the others publish directly.
+TRANSLATION_REVIEW_LOCALES=ar,fr
+```
+
+That reviews every translatable field of every model. To narrow it, use a published `config/translaGenius.php`:
+
+```php
+'review' => [
+    'enabled' => env('TRANSLATION_REVIEW', false),
+    'models' => [
+        \App\Models\Product::class => ['description'],   // or ['*'] for all its fields
+    ],
+    'fields' => ['legal_notice'],                        // reviewed on every model
+    'locales' => env('TRANSLATION_REVIEW_LOCALES', ''),
+    // ...
+],
+```
+
+With `models` and `fields` both empty, everything is reviewed. A listed class also covers its subclasses. Language codes the same save provided by hand are never reviewed: they're human input.
+
+### What's visible while a translation is pending
+
+A new record has nothing published yet, so its other languages fall back until approval. The interesting case is a **source edit** on a record whose translations are already published:
+
+- **`keep`** (default): the old, now stale, translation stays visible until the new one is approved.
+- **`clear`**: the stale translation is removed when the new one is produced, so the fallback language shows until approval.
+
+```env
+TRANSLATION_REVIEW_WHILE_PENDING=keep
+```
+
+```php
+'while_pending_overrides' => [
+    \App\Models\Product::class => ['price_note' => 'clear'],  // per field
+    \App\Models\LegalPage::class => 'clear',                  // whole model
+],
+```
+
+### Reviewing
+
+```php
+use CodingPartners\TranslaGenius\Facades\TranslaGenius;
+
+$reviews = TranslaGenius::reviews();
+
+// A query builder: filter and paginate as you like.
+$queue = $reviews->pending()
+    ->forModel(Product::class)      // or ->for($product)
+    ->field('description')
+    ->locale('ar')
+    ->olderThan(now()->subDay())
+    ->paginate(50);
+
+$review = $queue->first();          // a Models\TranslationReview
+$review->text;                      // the AI translation
+$review->source_text;               // what it was translated from
+$review->translatable;              // the record
+
+$reviews->approve($review, reviewer: $user);                              // publish as produced
+$reviews->approve($review, editedText: 'Better wording', reviewer: $user); // publish an edit
+$reviews->reject($review, reviewer: $user, note: 'Wrong tone');
+$reviews->retranslate($review);                                           // request a fresh one
+
+$reviews->approveAll($product, field: 'name', reviewer: $user);           // or approveAll(Product::class)
+```
+
+Approval locks the record and checks two things first:
+
+- **The source text changed since the translation was made:** publishing it would publish stale text. Nothing is written, the review becomes `superseded`, and a `StaleReviewException` is thrown. A newer pending review for the current text replaces it.
+- **The published text was edited by hand since:** nothing is overwritten silently. A `ReviewConflictException` is thrown and the review stays pending; approve with `force: true` to overwrite anyway, or reject it.
+
+`approveAll()` skips stale and conflicting reviews and returns a summary (`approved`, `skipped_stale`, `skipped_conflict`).
+
+**Rejection** publishes nothing. By default (`TRANSLATION_REVIEW_ON_REJECT=leave`) the language stays missing until you call `retranslate()`; model saves don't re-request it. Set it to `retranslate` to request a fresh translation automatically.
+
+**Source edits while pending:** the pending review becomes `superseded` and the re-translation produces a new pending review.
+
+Reviews are kept after a decision, as an audit trail (`approved`, `rejected`, `superseded`, with the reviewer, time, note, and the produced versus the published text). Nothing deletes them automatically.
+
+### Commands
+
+```bash
+php artisan translagenius:review:list                          # pending counts per model / field / locale
+php artisan translagenius:review:list "App\Models\Product" --locale=ar
+php artisan translagenius:review:approve-all "App\Models\Product" --field=name --force
+php artisan translagenius:review:prune --days=90               # delete decided reviews older than 90 days
+```
+
+### Authorization
+
+The package never checks who may approve. Every decision takes an optional `reviewer` (any model, stored as a polymorphic relation), and `TranslationReview` is an ordinary Eloquent model, so guard it the usual way:
+
+```php
+// AuthServiceProvider / AppServiceProvider::boot()
+Gate::policy(\CodingPartners\TranslaGenius\Models\TranslationReview::class, TranslationReviewPolicy::class);
+
+class TranslationReviewPolicy
+{
+    public function approve(User $user, TranslationReview $review): bool
+    {
+        return $user->can('update', $review->translatable)
+            && in_array($review->locale, $user->reviewer_locales, true);
+    }
+}
+
+// In your controller
+public function approve(Request $request, TranslationReview $review)
+{
+    $this->authorize('approve', $review);
+
+    TranslaGenius::reviews()->approve($review, editedText: $request->input('text'), reviewer: $request->user());
+}
+```
+
+### With other features
+
+- **Scopes.** `fullyTranslated()` / `notFullyTranslated()` look at published translations only. `Post::pendingReview()` (optionally `pendingReview('title', 'ar')`) finds records with translations awaiting review.
+- **Backfill.** `translagenius:backfill` doesn't request languages that are already pending (they'd be paid for twice), and does request ones that were rejected: backfilling is an explicit "try again".
+- **Cache.** The cache stores what the provider produced, as before. Approving with an edit replaces that entry with the edited text, so the next identical source text gets the corrected version (pass `cacheEdit: false` for an edit that only fits that one record). Rejecting removes the entry, so the rejected text isn't served again.
+- **Batching and fallback chains.** Unchanged: the same requests are sent; each resulting language becomes its own pending review.
+- **Usage tracking.** Cost is logged when a translation is produced (`TranslationCompleted`), whatever happens to it later. To report spend on rejected translations, join `translation_usage_logs.request_id` to `translation_reviews.request_id`.
+
+### Events
+
+| Event | When |
+|---|---|
+| `TranslationCompleted` | A translation was produced, as before. `$event->pendingReview` is `true` when it went to review instead of being published. |
+| `TranslationPendingReview` | A pending review was created (`$event->review`). |
+| `TranslationApproved` | Published; carries the review, the reviewer, and `edited`. |
+| `TranslationRejected` | Rejected; carries the review, the reviewer, and the note. |
+| `TranslationSuperseded` | A pending review became obsolete: `reason` is `source_changed` or `replaced`. |
+
+With review off (the default), none of this runs: no review queries, and the `translation_reviews` table isn't needed.
+
 ## Lifecycle Events
 
 `TranslateFields` dispatches three events a consuming app can listen for without touching the package: `Events\TranslationStarted` and `Events\TranslationCompleted` fire around each individual field/locale translation (so `TranslationCompleted` is the hook for usage/cost tracking - it carries the full `TranslationResult`, including its token-count fields), and `Events\TranslationFailed` fires once, from the job's `failed()` method, only when the job gives up permanently on a real `TranslationFailedException` (not on a transient, retried failure, and not on an unrelated job error).
