@@ -79,6 +79,29 @@ jobs:
       # Audits the committed composer.lock, before this cell's require/update
       # steps re-resolve dependencies. One cell is enough: the lock is the same
       # file everywhere.
+      # pdo_sqlsrv needs Microsoft's ODBC driver, which the runner image doesn't
+      # ship ("This extension requires the Microsoft ODBC Driver for SQL Server").
+      # Commands from Microsoft's official Ubuntu instructions:
+      # https://learn.microsoft.com/en-us/sql/connect/odbc/linux-mac/installing-the-microsoft-odbc-driver-for-sql-server
+      # (Ubuntu tab; supports 18.04, 20.04, 22.04, 24.04, 26.04). The optional
+      # mssql-tools18 / unixodbc-dev packages aren't needed here.
+      - name: Install Microsoft ODBC Driver 18 for SQL Server
+        if: matrix.db == 'sqlsrv'
+        run: |
+          if ! [[ "18.04 20.04 22.04 24.04 26.04" == *"$(grep VERSION_ID /etc/os-release | cut -d '"' -f 2)"* ]];
+          then
+              echo "Ubuntu $(grep VERSION_ID /etc/os-release | cut -d '"' -f 2) is not currently supported.";
+              exit 1;
+          fi
+
+          curl -sSL -O https://packages.microsoft.com/config/ubuntu/$(grep VERSION_ID /etc/os-release | cut -d '"' -f 2)/packages-microsoft-prod.deb
+          sudo dpkg -i packages-microsoft-prod.deb
+          rm packages-microsoft-prod.deb
+
+          sudo apt-get update
+          sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18
+          odbcinst -q -d
+
       - name: Audit locked dependencies
         if: matrix.php == '8.4' && matrix.laravel == '^13.0' && matrix.stability == 'prefer-stable' && matrix.db == 'sqlite'
         run: composer audit --locked --no-interaction
