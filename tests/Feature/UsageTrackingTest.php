@@ -53,10 +53,10 @@ class UsageTrackingTest extends Orchestra
 
         Config::set('translagenius.supported_languages', ['en', 'ar', 'es']);
 
-        $modelsMigration = include __DIR__ . '/../database/migrations/2024_01_01_000000_create_test_tables.php';
+        $modelsMigration = include __DIR__.'/../database/migrations/2024_01_01_000000_create_test_tables.php';
         $modelsMigration->up();
 
-        $usageLogMigration = include __DIR__ . '/../../src/database/migrations/create_translation_usage_logs_table.php.stub';
+        $usageLogMigration = include __DIR__.'/../../src/database/migrations/create_translation_usage_logs_table.php.stub';
         $usageLogMigration->up();
     }
 

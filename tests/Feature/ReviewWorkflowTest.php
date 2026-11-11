@@ -8,18 +8,17 @@ use CodingPartners\TranslaGenius\Events\TranslationApproved;
 use CodingPartners\TranslaGenius\Events\TranslationCompleted;
 use CodingPartners\TranslaGenius\Events\TranslationPendingReview;
 use CodingPartners\TranslaGenius\Events\TranslationRejected;
+use CodingPartners\TranslaGenius\Events\TranslationRequestBilled;
 use CodingPartners\TranslaGenius\Events\TranslationSuperseded;
 use CodingPartners\TranslaGenius\Exceptions\InvalidReviewStateException;
 use CodingPartners\TranslaGenius\Exceptions\ReviewConflictException;
 use CodingPartners\TranslaGenius\Exceptions\StaleReviewException;
 use CodingPartners\TranslaGenius\Facades\TranslaGenius;
-use CodingPartners\TranslaGenius\Jobs\TranslateFields;
 use CodingPartners\TranslaGenius\Listeners\LogTranslationUsage;
 use CodingPartners\TranslaGenius\Models\TranslationReview;
 use CodingPartners\TranslaGenius\Models\TranslationUsageLog;
 use CodingPartners\TranslaGenius\Providers\FallbackProvider;
 use CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider;
-use CodingPartners\TranslaGenius\Services\TranslationWriter;
 use CodingPartners\TranslaGenius\Services\Translator;
 use CodingPartners\TranslaGenius\Tests\TestCase;
 use CodingPartners\TranslaGenius\Tests\TestModels\TestTranslatableModel;
@@ -55,7 +54,7 @@ class ReviewWorkflowTest extends TestCase
         parent::setUp();
 
         Sleep::fake();
-        (include __DIR__ . '/../../src/database/migrations/create_translation_reviews_table.php.stub')->up();
+        (include __DIR__.'/../../src/database/migrations/create_translation_reviews_table.php.stub')->up();
 
         config([
             'translagenius.review' => [
@@ -82,7 +81,7 @@ class ReviewWorkflowTest extends TestCase
 
             if (preg_match('/into each of these languages: (.+?)\. Respond/', $system, $m) === 1) {
                 $locales = explode(', ', $m[1]);
-                $this->requests[] = "batch {$text} " . implode(',', $locales);
+                $this->requests[] = "batch {$text} ".implode(',', $locales);
                 $content = json_encode(array_combine($locales, array_map(fn ($l) => "{$text}|{$l}", $locales)));
             } else {
                 preg_match('/ to (\w+)\./', $system, $m);
@@ -504,9 +503,9 @@ class ReviewWorkflowTest extends TestCase
 
     public function test_usage_is_logged_at_production_and_unchanged_by_decisions()
     {
-        (include __DIR__ . '/../../src/database/migrations/create_translation_usage_logs_table.php.stub')->up();
+        (include __DIR__.'/../../src/database/migrations/create_translation_usage_logs_table.php.stub')->up();
         Event::listen(TranslationCompleted::class, LogTranslationUsage::class);
-        Event::listen(\CodingPartners\TranslaGenius\Events\TranslationRequestBilled::class, [LogTranslationUsage::class, 'handleBilled']);
+        Event::listen(TranslationRequestBilled::class, [LogTranslationUsage::class, 'handleBilled']);
 
         $model = $this->createRecord();
         $rowsAfterProduction = TranslationUsageLog::count();

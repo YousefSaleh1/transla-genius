@@ -2,6 +2,8 @@
 
 namespace CodingPartners\TranslaGenius\Contracts;
 
+use Spatie\Translatable\HasTranslations;
+
 /**
  * Documents the real precondition TranslationWriter and TranslateFields
  * depend on beyond the base Eloquent Model: getTranslation()/setTranslation()
@@ -25,27 +27,27 @@ interface HasTranslatableAttributes
     /**
      * Get the value of a translatable attribute for a given locale.
      *
-     * @param string $key The translatable attribute name (e.g. "name").
-     * @param string $locale The locale to read (e.g. "en", "ar").
-     * @param bool $useFallbackLocale Whether to fall back to the app's
-     *        default locale when $locale has no value for $key.
+     * @param  string  $key  The translatable attribute name (e.g. "name").
+     * @param  string  $locale  The locale to read (e.g. "en", "ar").
+     * @param  bool  $useFallbackLocale  Whether to fall back to the app's
+     *                                   default locale when $locale has no value for $key.
      * @return mixed The translated value, or null/empty depending on the
-     *         implementation's fallback behavior.
+     *               implementation's fallback behavior.
      *
-     * @see \Spatie\Translatable\HasTranslations::getTranslation()
+     * @see HasTranslations::getTranslation()
      */
     public function getTranslation(string $key, string $locale, bool $useFallbackLocale = true): mixed;
 
     /**
      * Set the value of a translatable attribute for a given locale.
      *
-     * @param string $key The translatable attribute name (e.g. "name").
-     * @param string $locale The locale to write (e.g. "en", "ar").
-     * @param mixed $value The value to store for that locale.
+     * @param  string  $key  The translatable attribute name (e.g. "name").
+     * @param  string  $locale  The locale to write (e.g. "en", "ar").
+     * @param  mixed  $value  The value to store for that locale.
      * @return mixed Implementation-dependent; Spatie's HasTranslations
-     *         returns the model instance for chaining.
+     *               returns the model instance for chaining.
      *
-     * @see \Spatie\Translatable\HasTranslations::setTranslation()
+     * @see HasTranslations::setTranslation()
      */
     public function setTranslation(string $key, string $locale, $value);
 }

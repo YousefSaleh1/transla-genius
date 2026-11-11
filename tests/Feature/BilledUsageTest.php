@@ -2,9 +2,10 @@
 
 namespace CodingPartners\TranslaGenius\Tests\Feature;
 
-use CodingPartners\TranslaGenius\DTOs\TranslationJobPayload;
 use CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface;
 use CodingPartners\TranslaGenius\Contracts\TranslatorInterface;
+use CodingPartners\TranslaGenius\DTOs\TranslationJobPayload;
+use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
 use CodingPartners\TranslaGenius\Jobs\TranslateFields;
 use CodingPartners\TranslaGenius\Models\TranslationUsageLog;
 use CodingPartners\TranslaGenius\Providers\FallbackProvider;
@@ -13,6 +14,8 @@ use CodingPartners\TranslaGenius\Services\TranslationWriter;
 use CodingPartners\TranslaGenius\Services\Translator;
 use CodingPartners\TranslaGenius\Tests\TestModels\TestTranslatableModel;
 use CodingPartners\TranslaGenius\TranslaGeniusServiceProvider;
+use GuzzleHttp\Promise\PromiseInterface;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -66,8 +69,8 @@ class BilledUsageTest extends Orchestra
         Queue::fake();
         Cache::store('array')->flush();
 
-        (include __DIR__ . '/../database/migrations/2024_01_01_000000_create_test_tables.php')->up();
-        (include __DIR__ . '/../../src/database/migrations/create_translation_usage_logs_table.php.stub')->up();
+        (include __DIR__.'/../database/migrations/2024_01_01_000000_create_test_tables.php')->up();
+        (include __DIR__.'/../../src/database/migrations/create_translation_usage_logs_table.php.stub')->up();
 
         $member = fn (string $host) => [
             'driver' => OpenAiCompatibleProvider::class,
@@ -102,7 +105,7 @@ class BilledUsageTest extends Orchestra
         parent::tearDown();
     }
 
-    protected function answer(Request $request): \GuzzleHttp\Promise\PromiseInterface
+    protected function answer(Request $request): PromiseInterface
     {
         $host = parse_url($request->url(), PHP_URL_HOST);
         $system = $request['messages'][0]['content'];
@@ -146,8 +149,8 @@ class BilledUsageTest extends Orchestra
         $job = (new TranslateFields(new TranslationJobPayload($model, $fields)))->withFakeQueueInteractions();
 
         try {
-            $job->handle($this->app->make(TranslatorInterface::class), new TranslationWriter());
-        } catch (\CodingPartners\TranslaGenius\Exceptions\TranslationFailedException) {
+            $job->handle($this->app->make(TranslatorInterface::class), new TranslationWriter);
+        } catch (TranslationFailedException) {
             // A retryable failure would go back to the queue; irrelevant to the sums.
         }
 
@@ -304,7 +307,7 @@ class BilledUsageTest extends Orchestra
 
         (new TranslateFields(new TranslationJobPayload(TestTranslatableModel::find($model->id), ['name'], retranslate: [
             'name' => ['locale' => 'en', 'text' => 'B', 'keep' => []],
-        ])))->handle($this->app->make(TranslatorInterface::class), new TranslationWriter());
+        ])))->handle($this->app->make(TranslatorInterface::class), new TranslationWriter);
 
         $this->assertCount(1, $this->billed);
         $this->assertLogMatchesBilling();
@@ -349,8 +352,9 @@ class BilledUsageTest extends Orchestra
     public function test_a_billed_translation_whose_save_throws()
     {
         $model = TestTranslatableModel::create(['name' => ['en' => 'Hello'], 'description' => ['en' => '']]);
-        $failingWriter = new class extends TranslationWriter {
-            public function apply(\Illuminate\Database\Eloquent\Model $model, array $translations, array $sourceSnapshots = []): int
+        $failingWriter = new class extends TranslationWriter
+        {
+            public function apply(Model $model, array $translations, array $sourceSnapshots = []): int
             {
                 if (isset($translations['name']['es'])) {
                     throw new \RuntimeException('database went away');

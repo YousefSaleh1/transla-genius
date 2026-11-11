@@ -2,6 +2,8 @@
 
 namespace CodingPartners\TranslaGenius\Tests\Support;
 
+use CodingPartners\TranslaGenius\Contracts\TranslationJob;
+use CodingPartners\TranslaGenius\DTOs\TranslationJobPayload;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\Eloquent\Model;
@@ -16,21 +18,21 @@ use Illuminate\Queue\SerializesModels;
  * doesn't need a provider/Translator in the picture, only proof that this
  * class (not TranslateFields) was the one dispatched.
  */
-class MarkerTranslationJob implements ShouldQueue, \CodingPartners\TranslaGenius\Contracts\TranslationJob
+class MarkerTranslationJob implements ShouldQueue, TranslationJob
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     /** @var array<int, array{0: string, 1: mixed, 2: array}> */
     public static array $handledWith = [];
 
-    /** @var array<int, \CodingPartners\TranslaGenius\DTOs\TranslationJobPayload> Payloads seen by handle(), in order. */
+    /** @var array<int, TranslationJobPayload> Payloads seen by handle(), in order. */
     public static array $payloads = [];
 
     protected Model $model;
 
     protected array $fields;
 
-    public function __construct(protected \CodingPartners\TranslaGenius\DTOs\TranslationJobPayload $payload)
+    public function __construct(protected TranslationJobPayload $payload)
     {
         $this->model = $payload->model;
         $this->fields = $payload->fields;

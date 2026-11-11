@@ -55,7 +55,7 @@ class LifecycleEventsTest extends Orchestra
 
         Config::set('translagenius.supported_languages', ['en', 'ar', 'es']);
 
-        $migration = include __DIR__ . '/../database/migrations/2024_01_01_000000_create_test_tables.php';
+        $migration = include __DIR__.'/../database/migrations/2024_01_01_000000_create_test_tables.php';
         $migration->up();
     }
 
@@ -124,7 +124,8 @@ class LifecycleEventsTest extends Orchestra
 
     public function test_permanently_failed_translation_dispatches_translation_failed_event_with_exception()
     {
-        $failingProvider = new class implements TranslationProviderInterface {
+        $failingProvider = new class implements TranslationProviderInterface
+        {
             public function translate(TranslationRequest $request): TranslationResult
             {
                 throw new TranslationFailedException(

@@ -3,6 +3,7 @@
 namespace CodingPartners\TranslaGenius\Tests\Live;
 
 use CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface;
+use CodingPartners\TranslaGenius\DTOs\TranslationBatchRequest;
 use CodingPartners\TranslaGenius\DTOs\TranslationRequest;
 use CodingPartners\TranslaGenius\TranslaGeniusServiceProvider;
 use Illuminate\Support\Facades\Http;
@@ -47,11 +48,11 @@ class LivePresetsTest extends Orchestra
     }
 
     /**
-     * @param array<int, string> $required Each item is one env var, or
-     *        alternatives separated by "|".
+     * @param  array<int, string>  $required  Each item is one env var, or
+     *                                        alternatives separated by "|".
      */
     /**
-     * @param array<int, string> $required
+     * @param  array<int, string>  $required
      */
     protected function skipUnlessConfigured(string $preset, array $required): void
     {
@@ -71,7 +72,7 @@ class LivePresetsTest extends Orchestra
 
         putenv("TRANSLATION_PROVIDER={$preset}");
         $_ENV['TRANSLATION_PROVIDER'] = $_SERVER['TRANSLATION_PROVIDER'] = $preset;
-        $this->app['config']->set('translagenius', require __DIR__ . '/../../src/config/translagenius.php');
+        $this->app['config']->set('translagenius', require __DIR__.'/../../src/config/translagenius.php');
         $this->app->forgetInstance(TranslationProviderInterface::class);
 
         Http::record();
@@ -115,14 +116,14 @@ class LivePresetsTest extends Orchestra
      * valid from that single request (batching is forced on for the preset,
      * whatever TRANSLATION_BATCH says).
      *
-     * @param array<int, string> $required
+     * @param  array<int, string>  $required
      */
     #[DataProvider('presets')]
     public function test_preset_translates_three_locales_in_one_batch_request(string $preset, array $required)
     {
         $this->skipUnlessConfigured($preset, $required);
 
-        $this->app['config']->set('translagenius', require __DIR__ . '/../../src/config/translagenius.php');
+        $this->app['config']->set('translagenius', require __DIR__.'/../../src/config/translagenius.php');
         $this->app['config']->set("translagenius.providers.{$preset}.batch", true);
         $this->app['config']->set('translagenius.default', $preset);
         $this->app->forgetInstance(TranslationProviderInterface::class);
@@ -130,7 +131,7 @@ class LivePresetsTest extends Orchestra
         Http::record();
 
         $provider = $this->app->make(TranslationProviderInterface::class);
-        $batch = $provider->translateBatch(new \CodingPartners\TranslaGenius\DTOs\TranslationBatchRequest(
+        $batch = $provider->translateBatch(new TranslationBatchRequest(
             'Good morning, how are you today?',
             'en',
             ['es', 'fr', 'de'],

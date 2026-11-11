@@ -47,7 +47,7 @@ class OpenAiCompatibleProviderTest extends TestCase
             'test-api-url.com' => Http::response([
                 'choices' => [['message' => ['content' => 'Translated Text']]],
                 'usage' => ['prompt_tokens' => 12, 'completion_tokens' => 4],
-            ], 200)
+            ], 200),
         ]);
 
         $provider = new OpenAiCompatibleProvider($this->config());
@@ -177,7 +177,7 @@ class OpenAiCompatibleProviderTest extends TestCase
             ->translate(new TranslationRequest('Hi', 'en', 'ar'));
 
         Http::assertSent(fn (Request $request) => $request->header('api-key') === ['test-api-key']
-            && !$request->hasHeader('Authorization'));
+            && ! $request->hasHeader('Authorization'));
     }
 
     public function test_extra_headers_are_merged_and_empty_values_are_dropped()
@@ -193,8 +193,8 @@ class OpenAiCompatibleProviderTest extends TestCase
         ])))->translate(new TranslationRequest('Hi', 'en', 'ar'));
 
         Http::assertSent(fn (Request $request) => $request->header('HTTP-Referer') === ['https://example.test']
-            && !$request->hasHeader('X-OpenRouter-Title')
-            && !$request->hasHeader('X-Empty')
+            && ! $request->hasHeader('X-OpenRouter-Title')
+            && ! $request->hasHeader('X-Empty')
             && $request->header('Authorization') === ['Bearer test-api-key']);
     }
 
@@ -206,7 +206,7 @@ class OpenAiCompatibleProviderTest extends TestCase
             ->translate(new TranslationRequest('Hi', 'en', 'ar'));
 
         Http::assertSent(fn (Request $request) => $request['max_completion_tokens'] === 200
-            && !isset($request['max_tokens']));
+            && ! isset($request['max_tokens']));
     }
 
     public function test_null_or_empty_temperature_is_not_sent()
@@ -217,7 +217,7 @@ class OpenAiCompatibleProviderTest extends TestCase
             (new OpenAiCompatibleProvider($this->config(['temperature' => $value])))
                 ->translate(new TranslationRequest('Hi', 'en', 'ar'));
 
-            Http::assertSent(fn (Request $request) => !array_key_exists('temperature', $request->data()));
+            Http::assertSent(fn (Request $request) => ! array_key_exists('temperature', $request->data()));
         }
     }
 

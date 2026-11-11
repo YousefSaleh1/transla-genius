@@ -18,7 +18,7 @@ class TranslatorTest extends TestCase
 {
     public function test_delegates_to_the_injected_provider_and_returns_its_result()
     {
-        $translator = new Translator(new FakeTranslationProvider());
+        $translator = new Translator(new FakeTranslationProvider);
 
         $result = $translator->translate('Hello', 'en', 'ar');
 
@@ -28,7 +28,7 @@ class TranslatorTest extends TestCase
 
     public function test_builds_the_request_from_its_arguments()
     {
-        $provider = new FakeTranslationProvider();
+        $provider = new FakeTranslationProvider;
         $translator = new Translator($provider);
 
         $translator->translate('Bonjour', 'fr', 'en');

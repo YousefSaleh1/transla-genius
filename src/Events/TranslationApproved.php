@@ -15,6 +15,5 @@ class TranslationApproved
         public TranslationReview $review,
         public ?Model $reviewer,
         public bool $edited,
-    ) {
-    }
+    ) {}
 }

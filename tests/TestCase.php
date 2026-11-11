@@ -4,6 +4,7 @@ namespace CodingPartners\TranslaGenius\Tests;
 
 use CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider;
 use CodingPartners\TranslaGenius\TranslaGeniusServiceProvider;
+use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -25,8 +26,6 @@ class TestCase extends Orchestra
      * do. Override with TRANSLAGENIUS_TEST_DB_CONNECTION to run the tracked
      * suite against a real service instead (e.g. in CI, or to reproduce a
      * driver-specific failure locally).
-     *
-     * @var string
      */
     protected string $connection;
 
@@ -38,8 +37,6 @@ class TestCase extends Orchestra
      * 2. Creates the test database if it doesn't exist
      * 3. Sets up default package configuration
      * 4. Prepares the database schema
-     *
-     * @return void
      */
     protected function setUp(): void
     {
@@ -77,8 +74,6 @@ class TestCase extends Orchestra
      * Clean up the test environment
      *
      * Drops all test tables after each test to ensure a clean state
-     *
-     * @return void
      */
     protected function tearDown(): void
     {
@@ -97,7 +92,7 @@ class TestCase extends Orchestra
     /**
      * Get package service providers
      *
-     * @param  \Illuminate\Foundation\Application  $app
+     * @param  Application  $app
      * @return array
      */
     protected function getPackageProviders($app)
@@ -113,7 +108,7 @@ class TestCase extends Orchestra
      * environment variables regardless of driver (their defaults vary by
      * driver, e.g. the default port).
      *
-     * @param string $connection One of: mysql, mariadb, pgsql, sqlsrv, sqlite.
+     * @param  string  $connection  One of: mysql, mariadb, pgsql, sqlsrv, sqlite.
      * @return array<string, mixed>
      *
      * @throws \RuntimeException If $connection isn't a recognized driver.
@@ -168,7 +163,7 @@ class TestCase extends Orchestra
             ],
             default => throw new \RuntimeException(
                 "Unsupported TRANSLAGENIUS_TEST_DB_CONNECTION value '$connection'. "
-                . 'Supported: mysql, mariadb, pgsql, sqlsrv, sqlite.'
+                .'Supported: mysql, mariadb, pgsql, sqlsrv, sqlite.'
             ),
         };
     }
@@ -181,8 +176,9 @@ class TestCase extends Orchestra
      * "does it exist" check and creation syntax - none of them share
      * MySQL's `CREATE DATABASE IF NOT EXISTS` shorthand.
      *
-     * @throws \RuntimeException If database creation fails
      * @return void
+     *
+     * @throws \RuntimeException If database creation fails
      */
     protected function createDatabaseIfNotExists()
     {
@@ -213,7 +209,7 @@ class TestCase extends Orchestra
                 default => DB::connection('temp')->statement("CREATE DATABASE IF NOT EXISTS $database"),
             };
         } catch (\Exception $e) {
-            throw new \RuntimeException("Failed to create database '$database': " . $e->getMessage());
+            throw new \RuntimeException("Failed to create database '$database': ".$e->getMessage());
         } finally {
             // Only needed for this check; close it rather than keep one more
             // server connection open per test.
@@ -224,9 +220,6 @@ class TestCase extends Orchestra
     /**
      * PostgreSQL has no `CREATE DATABASE IF NOT EXISTS` shorthand, so
      * existence has to be checked explicitly first.
-     *
-     * @param string $database
-     * @return void
      */
     protected function createPostgresDatabaseIfNotExists(string $database): void
     {
@@ -235,7 +228,7 @@ class TestCase extends Orchestra
             [$database]
         );
 
-        if (!$exists) {
+        if (! $exists) {
             DB::connection('temp')->statement("CREATE DATABASE \"$database\"");
         }
     }
@@ -251,7 +244,7 @@ class TestCase extends Orchestra
     {
         $this->dropTables();
 
-        $migration = include __DIR__ . '/database/migrations/2024_01_01_000000_create_test_tables.php';
+        $migration = include __DIR__.'/database/migrations/2024_01_01_000000_create_test_tables.php';
         $migration->up();
     }
 

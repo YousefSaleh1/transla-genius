@@ -106,25 +106,23 @@ class JobPayloadContractTest extends TestCase
 
     public function test_a_class_that_does_not_implement_the_contract_is_rejected_at_dispatch()
     {
-        $legacy = new class (new TestTranslatableModel(), []) implements ShouldQueue {
+        $legacy = new class(new TestTranslatableModel, []) implements ShouldQueue
+        {
             use Dispatchable;
 
-            public function __construct(public Model $model, public array $fields)
-            {
-            }
+            public function __construct(public Model $model, public array $fields) {}
 
-            public function handle(): void
-            {
-            }
+            public function handle(): void {}
         };
         $legacyClass = get_class($legacy);
 
-        $model = new class extends TestTranslatableModel {
+        $model = new class extends TestTranslatableModel
+        {
             public static string $job;
 
             protected static function translationJobClass(): string
             {
-                return static::$job;
+                return self::$job;
             }
         };
         $model::$job = $legacyClass;

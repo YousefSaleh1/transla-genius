@@ -2,8 +2,8 @@
 
 namespace CodingPartners\TranslaGenius\Tests\Feature;
 
-use CodingPartners\TranslaGenius\DTOs\TranslationJobPayload;
 use CodingPartners\TranslaGenius\Contracts\TranslatorInterface;
+use CodingPartners\TranslaGenius\DTOs\TranslationJobPayload;
 use CodingPartners\TranslaGenius\Jobs\TranslateFields;
 use CodingPartners\TranslaGenius\Services\TranslationWriter;
 use CodingPartners\TranslaGenius\Tests\TestCase;
@@ -186,7 +186,7 @@ class SourceLocaleTest extends TestCase
         ]));
 
         (new TranslateFields(new TranslationJobPayload($model, ['name', 'description'], sourceLocale: 'ar')))
-            ->handle($this->app->make(TranslatorInterface::class), new TranslationWriter());
+            ->handle($this->app->make(TranslatorInterface::class), new TranslationWriter);
 
         sort($this->requests);
         $this->assertSame(['ar->en مرحبا', 'ar->es مرحبا'], $this->requests);
@@ -207,7 +207,7 @@ class SourceLocaleTest extends TestCase
         ]));
 
         (new TranslateFields(new TranslationJobPayload($model, ['name', 'description'], sourceLocale: 'ar')))
-            ->handle($this->app->make(TranslatorInterface::class), new TranslationWriter());
+            ->handle($this->app->make(TranslatorInterface::class), new TranslationWriter);
 
         sort($this->requests);
         $this->assertSame(['ar->en مرحبا', 'ar->es مرحبا'], $this->requests);
@@ -228,14 +228,14 @@ class SourceLocaleTest extends TestCase
         $legacyJob = new TranslateFields(new TranslationJobPayload($model, ['name'])); // no source locale, like an old payload
 
         app()->setLocale('ar'); // a worker in some unrelated locale
-        $legacyJob->handle($this->app->make(TranslatorInterface::class), new TranslationWriter());
+        $legacyJob->handle($this->app->make(TranslatorInterface::class), new TranslationWriter);
         $this->assertSame(['en->ar Hello'], $this->requests);
 
         $this->requests = [];
         config(['translagenius.source_locale' => 'es']);
         $model->refresh()->forgetTranslation('name', 'ar');
         TestTranslatableModel::withoutEvents(fn () => $model->save());
-        (new TranslateFields(new TranslationJobPayload($model->fresh(), ['name'])))->handle($this->app->make(TranslatorInterface::class), new TranslationWriter());
+        (new TranslateFields(new TranslationJobPayload($model->fresh(), ['name'])))->handle($this->app->make(TranslatorInterface::class), new TranslationWriter);
         $this->assertSame(['es->ar Hola'], $this->requests);
     }
 }

@@ -42,7 +42,7 @@ class ShippedPresetUsageTrackingTest extends Orchestra
             $_ENV[$key] = $_SERVER[$key] = $value;
         }
 
-        $app['config']->set('translagenius', require __DIR__ . '/../../src/config/translagenius.php');
+        $app['config']->set('translagenius', require __DIR__.'/../../src/config/translagenius.php');
         $app['config']->set('translagenius.supported_languages', ['en', 'ar']);
         $app['config']->set('database.default', 'testbench');
         $app['config']->set('database.connections.testbench', [
@@ -56,8 +56,8 @@ class ShippedPresetUsageTrackingTest extends Orchestra
     {
         parent::setUp();
 
-        (include __DIR__ . '/../database/migrations/2024_01_01_000000_create_test_tables.php')->up();
-        (include __DIR__ . '/../../src/database/migrations/create_translation_usage_logs_table.php.stub')->up();
+        (include __DIR__.'/../database/migrations/2024_01_01_000000_create_test_tables.php')->up();
+        (include __DIR__.'/../../src/database/migrations/create_translation_usage_logs_table.php.stub')->up();
     }
 
     protected function tearDown(): void

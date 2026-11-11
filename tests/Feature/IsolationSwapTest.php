@@ -52,7 +52,7 @@ class IsolationSwapTest extends Orchestra
 
         Config::set('translagenius.supported_languages', ['en', 'ar', 'es']);
 
-        $migration = include __DIR__ . '/../database/migrations/2024_01_01_000000_create_test_tables.php';
+        $migration = include __DIR__.'/../database/migrations/2024_01_01_000000_create_test_tables.php';
         $migration->up();
 
         MarkerTranslationJob::$handledWith = [];
@@ -97,7 +97,8 @@ class IsolationSwapTest extends Orchestra
         // Deliberately no Queue::fake() here - QUEUE_CONNECTION=sync means
         // the dispatched job runs for real, which is what this test needs
         // to observe (MarkerTranslationJob::$handledWith).
-        $model = new class extends TestTranslatableModel {
+        $model = new class extends TestTranslatableModel
+        {
             protected static function translationJobClass(): string
             {
                 return MarkerTranslationJob::class;
@@ -135,7 +136,7 @@ class IsolationSwapTest extends Orchestra
         $request = Request::create('/', 'GET');
         $request->headers->set('Accept-Language', 'de');
 
-        $middleware->handle($request, fn ($req) => new Response());
+        $middleware->handle($request, fn ($req) => new Response);
 
         // 'de' is in the fake resolver's supported list (it would NOT be
         // in the real DefaultLocaleResolver's, which only knows en/ar/es

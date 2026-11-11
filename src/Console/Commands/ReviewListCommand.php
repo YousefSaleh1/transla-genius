@@ -44,7 +44,7 @@ class ReviewListCommand extends Command
             ['Model', 'Field', 'Locale', 'Pending', 'Oldest'],
             $rows->map(fn ($r) => [$r->translatable_type, $r->field, $r->locale, $r->pending, $r->oldest])->all()
         );
-        $this->info('Total pending: ' . $rows->sum('pending'));
+        $this->info('Total pending: '.$rows->sum('pending'));
 
         return self::SUCCESS;
     }

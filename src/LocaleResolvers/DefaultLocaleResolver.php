@@ -17,8 +17,6 @@ class DefaultLocaleResolver implements LocaleResolverInterface
     /**
      * The locale content is currently being read/written in, read from
      * Laravel's own app()->getLocale().
-     *
-     * @return string
      */
     public function currentLocale(): string
     {

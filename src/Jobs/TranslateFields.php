@@ -3,11 +3,13 @@
 namespace CodingPartners\TranslaGenius\Jobs;
 
 use CodingPartners\TranslaGenius\Contracts\BatchTranslatorInterface;
+use CodingPartners\TranslaGenius\Contracts\HasTranslatableAttributes;
 use CodingPartners\TranslaGenius\Contracts\TranslationJob;
 use CodingPartners\TranslaGenius\Contracts\TranslatorInterface;
 use CodingPartners\TranslaGenius\DTOs\TranslationJobPayload;
 use CodingPartners\TranslaGenius\DTOs\TranslationResult;
 use CodingPartners\TranslaGenius\Events\TranslationCompleted;
+use CodingPartners\TranslaGenius\Events\TranslationFailed;
 use CodingPartners\TranslaGenius\Events\TranslationFailed as TranslationFailedEvent;
 use CodingPartners\TranslaGenius\Events\TranslationRequestBilled;
 use CodingPartners\TranslaGenius\Events\TranslationStarted;
@@ -15,11 +17,15 @@ use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
 use CodingPartners\TranslaGenius\Review\ReviewManager;
 use CodingPartners\TranslaGenius\Review\ReviewSettings;
 use CodingPartners\TranslaGenius\Services\TranslationWriter;
+use CodingPartners\TranslaGenius\Support\TranslationJobDispatcher;
+use CodingPartners\TranslaGenius\Traits\Translatable;
+use CodingPartners\TranslaGenius\TranslaGeniusServiceProvider;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Jobs\SyncJob;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -42,18 +48,18 @@ use Throwable;
  * once, from failed(), if the job gives up permanently. See each event's
  * own docblock for exactly when/why it fires.
  *
- * @see \CodingPartners\TranslaGenius\Traits\Translatable
- * @see \CodingPartners\TranslaGenius\Services\TranslationWriter
- * @see \CodingPartners\TranslaGenius\Events\TranslationStarted
- * @see \CodingPartners\TranslaGenius\Events\TranslationCompleted
- * @see \CodingPartners\TranslaGenius\Events\TranslationFailed
+ * @see Translatable
+ * @see TranslationWriter
+ * @see TranslationStarted
+ * @see TranslationCompleted
+ * @see TranslationFailed
  */
 class TranslateFields implements ShouldQueue, TranslationJob
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     /**
-     * @var Model&\CodingPartners\TranslaGenius\Contracts\HasTranslatableAttributes
+     * @var Model&HasTranslatableAttributes
      */
     protected Model $model;
 
@@ -77,8 +83,6 @@ class TranslateFields implements ShouldQueue, TranslationJob
      * The locale the content was authored in, captured at dispatch time (see
      * TranslationJobDispatcher::sourceLocale()). Null only for a job queued
      * by a version that didn't carry it - see resolvedSourceLocale().
-     *
-     * @var string|null
      */
     protected ?string $sourceLocale = null;
 
@@ -133,8 +137,6 @@ class TranslateFields implements ShouldQueue, TranslationJob
      * contract). The payload is unpacked into this job's own properties, so
      * SerializesModels handles the model exactly as before - and a job queued
      * by an earlier version, which has these same properties, still runs.
-     *
-     * @param TranslationJobPayload $payload
      */
     public function __construct(TranslationJobPayload $payload)
     {
@@ -143,7 +145,7 @@ class TranslateFields implements ShouldQueue, TranslationJob
         $this->retranslate = $payload->retranslate;
         $this->sourceLocale = $payload->sourceLocale;
         $this->options = $payload->options;
-        $this->tries = max(1, \CodingPartners\TranslaGenius\TranslaGeniusServiceProvider::intSetting(
+        $this->tries = max(1, TranslaGeniusServiceProvider::intSetting(
             config('translagenius.retries.job_tries'),
             3
         ));
@@ -158,14 +160,14 @@ class TranslateFields implements ShouldQueue, TranslationJob
      * rethrown so the queue applies $tries/backoff() as normal. Any other
      * exception propagates uncaught.
      *
-     * @param TranslatorInterface $translator Resolves the actual per-field,
-     *        per-locale translate() calls.
-     * @param TranslationWriter $writer Persists the computed translations
-     *        onto $this->model.
+     * @param  TranslatorInterface  $translator  Resolves the actual per-field,
+     *                                           per-locale translate() calls.
+     * @param  TranslationWriter  $writer  Persists the computed translations
+     *                                     onto $this->model.
      * @return void
      *
      * @throws TranslationFailedException If translation fails and is
-     *         retryable (propagated for the queue to retry).
+     *                                    retryable (propagated for the queue to retry).
      */
     public function handle(TranslatorInterface $translator, TranslationWriter $writer)
     {
@@ -188,7 +190,7 @@ class TranslateFields implements ShouldQueue, TranslationJob
                 ]);
             }
         } catch (TranslationFailedException $e) {
-            if (!$e->isRetryable()) {
+            if (! $e->isRetryable()) {
                 Log::error('Translation job failed permanently (not retryable)', [
                     'model_class' => get_class($this->model),
                     'model_id' => $this->model->getKey(),
@@ -208,7 +210,7 @@ class TranslateFields implements ShouldQueue, TranslationJob
             // attempt still fails through failed() and fires TranslationFailed.
             if ($e->getRetryAfter() !== null
                 && $this->job !== null
-                && !$this->job instanceof \Illuminate\Queue\Jobs\SyncJob
+                && ! $this->job instanceof SyncJob
                 && $this->attempts() < $this->tries
             ) {
                 $this->release($e->getRetryAfter());
@@ -235,9 +237,6 @@ class TranslateFields implements ShouldQueue, TranslationJob
      * a TranslationFailedException - anything else (e.g. a TranslationWriter
      * persistence failure) isn't a "translation failed" in the domain sense
      * that event names, so it's logged here but not turned into that event.
-     *
-     * @param \Throwable $exception
-     * @return void
      */
     public function failed(Throwable $exception): void
     {
@@ -286,10 +285,8 @@ class TranslateFields implements ShouldQueue, TranslationJob
      * request throws, only TranslationStarted will have fired for its pairs -
      * see failed() for the corresponding failure event.
      *
-     * @param TranslatorInterface $translator
-     * @param TranslationWriter $writer
-     * @param string $currentLocale The locale field values are read/translated from.
-     * @param array<int, string> $targetLanguages Locales to translate into.
+     * @param  string  $currentLocale  The locale field values are read/translated from.
+     * @param  array<int, string>  $targetLanguages  Locales to translate into.
      * @return int Number of pairs translated and saved by this call.
      */
     protected function translateMissingPairs(
@@ -311,7 +308,7 @@ class TranslateFields implements ShouldQueue, TranslationJob
             $fieldTranslations = $this->normalizeFieldTranslations($this->model->getTranslations($field), $currentLocale);
             $sourceText = $fieldTranslations[$currentLocale] ?? null;
 
-            if (!is_string($sourceText) || trim($sourceText) === '') {
+            if (! is_string($sourceText) || trim($sourceText) === '') {
                 // Empty everywhere: a legitimately empty field (an optional
                 // description, say) - nothing to do, nothing to report. Text in
                 // another locale but not the source one is what signals a wrong
@@ -335,7 +332,7 @@ class TranslateFields implements ShouldQueue, TranslationJob
                 continue;
             }
 
-            if (!$this->shouldTranslateField($field, $sourceText)) {
+            if (! $this->shouldTranslateField($field, $sourceText)) {
                 continue;
             }
 
@@ -343,7 +340,7 @@ class TranslateFields implements ShouldQueue, TranslationJob
             // for this source text (see ReviewManager::pairsToSkip()).
             $missing = array_values(array_filter(
                 $targetLanguages,
-                fn (string $locale) => empty($fieldTranslations[$locale]) && !in_array($locale, $skip[$field] ?? [], true)
+                fn (string $locale) => empty($fieldTranslations[$locale]) && ! in_array($locale, $skip[$field] ?? [], true)
             ));
 
             $saved += $this->translateField($translator, $writer, $field, $sourceText, $currentLocale, $missing);
@@ -362,10 +359,7 @@ class TranslateFields implements ShouldQueue, TranslationJob
      * changes while this job is translating, TranslationWriter discards the
      * result under its lock.
      *
-     * @param TranslatorInterface $translator
-     * @param TranslationWriter $writer
-     * @param string $field
-     * @param array{locale: string, text: string, keep: array<int, string>} $plan
+     * @param  array{locale: string, text: string, keep: array<int, string>}  $plan
      * @return int Pairs saved.
      */
     protected function retranslateField(TranslatorInterface $translator, TranslationWriter $writer, string $field, array $plan): int
@@ -380,7 +374,7 @@ class TranslateFields implements ShouldQueue, TranslationJob
             return 0;
         }
 
-        if (!$this->shouldTranslateField($field, $plan['text'])) {
+        if (! $this->shouldTranslateField($field, $plan['text'])) {
             return 0;
         }
 
@@ -400,7 +394,7 @@ class TranslateFields implements ShouldQueue, TranslationJob
         if (is_array($staleValues)) {
             $targets = array_values(array_filter(
                 $targets,
-                fn (string $locale) => !array_key_exists($locale, $staleValues)
+                fn (string $locale) => ! array_key_exists($locale, $staleValues)
                     || (string) $this->model->getTranslation($field, $locale, false) === $staleValues[$locale]
             ));
         }
@@ -430,16 +424,11 @@ class TranslateFields implements ShouldQueue, TranslationJob
      * usable (truncated, unparseable) is logged by the provider itself via
      * TranslationRequestBilled, and its result carries no tokens.
      *
-     * @param TranslatorInterface $translator
-     * @param TranslationWriter $writer
-     * @param string $field
-     * @param string $sourceText
-     * @param string $currentLocale
-     * @param array<int, string> $missing Locales to translate, in order.
-     * @param array{locale: string, text: string}|null $snapshot For a
-     *        re-translation: the source it was made from. Pairs then overwrite
-     *        what's stored, unless the source changed again, in which case the
-     *        rest of the field is abandoned (a newer job owns it).
+     * @param  array<int, string>  $missing  Locales to translate, in order.
+     * @param  array{locale: string, text: string}|null  $snapshot  For a
+     *                                                              re-translation: the source it was made from. Pairs then overwrite
+     *                                                              what's stored, unless the source changed again, in which case the
+     *                                                              rest of the field is abandoned (a newer job owns it).
      * @return int Pairs saved.
      */
     protected function translateField(
@@ -464,13 +453,13 @@ class TranslateFields implements ShouldQueue, TranslationJob
             $tokensAttributed = false;
 
             foreach ($missing as $locale) {
-                if (!isset($batch->translations[$locale])) {
+                if (! isset($batch->translations[$locale])) {
                     continue;
                 }
 
                 // The request's tokens go to the first pair it actually
                 // produced; a pair served from the cache never carries any.
-                $carriesTokens = !$tokensAttributed && !$batch->isCached($locale);
+                $carriesTokens = ! $tokensAttributed && ! $batch->isCached($locale);
                 $result = $batch->resultFor($locale, $carriesTokens);
                 $tokensAttributed = $tokensAttributed || $carriesTokens;
 
@@ -481,11 +470,11 @@ class TranslateFields implements ShouldQueue, TranslationJob
                 $saved += $outcome ? 1 : 0;
             }
 
-            $missing = array_values(array_filter($missing, fn ($locale) => !isset($batch->translations[$locale])));
+            $missing = array_values(array_filter($missing, fn ($locale) => ! isset($batch->translations[$locale])));
         }
 
         foreach ($missing as $locale) {
-            if (!isset($started[$locale])) {
+            if (! isset($started[$locale])) {
                 $this->dispatchStarted($field, $currentLocale, $locale, $sourceText);
             }
 
@@ -513,7 +502,7 @@ class TranslateFields implements ShouldQueue, TranslationJob
      * that was billed but not saved is reported (see reportUnused()), and so
      * is one whose save throws - the exception then propagates as before.
      *
-     * @param array{locale: string, text: string, targets?: array<string, string>|null}|null $snapshot
+     * @param  array{locale: string, text: string, targets?: array<string, string>|null}|null  $snapshot
      */
     protected function savePair(
         TranslationWriter $writer,
@@ -644,10 +633,6 @@ class TranslateFields implements ShouldQueue, TranslationJob
      * consulted before that field's content is sent to the external API.
      * Absent a definition, every field is sent (current/default behavior) -
      * this is an opt-in hook, not a behavior change for existing consumers.
-     *
-     * @param string $field
-     * @param string $value
-     * @return bool
      */
     protected function shouldTranslateField(string $field, string $value): bool
     {
@@ -663,8 +648,6 @@ class TranslateFields implements ShouldQueue, TranslationJob
      * A job serialized before that was carried (queued before an upgrade) has
      * none, and uses TRANSLATION_SOURCE_LOCALE, then config('app.locale') -
      * deterministically, never the worker's current locale.
-     *
-     * @return string
      */
     protected function resolvedSourceLocale(): string
     {
@@ -672,7 +655,7 @@ class TranslateFields implements ShouldQueue, TranslationJob
             return $this->sourceLocale;
         }
 
-        $fallback = \CodingPartners\TranslaGenius\Support\TranslationJobDispatcher::defaultSourceLocale();
+        $fallback = TranslationJobDispatcher::defaultSourceLocale();
 
         Log::info('TranslateFields: job carries no source locale (queued before it was recorded); using the default', [
             'model_class' => get_class($this->model),
@@ -687,8 +670,6 @@ class TranslateFields implements ShouldQueue, TranslationJob
      * The model's class basename, passed as prompt context (e.g. "Product").
      * An anonymous class has no meaningful name of its own, so its nearest
      * named parent is used instead.
-     *
-     * @return string
      */
     protected function modelContextName(): string
     {
@@ -706,8 +687,8 @@ class TranslateFields implements ShouldQueue, TranslationJob
      * through as-is if already an array, otherwise wrapped as the single
      * value for $currentLocale.
      *
-     * @param mixed $value The field's current value (array or scalar).
-     * @param string $currentLocale Locale to key a scalar $value under.
+     * @param  mixed  $value  The field's current value (array or scalar).
+     * @param  string  $currentLocale  Locale to key a scalar $value under.
      * @return array<string, string>
      */
     protected function normalizeFieldTranslations($value, string $currentLocale): array
@@ -717,7 +698,7 @@ class TranslateFields implements ShouldQueue, TranslationJob
         }
 
         return [
-            $currentLocale => $value
+            $currentLocale => $value,
         ];
     }
 }

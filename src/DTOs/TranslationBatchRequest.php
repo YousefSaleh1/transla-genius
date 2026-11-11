@@ -14,11 +14,11 @@ use InvalidArgumentException;
 final readonly class TranslationBatchRequest
 {
     /**
-     * @param string $text The source text to translate.
-     * @param string $sourceLocale The locale $text is written in.
-     * @param array<int, string> $targetLocales Locales to translate into (at least one).
-     * @param string|null $field The attribute being translated, if known.
-     * @param string|null $model The owning model's class basename, if known.
+     * @param  string  $text  The source text to translate.
+     * @param  string  $sourceLocale  The locale $text is written in.
+     * @param  array<int, string>  $targetLocales  Locales to translate into (at least one).
+     * @param  string|null  $field  The attribute being translated, if known.
+     * @param  string|null  $model  The owning model's class basename, if known.
      *
      * @throws InvalidArgumentException If $targetLocales is empty.
      */

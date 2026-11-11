@@ -10,7 +10,5 @@ class TranslationPendingReview
 {
     use Dispatchable;
 
-    public function __construct(public TranslationReview $review)
-    {
-    }
+    public function __construct(public TranslationReview $review) {}
 }

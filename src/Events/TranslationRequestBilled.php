@@ -28,14 +28,18 @@ class TranslationRequestBilled
     use Dispatchable;
 
     public const TRUNCATED = 'truncated';
+
     public const UNUSABLE = 'unusable';
+
     public const FAILED = 'failed';
+
     public const DISCARDED = 'discarded';
+
     public const UNSAVED = 'unsaved';
 
     /**
-     * @param string $outcome One of the constants above.
-     * @param array<int, string> $targetLocales Locale(s) the request was for.
+     * @param  string  $outcome  One of the constants above.
+     * @param  array<int, string>  $targetLocales  Locale(s) the request was for.
      */
     public function __construct(
         public string $outcome,
@@ -48,6 +52,5 @@ class TranslationRequestBilled
         public ?string $field = null,
         public ?string $modelClass = null,
         public int|string|null $modelId = null,
-    ) {
-    }
+    ) {}
 }

@@ -32,13 +32,13 @@ class ReviewApproveAllCommand extends Command
             ->when($locale, fn ($q) => $q->locale($locale))
             ->count();
 
-        $this->info("{$count} pending translation(s) for [{$model}]" . ($field ? " field [{$field}]" : '') . ($locale ? " locale [{$locale}]" : '') . '.');
+        $this->info("{$count} pending translation(s) for [{$model}]".($field ? " field [{$field}]" : '').($locale ? " locale [{$locale}]" : '').'.');
 
         if ($count === 0) {
             return self::SUCCESS;
         }
 
-        if (!$this->option('force') && !$this->confirm("Approve and publish these {$count} translation(s) as produced?", false)) {
+        if (! $this->option('force') && ! $this->confirm("Approve and publish these {$count} translation(s) as produced?", false)) {
             $this->warn('Aborted: nothing approved.');
 
             return self::SUCCESS;

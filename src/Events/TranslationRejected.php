@@ -15,6 +15,5 @@ class TranslationRejected
         public TranslationReview $review,
         public ?Model $reviewer,
         public ?string $note,
-    ) {
-    }
+    ) {}
 }

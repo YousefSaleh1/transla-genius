@@ -59,7 +59,7 @@ class FullyTranslatedScopeCrossDriverTest extends Orchestra
             ],
         ]);
 
-        $migration = include __DIR__ . '/../database/migrations/2024_01_01_000000_create_test_tables.php';
+        $migration = include __DIR__.'/../database/migrations/2024_01_01_000000_create_test_tables.php';
         $migration->up();
     }
 

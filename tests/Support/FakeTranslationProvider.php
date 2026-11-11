@@ -19,9 +19,7 @@ class FakeTranslationProvider implements TranslationProviderInterface
     /** @var TranslationRequest[] */
     public array $requests = [];
 
-    public function __construct(protected string $prefix = 'FAKE:')
-    {
-    }
+    public function __construct(protected string $prefix = 'FAKE:') {}
 
     public function translate(TranslationRequest $request): TranslationResult
     {

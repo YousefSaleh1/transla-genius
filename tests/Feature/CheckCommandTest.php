@@ -41,7 +41,7 @@ class CheckCommandTest extends Orchestra
 
     public function test_check_command_reports_a_config_file_published_under_the_old_name()
     {
-        $directory = sys_get_temp_dir() . '/translagenius-check-' . uniqid();
+        $directory = sys_get_temp_dir().'/translagenius-check-'.uniqid();
         mkdir($directory);
         file_put_contents("{$directory}/translaGenius.php", "<?php return [];\n");
         $this->app->useConfigPath($directory);

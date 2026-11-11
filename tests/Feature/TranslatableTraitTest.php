@@ -2,8 +2,9 @@
 
 namespace CodingPartners\TranslaGenius\Tests\Feature;
 
-use CodingPartners\TranslaGenius\Tests\TestModels\TestTranslatableModel;
+use CodingPartners\TranslaGenius\Jobs\TranslateFields;
 use CodingPartners\TranslaGenius\Tests\TestCase;
+use CodingPartners\TranslaGenius\Tests\TestModels\TestTranslatableModel;
 use Illuminate\Support\Facades\Queue;
 
 /**
@@ -30,10 +31,10 @@ class TranslatableTraitTest extends TestCase
 
         $model = TestTranslatableModel::create([
             'name' => ['en' => 'Test Name'],
-            'description' => ['en' => 'Test Description']
+            'description' => ['en' => 'Test Description'],
         ]);
 
-        Queue::assertPushed(\CodingPartners\TranslaGenius\Jobs\TranslateFields::class);
+        Queue::assertPushed(TranslateFields::class);
     }
 
     /**
@@ -52,14 +53,14 @@ class TranslatableTraitTest extends TestCase
 
         $model = TestTranslatableModel::create([
             'name' => ['en' => 'Test Name'],
-            'description' => ['en' => 'Test Description']
+            'description' => ['en' => 'Test Description'],
         ]);
 
-        Queue::assertPushed(\CodingPartners\TranslaGenius\Jobs\TranslateFields::class, 1);
+        Queue::assertPushed(TranslateFields::class, 1);
 
         $model->update(['name' => ['en' => 'Updated Name']]);
 
-        Queue::assertPushed(\CodingPartners\TranslaGenius\Jobs\TranslateFields::class, 2);
+        Queue::assertPushed(TranslateFields::class, 2);
     }
 
     /**
@@ -84,18 +85,18 @@ class TranslatableTraitTest extends TestCase
         // Create a fully translated model
         $translatedModel = TestTranslatableModel::create([
             'name' => ['en' => 'Test', 'ar' => 'اختبار', 'es' => 'Prueba'],
-            'description' => ['en' => 'Description', 'ar' => 'وصف', 'es' => 'Descripción']
+            'description' => ['en' => 'Description', 'ar' => 'وصف', 'es' => 'Descripción'],
         ]);
 
         // Create partially translated models
         $partialModel1 = TestTranslatableModel::create([
             'name' => ['en' => 'Test'],
-            'description' => ['en' => 'Description']
+            'description' => ['en' => 'Description'],
         ]);
 
         $partialModel2 = TestTranslatableModel::create([
             'name' => ['en' => 'Test'],
-            'description' => ['en' => 'Description']
+            'description' => ['en' => 'Description'],
         ]);
 
         $fullyTranslated = TestTranslatableModel::fullyTranslated()->get();

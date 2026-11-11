@@ -3,6 +3,7 @@
 namespace CodingPartners\TranslaGenius\Events;
 
 use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
+use CodingPartners\TranslaGenius\Jobs\TranslateFields;
 use Illuminate\Foundation\Events\Dispatchable;
 
 /**
@@ -25,25 +26,24 @@ use Illuminate\Foundation\Events\Dispatchable;
  * failed" in the domain sense this event names, so it isn't dispatched for
  * that case. See TranslateFields::failed() for how the two are told apart.
  *
- * @see \CodingPartners\TranslaGenius\Jobs\TranslateFields::failed()
- * @see \CodingPartners\TranslaGenius\Exceptions\TranslationFailedException
+ * @see TranslateFields::failed()
+ * @see TranslationFailedException
  */
 final readonly class TranslationFailed
 {
     use Dispatchable;
 
     /**
-     * @param string $modelClass Fully-qualified class of the model being translated.
-     * @param int|string|null $modelId Primary key of the model being
-     *        translated, or null if it couldn't be resolved (e.g. the
-     *        model was deleted before the job's terminal failure).
-     * @param TranslationFailedException $exception The exception that
-     *        caused the job to permanently fail.
+     * @param  string  $modelClass  Fully-qualified class of the model being translated.
+     * @param  int|string|null  $modelId  Primary key of the model being
+     *                                    translated, or null if it couldn't be resolved (e.g. the
+     *                                    model was deleted before the job's terminal failure).
+     * @param  TranslationFailedException  $exception  The exception that
+     *                                                 caused the job to permanently fail.
      */
     public function __construct(
         public string $modelClass,
         public int|string|null $modelId,
         public TranslationFailedException $exception,
-    ) {
-    }
+    ) {}
 }

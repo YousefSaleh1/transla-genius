@@ -12,12 +12,9 @@ use CodingPartners\TranslaGenius\Contracts\LocaleResolverInterface;
 class FakeLocaleResolver implements LocaleResolverInterface
 {
     /**
-     * @param string $current
-     * @param array<int, string> $supported
+     * @param  array<int, string>  $supported
      */
-    public function __construct(protected string $current, protected array $supported)
-    {
-    }
+    public function __construct(protected string $current, protected array $supported) {}
 
     public function currentLocale(): string
     {

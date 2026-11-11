@@ -15,9 +15,7 @@ class FakeTranslator implements TranslatorInterface
 {
     public array $calls = [];
 
-    public function __construct(protected string $prefix = 'TRANSLATOR-FAKE:')
-    {
-    }
+    public function __construct(protected string $prefix = 'TRANSLATOR-FAKE:') {}
 
     public function translate(string $text, string $sourceLocale, string $targetLocale, ?string $field = null, ?string $model = null): TranslationResult
     {

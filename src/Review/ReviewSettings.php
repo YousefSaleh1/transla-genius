@@ -12,8 +12,11 @@ use Illuminate\Database\Eloquent\Model;
 class ReviewSettings
 {
     public const KEEP = 'keep';
+
     public const CLEAR = 'clear';
+
     public const LEAVE = 'leave';
+
     public const RETRANSLATE = 'retranslate';
 
     public static function enabled(): bool
@@ -29,12 +32,12 @@ class ReviewSettings
      */
     public static function appliesTo(Model $model, string $field, string $locale): bool
     {
-        if (!self::enabled()) {
+        if (! self::enabled()) {
             return false;
         }
 
         $locales = self::list(config('translagenius.review.locales', []));
-        if ($locales !== [] && !in_array($locale, $locales, true)) {
+        if ($locales !== [] && ! in_array($locale, $locales, true)) {
             return false;
         }
 
@@ -66,7 +69,7 @@ class ReviewSettings
     public static function whilePending(Model $model, string $field): string
     {
         foreach ((array) config('translagenius.review.while_pending_overrides', []) as $class => $override) {
-            if (!is_string($class) || !$model instanceof $class) {
+            if (! is_string($class) || ! $model instanceof $class) {
                 continue;
             }
 

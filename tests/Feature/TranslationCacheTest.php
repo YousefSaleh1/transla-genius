@@ -2,10 +2,13 @@
 
 namespace CodingPartners\TranslaGenius\Tests\Feature;
 
-use CodingPartners\TranslaGenius\DTOs\TranslationJobPayload;
 use CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface;
 use CodingPartners\TranslaGenius\Contracts\TranslatorInterface;
+use CodingPartners\TranslaGenius\DTOs\TranslationBatchRequest;
+use CodingPartners\TranslaGenius\DTOs\TranslationJobPayload;
+use CodingPartners\TranslaGenius\DTOs\TranslationResult;
 use CodingPartners\TranslaGenius\Events\TranslationCompleted;
+use CodingPartners\TranslaGenius\Events\TranslationRequestBilled;
 use CodingPartners\TranslaGenius\Events\TranslationStarted;
 use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
 use CodingPartners\TranslaGenius\Jobs\TranslateFields;
@@ -18,6 +21,7 @@ use CodingPartners\TranslaGenius\Services\TranslationWriter;
 use CodingPartners\TranslaGenius\Services\Translator;
 use CodingPartners\TranslaGenius\Tests\TestCase;
 use CodingPartners\TranslaGenius\Tests\TestModels\TestTranslatableModel;
+use GuzzleHttp\Promise\PromiseInterface;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
@@ -25,6 +29,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Sleep;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 /**
  * TRANSLATION_CACHE: a CachingProvider wrapped around the resolved provider,
@@ -68,7 +73,7 @@ class TranslationCacheTest extends TestCase
         $this->reresolve();
     }
 
-    protected function answer(Request $request): \GuzzleHttp\Promise\PromiseInterface
+    protected function answer(Request $request): PromiseInterface
     {
         $host = parse_url($request->url(), PHP_URL_HOST);
         $system = $request['messages'][0]['content'];
@@ -86,7 +91,7 @@ class TranslationCacheTest extends TestCase
 
         if (preg_match('/into each of these languages: (.+?)\. Respond/', $system, $m) === 1) {
             $locales = explode(', ', $m[1]);
-            $this->requests[] = "{$host} batch " . implode(',', $locales);
+            $this->requests[] = "{$host} batch ".implode(',', $locales);
             $this->billed[] = self::TOKENS;
             $content = json_encode(array_combine($locales, array_map(fn ($l) => "{$host}|{$text}|{$l}", $locales)));
         } else {
@@ -114,7 +119,7 @@ class TranslationCacheTest extends TestCase
         return $this->app->make(TranslationProviderInterface::class);
     }
 
-    protected function translate(string $text, string $target = 'ar', ?string $field = null, ?string $model = null): \CodingPartners\TranslaGenius\DTOs\TranslationResult
+    protected function translate(string $text, string $target = 'ar', ?string $field = null, ?string $model = null): TranslationResult
     {
         return $this->app->make(TranslatorInterface::class)->translate($text, 'en', $target, $field, $model);
     }
@@ -122,7 +127,7 @@ class TranslationCacheTest extends TestCase
     protected function runJob(array $attributes, array $fields = ['name', 'description']): TestTranslatableModel
     {
         $model = TestTranslatableModel::create($attributes + ['name' => ['en' => ''], 'description' => ['en' => '']]);
-        (new TranslateFields(new TranslationJobPayload($model, $fields)))->handle($this->app->make(TranslatorInterface::class), new TranslationWriter());
+        (new TranslateFields(new TranslationJobPayload($model, $fields)))->handle($this->app->make(TranslatorInterface::class), new TranslationWriter);
 
         return $model;
     }
@@ -245,7 +250,7 @@ class TranslationCacheTest extends TestCase
         ];
     }
 
-    #[\PHPUnit\Framework\Attributes\DataProvider('outputAffectingSettings')]
+    #[DataProvider('outputAffectingSettings')]
     public function test_changing_an_output_affecting_setting_misses(string $setting, mixed $value)
     {
         $this->translate('Free shipping');
@@ -400,10 +405,10 @@ class TranslationCacheTest extends TestCase
             return Http::response(['choices' => [['message' => ['content' => $reply['content']], 'finish_reason' => $reply['finish_reason']]]]);
         };
 
-        $batch = $this->provider()->translateBatch(new \CodingPartners\TranslaGenius\DTOs\TranslationBatchRequest('Blue', 'en', ['ar', 'es', 'fr']));
+        $batch = $this->provider()->translateBatch(new TranslationBatchRequest('Blue', 'en', ['ar', 'es', 'fr']));
         $this->assertTrue($batch->truncated);
 
-        $batch = $this->provider()->translateBatch(new \CodingPartners\TranslaGenius\DTOs\TranslationBatchRequest('Blue', 'en', ['ar', 'es', 'fr']));
+        $batch = $this->provider()->translateBatch(new TranslationBatchRequest('Blue', 'en', ['ar', 'es', 'fr']));
         $this->assertSame(['ar' => 'valid-ar', 'fr' => 'valid-fr'], $batch->translations);
 
         $this->override = null;
@@ -428,9 +433,9 @@ class TranslationCacheTest extends TestCase
 
     protected function usageAfterTwoIdenticalRecords(): array
     {
-        (include __DIR__ . '/../../src/database/migrations/create_translation_usage_logs_table.php.stub')->up();
+        (include __DIR__.'/../../src/database/migrations/create_translation_usage_logs_table.php.stub')->up();
         Event::listen(TranslationCompleted::class, LogTranslationUsage::class);
-        Event::listen(\CodingPartners\TranslaGenius\Events\TranslationRequestBilled::class, [LogTranslationUsage::class, 'handleBilled']);
+        Event::listen(TranslationRequestBilled::class, [LogTranslationUsage::class, 'handleBilled']);
         config([
             'translagenius.providers.openrouter.cost_per_1k_prompt_tokens' => 1.0,
             'translagenius.providers.openrouter.cost_per_1k_completion_tokens' => 2.0,

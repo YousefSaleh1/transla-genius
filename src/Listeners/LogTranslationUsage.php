@@ -30,15 +30,11 @@ use CodingPartners\TranslaGenius\Models\TranslationUsageLog;
  * Failure-rate visibility is what TranslationFailed itself, plus your own
  * logging/monitoring, is for.
  *
- * @see \CodingPartners\TranslaGenius\Models\TranslationUsageLog
- * @see \CodingPartners\TranslaGenius\Events\TranslationCompleted
+ * @see TranslationUsageLog
+ * @see TranslationCompleted
  */
 class LogTranslationUsage
 {
-    /**
-     * @param TranslationCompleted $event
-     * @return void
-     */
     public function handle(TranslationCompleted $event): void
     {
         TranslationUsageLog::create([
@@ -62,9 +58,6 @@ class LogTranslationUsage
      * (truncated, unusable, failed, discarded), so summed usage covers every
      * billed request. A batch request's row lists its locales comma-separated
      * in target_locale.
-     *
-     * @param TranslationRequestBilled $event
-     * @return void
      */
     public function handleBilled(TranslationRequestBilled $event): void
     {

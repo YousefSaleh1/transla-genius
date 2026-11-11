@@ -2,9 +2,11 @@
 
 namespace CodingPartners\TranslaGenius\Console\Commands;
 
+use CodingPartners\TranslaGenius\Jobs\TranslateFields;
 use CodingPartners\TranslaGenius\Support\TranslationJobDispatcher;
 use CodingPartners\TranslaGenius\Traits\Translatable;
 use Illuminate\Console\Command;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -40,9 +42,9 @@ use Illuminate\Database\Eloquent\Model;
  * honest: this command always targets the model's full configured
  * language set, exactly like the automatic flow does.
  *
- * @see \CodingPartners\TranslaGenius\Traits\Translatable::scopeNotFullyTranslated()
- * @see \CodingPartners\TranslaGenius\Traits\Translatable::getTranslationJobClass()
- * @see \CodingPartners\TranslaGenius\Jobs\TranslateFields
+ * @see Translatable::scopeNotFullyTranslated()
+ * @see Translatable::getTranslationJobClass()
+ * @see TranslateFields
  */
 class BackfillCommand extends Command
 {
@@ -64,8 +66,8 @@ class BackfillCommand extends Command
      * unless overridden) for each.
      *
      * @return int self::SUCCESS on a clean run (including an aborted or
-     *         dry-run one), self::FAILURE if {model} is invalid or
-     *         --chunk isn't a positive integer.
+     *             dry-run one), self::FAILURE if {model} is invalid or
+     *             --chunk isn't a positive integer.
      */
     public function handle(): int
     {
@@ -88,7 +90,7 @@ class BackfillCommand extends Command
         }
 
         /** @var Model&Translatable $modelInstance */
-        $modelInstance = new $modelClass();
+        $modelInstance = new $modelClass;
         $translatableFields = $modelInstance->getTranslatableAttributes();
 
         if (empty($translatableFields)) {
@@ -97,7 +99,7 @@ class BackfillCommand extends Command
             return self::SUCCESS;
         }
 
-        /** @var class-string<\Illuminate\Contracts\Queue\ShouldQueue> $jobClass */
+        /** @var class-string<ShouldQueue> $jobClass */
         $jobClass = $modelClass::getTranslationJobClass();
         $jobClassLabel = class_basename($jobClass);
 
@@ -107,7 +109,7 @@ class BackfillCommand extends Command
         $sourceLocale = $sourceLocale !== '' ? $sourceLocale : TranslationJobDispatcher::defaultSourceLocale();
         $targetLocales = get_supported_languages($sourceLocale);
 
-        $this->line("Source locale: {$sourceLocale}; target locale(s): " . implode(', ', $targetLocales));
+        $this->line("Source locale: {$sourceLocale}; target locale(s): ".implode(', ', $targetLocales));
 
         $buildQuery = fn () => $modelClass::query()->notFullyTranslated($sourceLocale);
 
@@ -122,7 +124,7 @@ class BackfillCommand extends Command
         $estimatedCalls = $matchingCount * count($translatableFields) * count($targetLocales);
         $this->line(
             "Up to {$estimatedCalls} translation API call(s) may result (records x fields x locales - "
-            . 'field/locale pairs already translated are skipped automatically, at no API cost).'
+            .'field/locale pairs already translated are skipped automatically, at no API cost).'
         );
 
         if ($this->option('dry-run')) {
@@ -134,7 +136,7 @@ class BackfillCommand extends Command
         $confirmed = $this->option('force')
             || $this->confirm("Dispatch {$jobClassLabel} for these {$matchingCount} record(s), translating from [{$sourceLocale}]?", false);
 
-        if (!$confirmed) {
+        if (! $confirmed) {
             $this->warn('Aborted: no jobs dispatched.');
 
             return self::SUCCESS;
@@ -168,21 +170,20 @@ class BackfillCommand extends Command
      * with a clear, actionable message rather than failing deep inside the
      * chunk loop (or query builder) with a cryptic error.
      *
-     * @param string $modelClass
      * @return string|null An error message if invalid, null if valid.
      */
     protected function validateModelClass(string $modelClass): ?string
     {
-        if (!class_exists($modelClass)) {
+        if (! class_exists($modelClass)) {
             return "Class [{$modelClass}] does not exist.";
         }
 
-        if (!is_subclass_of($modelClass, Model::class)) {
-            return "[{$modelClass}] is not an Eloquent model (must extend " . Model::class . ').';
+        if (! is_subclass_of($modelClass, Model::class)) {
+            return "[{$modelClass}] is not an Eloquent model (must extend ".Model::class.').';
         }
 
-        if (!in_array(Translatable::class, class_uses_recursive($modelClass), true)) {
-            return "[{$modelClass}] does not use the " . Translatable::class . ' trait.';
+        if (! in_array(Translatable::class, class_uses_recursive($modelClass), true)) {
+            return "[{$modelClass}] does not use the ".Translatable::class.' trait.';
         }
 
         return null;

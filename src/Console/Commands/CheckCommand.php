@@ -31,8 +31,8 @@ class CheckCommand extends Command
      * Run the JSON-support check appropriate to the connection's driver.
      *
      * @return int self::SUCCESS if the connection supports the JSON queries
-     *         this package relies on, self::FAILURE otherwise (including
-     *         for a driver this package hasn't verified compatibility with).
+     *             this package relies on, self::FAILURE otherwise (including
+     *             for a driver this package hasn't verified compatibility with).
      */
     public function handle(): int
     {
@@ -70,7 +70,7 @@ class CheckCommand extends Command
         $directory = $this->laravel->configPath();
         $files = is_dir($directory) ? scandir($directory) : [];
 
-        if (in_array('translaGenius.php', $files, true) && !in_array('translagenius.php', $files, true)) {
+        if (in_array('translaGenius.php', $files, true) && ! in_array('translagenius.php', $files, true)) {
             $this->error('Found config/translaGenius.php, but TranslaGenius 4.0 reads config/translagenius.php (all lowercase).');
             $this->line('  Its settings are being ignored. Rename the file to config/translagenius.php and replace');
             $this->line("  config('translaGenius...') with config('translagenius...') in your own code - see UPGRADE.md.");
@@ -84,7 +84,6 @@ class CheckCommand extends Command
     /**
      * Verify SQLite JSON1 functions are available on $connection.
      *
-     * @param ConnectionInterface $connection
      * @return int self::SUCCESS or self::FAILURE.
      */
     protected function checkSqlite(ConnectionInterface $connection): int
@@ -99,7 +98,7 @@ class CheckCommand extends Command
             $this->line('sufficient on its own - many pre-3.38 builds (older Debian/Ubuntu base');
             $this->line('images, some bundled Windows builds) shipped without JSON1 compiled in.');
             $this->line('');
-            $this->line('Underlying error: ' . $e->getMessage());
+            $this->line('Underlying error: '.$e->getMessage());
 
             return self::FAILURE;
         }
@@ -113,8 +112,7 @@ class CheckCommand extends Command
     /**
      * Verify MySQL/MariaDB-style JSON_EXTRACT is available on $connection.
      *
-     * @param ConnectionInterface $connection
-     * @param string $label Driver name shown in output (e.g. "MySQL/MariaDB").
+     * @param  string  $label  Driver name shown in output (e.g. "MySQL/MariaDB").
      * @return int self::SUCCESS or self::FAILURE.
      */
     protected function checkJsonExtract(ConnectionInterface $connection, string $label): int
@@ -123,7 +121,7 @@ class CheckCommand extends Command
             $connection->select("select json_extract('{}', '$') as x");
         } catch (Throwable $e) {
             $this->error("{$label}: JSON functions are not available on this connection.");
-            $this->line('Underlying error: ' . $e->getMessage());
+            $this->line('Underlying error: '.$e->getMessage());
 
             return self::FAILURE;
         }
@@ -136,7 +134,6 @@ class CheckCommand extends Command
     /**
      * Verify PostgreSQL JSON operators are available on $connection.
      *
-     * @param ConnectionInterface $connection
      * @return int self::SUCCESS or self::FAILURE.
      */
     protected function checkPostgres(ConnectionInterface $connection): int
@@ -145,7 +142,7 @@ class CheckCommand extends Command
             $connection->select("select '{}'::json ->> 'x' as x");
         } catch (Throwable $e) {
             $this->error('PostgreSQL: JSON functions are not available on this connection.');
-            $this->line('Underlying error: ' . $e->getMessage());
+            $this->line('Underlying error: '.$e->getMessage());
 
             return self::FAILURE;
         }
@@ -158,7 +155,6 @@ class CheckCommand extends Command
     /**
      * Verify SQL Server's JSON_VALUE is available on $connection.
      *
-     * @param ConnectionInterface $connection
      * @return int self::SUCCESS or self::FAILURE.
      */
     protected function checkSqlServer(ConnectionInterface $connection): int
@@ -168,7 +164,7 @@ class CheckCommand extends Command
         } catch (Throwable $e) {
             $this->error('SQL Server: JSON_VALUE is not available on this connection.');
             $this->line('TranslaGenius requires SQL Server 2016+ (JSON_VALUE was introduced there).');
-            $this->line('Underlying error: ' . $e->getMessage());
+            $this->line('Underlying error: '.$e->getMessage());
 
             return self::FAILURE;
         }
@@ -182,7 +178,6 @@ class CheckCommand extends Command
      * Report that this driver hasn't been verified, and fail: an unknown
      * driver should be investigated, not assumed to work.
      *
-     * @param string $driver
      * @return int self::FAILURE.
      */
     protected function warnUnknownDriver(string $driver): int

@@ -32,14 +32,14 @@ class CachingProvider implements BatchTranslationProviderInterface
     public const KEY_PREFIX = 'translagenius';
 
     /**
-     * @param TranslationProviderInterface $inner The provider being cached.
-     * @param Repository $cache The cache store to use.
-     * @param int|null $ttl Seconds to keep an entry; null keeps it forever.
-     * @param string $fingerprint Stable hash of the output-affecting setup.
-     * @param bool $keyByField Include the field name in the key (when a prompt uses {field}).
-     * @param bool $keyByModel Include the model name in the key (when a prompt uses {model}).
-     * @param string|null $cacheableProvider Only results whose `provider` equals this are
-     *        stored (the chain's primary); null stores results from any provider.
+     * @param  TranslationProviderInterface  $inner  The provider being cached.
+     * @param  Repository  $cache  The cache store to use.
+     * @param  int|null  $ttl  Seconds to keep an entry; null keeps it forever.
+     * @param  string  $fingerprint  Stable hash of the output-affecting setup.
+     * @param  bool  $keyByField  Include the field name in the key (when a prompt uses {field}).
+     * @param  bool  $keyByModel  Include the model name in the key (when a prompt uses {model}).
+     * @param  string|null  $cacheableProvider  Only results whose `provider` equals this are
+     *                                          stored (the chain's primary); null stores results from any provider.
      */
     public function __construct(
         protected TranslationProviderInterface $inner,
@@ -49,8 +49,7 @@ class CachingProvider implements BatchTranslationProviderInterface
         protected bool $keyByField,
         protected bool $keyByModel,
         protected ?string $cacheableProvider = null,
-    ) {
-    }
+    ) {}
 
     public function inner(): TranslationProviderInterface
     {
@@ -103,7 +102,7 @@ class CachingProvider implements BatchTranslationProviderInterface
             }
         }
 
-        if (count($misses) < 2 || !$this->supportsBatching()) {
+        if (count($misses) < 2 || ! $this->supportsBatching()) {
             return new TranslationBatchResult(
                 translations: $translations,
                 provider: $providers[0] ?? null,
@@ -168,7 +167,7 @@ class CachingProvider implements BatchTranslationProviderInterface
             $parts['model'] = (string) $model;
         }
 
-        return self::KEY_PREFIX . ':' . self::KEY_VERSION . ':' . hash('sha256', json_encode($parts, JSON_UNESCAPED_UNICODE));
+        return self::KEY_PREFIX.':'.self::KEY_VERSION.':'.hash('sha256', json_encode($parts, JSON_UNESCAPED_UNICODE));
     }
 
     /**
@@ -185,7 +184,7 @@ class CachingProvider implements BatchTranslationProviderInterface
 
     protected function store(string $key, string $text, ?string $provider): void
     {
-        if (!$this->shouldStore($text, $provider)) {
+        if (! $this->shouldStore($text, $provider)) {
             return;
         }
 

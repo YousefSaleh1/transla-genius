@@ -3,10 +3,12 @@
 namespace CodingPartners\TranslaGenius\Tests\Unit;
 
 use CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface;
+use CodingPartners\TranslaGenius\DTOs\TranslationRequest;
 use CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider;
 use CodingPartners\TranslaGenius\Services\Translator;
-use CodingPartners\TranslaGenius\TranslaGeniusServiceProvider;
 use CodingPartners\TranslaGenius\Tests\TestCase;
+use CodingPartners\TranslaGenius\TranslaGeniusServiceProvider;
+use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
 /**
@@ -80,14 +82,14 @@ class ServiceProviderTest extends TestCase
             ],
         ]);
 
-        \Illuminate\Support\Facades\Http::fake([
-            'gateway.test/*' => \Illuminate\Support\Facades\Http::response([
+        Http::fake([
+            'gateway.test/*' => Http::response([
                 'choices' => [['message' => ['content' => 'مرحبا']]],
             ]),
         ]);
 
         $result = $this->app->make(TranslationProviderInterface::class)
-            ->translate(new \CodingPartners\TranslaGenius\DTOs\TranslationRequest('Hello', 'en', 'ar'));
+            ->translate(new TranslationRequest('Hello', 'en', 'ar'));
 
         $this->assertSame('my-gateway', $result->provider);
     }
@@ -113,7 +115,7 @@ class ServiceProviderTest extends TestCase
         ]);
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('provider [broken] has driver class [stdClass], which does not implement ' . TranslationProviderInterface::class);
+        $this->expectExceptionMessage('provider [broken] has driver class [stdClass], which does not implement '.TranslationProviderInterface::class);
 
         $this->app->make(TranslationProviderInterface::class);
     }

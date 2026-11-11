@@ -2,9 +2,13 @@
 
 namespace CodingPartners\TranslaGenius\Traits;
 
-use CodingPartners\TranslaGenius\Support\TranslationJobDispatcher;
 use CodingPartners\TranslaGenius\Jobs\TranslateFields;
+use CodingPartners\TranslaGenius\Models\TranslationReview;
+use CodingPartners\TranslaGenius\Support\KeyCast;
+use CodingPartners\TranslaGenius\Support\TranslationJobDispatcher;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Spatie\Translatable\HasTranslations;
 
 /**
@@ -13,8 +17,6 @@ use Spatie\Translatable\HasTranslations;
  * This trait provides functionality for translating fields in an Eloquent model.
  * It automatically dispatches translation jobs when a model is created or updated,
  * and provides a scope to filter fully translated models.
- *
- * @package CodingPartners\TranslaGenius\Traits
  */
 trait Translatable
 {
@@ -59,7 +61,7 @@ trait Translatable
      * visibility, which would force every existing `protected` override
      * (including the one documented in the README) to change too.
      *
-     * @return class-string<\Illuminate\Contracts\Queue\ShouldQueue>
+     * @return class-string<ShouldQueue>
      *
      * @see self::getTranslationJobClass() The public accessor for this.
      */
@@ -74,7 +76,7 @@ trait Translatable
      * on create/update, including a model's own override, without that
      * override point itself needing to be public.
      *
-     * @return class-string<\Illuminate\Contracts\Queue\ShouldQueue>
+     * @return class-string<ShouldQueue>
      *
      * @see self::translationJobClass() The overridable extension point this exposes.
      */
@@ -89,8 +91,8 @@ trait Translatable
      * only touches non-source-locale data (or non-translatable columns)
      * doesn't trigger a needless re-translation dispatch.
      *
-     * @param \Illuminate\Database\Eloquent\Model $model
-     * @param array<int, string> $translatableFields
+     * @param  Model  $model
+     * @param  array<int, string>  $translatableFields
      * @return bool
      */
     /**
@@ -102,11 +104,10 @@ trait Translatable
      * stale and gets re-translated and overwritten. Fields whose source didn't
      * change aren't in the plan.
      *
-     * @param \Illuminate\Database\Eloquent\Model $model
-     * @param array<int, string> $translatableFields
-     * Each remaining target's stored value at this moment is snapshotted too
-     * (`targets`): it is overwritten only while it still holds that value.
-     *
+     * @param  Model  $model
+     * @param  array<int, string>  $translatableFields
+     *                                                  Each remaining target's stored value at this moment is snapshotted too
+     *                                                  (`targets`): it is overwritten only while it still holds that value.
      * @return array<string, array{locale: string, text: string, keep: array<int, string>, targets: array<string, string>}>
      */
     protected static function staleTranslationPlan($model, array $translatableFields): array
@@ -115,7 +116,7 @@ trait Translatable
         $plan = [];
 
         foreach ($translatableFields as $field) {
-            if (!$model->isDirty($field)) {
+            if (! $model->isDirty($field)) {
                 continue;
             }
 
@@ -125,7 +126,7 @@ trait Translatable
             $current = $model->getTranslations($field);
             $newSource = $current[$sourceLocale] ?? null;
 
-            if (!is_string($newSource) || $newSource === '' || ($original[$sourceLocale] ?? null) === $newSource) {
+            if (! is_string($newSource) || $newSource === '' || ($original[$sourceLocale] ?? null) === $newSource) {
                 continue;
             }
 
@@ -141,7 +142,7 @@ trait Translatable
             // retry skips what it already replaced and a later hand edit wins.
             $targets = [];
             foreach (get_supported_languages($sourceLocale) as $locale) {
-                if (!in_array($locale, $keep, true)) {
+                if (! in_array($locale, $keep, true)) {
                     $targets[$locale] = (string) ($current[$locale] ?? '');
                 }
             }
@@ -176,8 +177,6 @@ trait Translatable
     /**
      * Get the names of the attributes that are translatable.
      * Helper method to ensure consistency.
-     *
-     * @return array
      */
     public function getTranslatableAttributes(): array
     {
@@ -193,16 +192,15 @@ trait Translatable
      * so it compiles to the correct JSON-extraction expression per driver
      * (MySQL, PostgreSQL, SQLite) instead of only ever working on MySQL.
      *
-     * @param \Illuminate\Database\Eloquent\Builder $query
-     * @param string|null $sourceLocale Locale content is authored in; its targets
-     *        are every other supported locale. Null = the current locale.
-     * @return \Illuminate\Database\Eloquent\Builder
+     * @param  string|null  $sourceLocale  Locale content is authored in; its targets
+     *                                     are every other supported locale. Null = the current locale.
+     * @return Builder
      *
      * @see self::scopeNotFullyTranslated() The inverse.
      */
     public function scopeFullyTranslated(Builder $query, ?string $sourceLocale = null)
     {
-        if (empty($this->translatable) || !is_array($this->translatable)) {
+        if (empty($this->translatable) || ! is_array($this->translatable)) {
             return $query;
         }
 
@@ -234,16 +232,15 @@ trait Translatable
      * against them too). Same `column->path` JSON syntax as
      * scopeFullyTranslated(), so it's equally driver-agnostic.
      *
-     * @param \Illuminate\Database\Eloquent\Builder $query
-     * @param string|null $sourceLocale Locale content is authored in; its targets
-     *        are every other supported locale. Null = the current locale.
-     * @return \Illuminate\Database\Eloquent\Builder
+     * @param  string|null  $sourceLocale  Locale content is authored in; its targets
+     *                                     are every other supported locale. Null = the current locale.
+     * @return Builder
      *
      * @see self::scopeFullyTranslated() The inverse.
      */
     public function scopeNotFullyTranslated(Builder $query, ?string $sourceLocale = null)
     {
-        if (empty($this->translatable) || !is_array($this->translatable)) {
+        if (empty($this->translatable) || ! is_array($this->translatable)) {
             return $query;
         }
 
@@ -267,15 +264,12 @@ trait Translatable
      * translations are what fullyTranslated()/notFullyTranslated() look at;
      * this looks at the pending ones.
      *
-     * @param \Illuminate\Database\Eloquent\Builder $query
-     * @param string|null $field
-     * @param string|null $locale
-     * @return \Illuminate\Database\Eloquent\Builder
+     * @return Builder
      */
     public function scopePendingReview(Builder $query, ?string $field = null, ?string $locale = null)
     {
         $model = $query->getModel();
-        $ownerKey = \CodingPartners\TranslaGenius\Support\KeyCast::asString($query->getConnection(), $model->getQualifiedKeyName());
+        $ownerKey = KeyCast::asString($query->getConnection(), $model->getQualifiedKeyName());
 
         // A correlated subquery: no list of ids is ever bound, so it works at
         // any queue size (a bound id list would hit SQL Server's ~2,100
@@ -284,7 +278,7 @@ trait Translatable
             $sub->selectRaw('1')
                 ->from('translation_reviews')
                 ->where('translation_reviews.translatable_type', $model->getMorphClass())
-                ->where('translation_reviews.status', \CodingPartners\TranslaGenius\Models\TranslationReview::PENDING)
+                ->where('translation_reviews.status', TranslationReview::PENDING)
                 ->whereColumn('translation_reviews.translatable_id', '=', $ownerKey);
 
             if ($field !== null) {

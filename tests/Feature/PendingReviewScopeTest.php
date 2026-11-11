@@ -11,6 +11,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use PDO;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 /**
  * pendingReview() is one correlated subquery - no list of ids is bound - and
@@ -23,7 +24,7 @@ class PendingReviewScopeTest extends TestCase
     {
         parent::setUp();
 
-        (include __DIR__ . '/../../src/database/migrations/create_translation_reviews_table.php.stub')->up();
+        (include __DIR__.'/../../src/database/migrations/create_translation_reviews_table.php.stub')->up();
         Schema::create('test_string_key_models', function (Blueprint $table) {
             $table->string('id', 36)->primary();
             $table->json('name');
@@ -74,7 +75,7 @@ class PendingReviewScopeTest extends TestCase
         ];
     }
 
-    #[\PHPUnit\Framework\Attributes\DataProvider('drivers')]
+    #[DataProvider('drivers')]
     public function test_compiles_to_a_correlated_subquery_with_no_bound_id_list(string $driver, string $cast)
     {
         config(["database.connections.grammar_{$driver}" => [
@@ -85,14 +86,14 @@ class PendingReviewScopeTest extends TestCase
         // A stand-in PDO, so no server is contacted; nothing is executed.
         $connection->setPdo(new PDO('sqlite::memory:'));
 
-        $query = (new TestTranslatableModel())->setConnection("grammar_{$driver}")->newQuery()->pendingReview('name', 'ar')->toBase();
+        $query = (new TestTranslatableModel)->setConnection("grammar_{$driver}")->newQuery()->pendingReview('name', 'ar')->toBase();
         $sql = $query->toSql();
 
         $this->assertStringContainsStringIgnoringCase('exists (select 1 from', $sql);
         $this->assertStringContainsString($cast, $sql);
         $this->assertStringNotContainsStringIgnoringCase(' in (', $sql);
         // Only the fixed filters are bound - type, status, field, locale - never ids.
-        $this->assertSame([(new TestTranslatableModel())->getMorphClass(), 'pending', 'name', 'ar'], $query->getBindings());
+        $this->assertSame([(new TestTranslatableModel)->getMorphClass(), 'pending', 'name', 'ar'], $query->getBindings());
 
         DB::purge("grammar_{$driver}");
     }
@@ -143,7 +144,7 @@ class PendingReviewScopeTest extends TestCase
     public function test_more_pending_rows_than_sql_servers_parameter_limit()
     {
         $count = 2500;
-        $type = (new TestTranslatableModel())->getMorphClass();
+        $type = (new TestTranslatableModel)->getMorphClass();
 
         // Let the database assign the owner ids (SQL Server rejects explicit
         // values for an identity column), then read them back.

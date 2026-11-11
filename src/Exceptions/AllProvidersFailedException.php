@@ -2,6 +2,8 @@
 
 namespace CodingPartners\TranslaGenius\Exceptions;
 
+use CodingPartners\TranslaGenius\Providers\FallbackProvider;
+
 /**
  * Raised by Providers\FallbackProvider when every provider in its chain
  * fails. A TranslationFailedException subclass (not a plain aggregate
@@ -17,14 +19,14 @@ namespace CodingPartners\TranslaGenius\Exceptions;
  * shared misconfiguration) or differently (each genuinely down), which is
  * exactly the information worth having to diagnose a fully-failed chain.
  *
- * @see \CodingPartners\TranslaGenius\Providers\FallbackProvider
+ * @see FallbackProvider
  */
 class AllProvidersFailedException extends TranslationFailedException
 {
     /**
-     * @param array<int, array{provider: class-string, message: string, status_code: int|null, retryable: bool}> $failures
-     *        One entry per provider in the chain, in the order they were
-     *        tried.
+     * @param  array<int, array{provider: class-string, message: string, status_code: int|null, retryable: bool}>  $failures
+     *                                                                                                                        One entry per provider in the chain, in the order they were
+     *                                                                                                                        tried.
      */
     public function __construct(protected readonly array $failures)
     {
@@ -46,8 +48,7 @@ class AllProvidersFailedException extends TranslationFailedException
     }
 
     /**
-     * @param array<int, array{provider: class-string, message: string, status_code: int|null, retryable: bool}> $failures
-     * @return string
+     * @param  array<int, array{provider: class-string, message: string, status_code: int|null, retryable: bool}>  $failures
      */
     private static function buildMessage(array $failures): string
     {
@@ -67,8 +68,7 @@ class AllProvidersFailedException extends TranslationFailedException
      * Only when every provider failed non-retryably is retrying the whole
      * chain again guaranteed to be futile.
      *
-     * @param array<int, array{provider: class-string, message: string, status_code: int|null, retryable: bool}> $failures
-     * @return bool
+     * @param  array<int, array{provider: class-string, message: string, status_code: int|null, retryable: bool}>  $failures
      */
     private static function anyRetryable(array $failures): bool
     {

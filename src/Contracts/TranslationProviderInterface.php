@@ -4,6 +4,7 @@ namespace CodingPartners\TranslaGenius\Contracts;
 
 use CodingPartners\TranslaGenius\DTOs\TranslationRequest;
 use CodingPartners\TranslaGenius\DTOs\TranslationResult;
+use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
 
 /**
  * The extension point for swapping translation backends (OpenRouter, a
@@ -27,11 +28,10 @@ interface TranslationProviderInterface
      * CodingPartners\TranslaGenius\Exceptions\TranslationFailedException on
      * failure (setting `retryable` appropriately for the failure mode).
      *
-     * @param TranslationRequest $request The text and locale pair to translate.
-     * @return TranslationResult
+     * @param  TranslationRequest  $request  The text and locale pair to translate.
      *
-     * @throws \CodingPartners\TranslaGenius\Exceptions\TranslationFailedException
-     *         If the backend cannot complete the translation.
+     * @throws TranslationFailedException
+     *                                    If the backend cannot complete the translation.
      */
     public function translate(TranslationRequest $request): TranslationResult;
 }

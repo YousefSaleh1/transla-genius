@@ -2,7 +2,10 @@
 
 namespace CodingPartners\TranslaGenius\Models;
 
+use CodingPartners\TranslaGenius\Events\TranslationCompleted;
+use CodingPartners\TranslaGenius\Listeners\LogTranslationUsage;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 
 /**
  * One row per successfully completed translation
@@ -46,11 +49,11 @@ use Illuminate\Database\Eloquent\Model;
  * @property int|null $prompt_tokens
  * @property int|null $completion_tokens
  * @property string|null $estimated_cost Decimal string (6 fractional digits), or null if unrated.
- * @property \Illuminate\Support\Carbon $created_at
- * @property \Illuminate\Support\Carbon $updated_at
+ * @property Carbon $created_at
+ * @property Carbon $updated_at
  *
- * @see \CodingPartners\TranslaGenius\Listeners\LogTranslationUsage
- * @see \CodingPartners\TranslaGenius\Events\TranslationCompleted
+ * @see LogTranslationUsage
+ * @see TranslationCompleted
  */
 class TranslationUsageLog extends Model
 {

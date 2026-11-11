@@ -2,7 +2,10 @@
 
 namespace CodingPartners\TranslaGenius\Tests\Feature;
 
+use CodingPartners\TranslaGenius\Contracts\TranslationJob;
+use CodingPartners\TranslaGenius\DTOs\TranslationJobPayload;
 use CodingPartners\TranslaGenius\Jobs\TranslateFields;
+use CodingPartners\TranslaGenius\Support\TranslationJobDispatcher;
 use CodingPartners\TranslaGenius\Tests\Support\MarkerTranslationJob;
 use CodingPartners\TranslaGenius\Tests\TestCase;
 use CodingPartners\TranslaGenius\Tests\TestModels\CustomJobTranslatableModel;
@@ -11,6 +14,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use RuntimeException;
 
@@ -35,7 +39,8 @@ class QueueDispatchTest extends TestCase
     /** A Translatable model whose create/update dispatches MarkerTranslationJob. */
     protected function markerModel(): TestTranslatableModel
     {
-        return new class extends TestTranslatableModel {
+        return new class extends TestTranslatableModel
+        {
             protected static function translationJobClass(): string
             {
                 return MarkerTranslationJob::class;
@@ -100,25 +105,23 @@ class QueueDispatchTest extends TestCase
         Queue::fake();
         config(['translagenius.queue.connection' => 'redis', 'translagenius.queue.queue' => 'translations']);
 
-        $plainJob = new class (new \CodingPartners\TranslaGenius\DTOs\TranslationJobPayload(new TestTranslatableModel(), [])) implements ShouldQueue, \CodingPartners\TranslaGenius\Contracts\TranslationJob {
+        $plainJob = new class(new TranslationJobPayload(new TestTranslatableModel, [])) implements ShouldQueue, TranslationJob
+        {
             use Dispatchable;
 
-            public function __construct(public \CodingPartners\TranslaGenius\DTOs\TranslationJobPayload $payload)
-            {
-            }
+            public function __construct(public TranslationJobPayload $payload) {}
 
-            public function handle(): void
-            {
-            }
+            public function handle(): void {}
         };
         $plainJobClass = get_class($plainJob);
 
-        $model = new class extends TestTranslatableModel {
+        $model = new class extends TestTranslatableModel
+        {
             public static string $job;
 
             protected static function translationJobClass(): string
             {
-                return static::$job;
+                return self::$job;
             }
         };
         $model::$job = $plainJobClass;
@@ -130,41 +133,38 @@ class QueueDispatchTest extends TestCase
     public function test_a_job_without_queueable_logs_one_warning_per_class_while_settings_are_configured()
     {
         Queue::fake();
-        \CodingPartners\TranslaGenius\Support\TranslationJobDispatcher::resetWarnings();
-        $plainJobClass = get_class(new class (new \CodingPartners\TranslaGenius\DTOs\TranslationJobPayload(new TestTranslatableModel(), [])) implements ShouldQueue, \CodingPartners\TranslaGenius\Contracts\TranslationJob {
+        TranslationJobDispatcher::resetWarnings();
+        $plainJobClass = get_class(new class(new TranslationJobPayload(new TestTranslatableModel, [])) implements ShouldQueue, TranslationJob
+        {
             use Dispatchable;
 
-            public function __construct(public \CodingPartners\TranslaGenius\DTOs\TranslationJobPayload $payload)
-            {
-            }
+            public function __construct(public TranslationJobPayload $payload) {}
 
-            public function handle(): void
-            {
-            }
+            public function handle(): void {}
         });
 
-        \Illuminate\Support\Facades\Log::spy();
+        Log::spy();
 
         // Not configured: no warning.
         config(['translagenius.queue.connection' => null, 'translagenius.queue.queue' => null]);
-        \CodingPartners\TranslaGenius\Support\TranslationJobDispatcher::dispatch($plainJobClass, new TestTranslatableModel(), []);
-        \Illuminate\Support\Facades\Log::shouldNotHaveReceived('warning');
+        TranslationJobDispatcher::dispatch($plainJobClass, new TestTranslatableModel, []);
+        Log::shouldNotHaveReceived('warning');
 
         // Configured: three dispatches, one warning naming the class; all three still dispatched.
         config(['translagenius.queue.queue' => 'translations']);
         foreach (range(1, 3) as $i) {
-            \CodingPartners\TranslaGenius\Support\TranslationJobDispatcher::dispatch($plainJobClass, new TestTranslatableModel(), []);
+            TranslationJobDispatcher::dispatch($plainJobClass, new TestTranslatableModel, []);
         }
 
-        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')
+        Log::shouldHaveReceived('warning')
             ->once()
             ->withArgs(fn (string $message, array $context = []) => str_contains($message, $plainJobClass)
                 && ($context['job_class'] ?? null) === $plainJobClass);
         Queue::assertPushed($plainJobClass, 4);
 
         // A Queueable job class never warns.
-        \CodingPartners\TranslaGenius\Support\TranslationJobDispatcher::dispatch(TranslateFields::class, new TestTranslatableModel(), []);
-        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')->once();
+        TranslationJobDispatcher::dispatch(TranslateFields::class, new TestTranslatableModel, []);
+        Log::shouldHaveReceived('warning')->once();
     }
 
     public function test_with_after_commit_a_rolled_back_transaction_dispatches_nothing()

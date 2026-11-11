@@ -3,6 +3,7 @@
 namespace CodingPartners\TranslaGenius\Contracts;
 
 use CodingPartners\TranslaGenius\DTOs\TranslationResult;
+use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
 
 /**
  * The seam between "something that needs a piece of text translated"
@@ -18,15 +19,14 @@ interface TranslatorInterface
     /**
      * Translate a piece of text from one locale to another.
      *
-     * @param string $text The source text to translate.
-     * @param string $sourceLocale The locale $text is written in.
-     * @param string $targetLocale The locale to translate $text into.
-     * @param string|null $field Optional context: the attribute being translated.
-     * @param string|null $model Optional context: the owning model's class basename.
-     * @return TranslationResult
+     * @param  string  $text  The source text to translate.
+     * @param  string  $sourceLocale  The locale $text is written in.
+     * @param  string  $targetLocale  The locale to translate $text into.
+     * @param  string|null  $field  Optional context: the attribute being translated.
+     * @param  string|null  $model  Optional context: the owning model's class basename.
      *
-     * @throws \CodingPartners\TranslaGenius\Exceptions\TranslationFailedException
-     *         If the underlying provider cannot complete the translation.
+     * @throws TranslationFailedException
+     *                                    If the underlying provider cannot complete the translation.
      */
     public function translate(
         string $text,

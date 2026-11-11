@@ -3,6 +3,7 @@
 namespace CodingPartners\TranslaGenius\Exceptions;
 
 use CodingPartners\TranslaGenius\Contracts\TranslationJob;
+use CodingPartners\TranslaGenius\Jobs\TranslateFields;
 use InvalidArgumentException;
 
 /** A translationJobClass() that doesn't implement the TranslationJob contract. */
@@ -14,7 +15,7 @@ class InvalidTranslationJobException extends InvalidArgumentException
             'Translation job class [%s] must implement %s (a constructor taking a TranslationJobPayload) - for example by extending %s.',
             $jobClass,
             TranslationJob::class,
-            \CodingPartners\TranslaGenius\Jobs\TranslateFields::class
+            TranslateFields::class
         ));
     }
 }

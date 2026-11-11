@@ -3,7 +3,12 @@
 namespace CodingPartners\TranslaGenius\Tests\Feature;
 
 use CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface;
+use CodingPartners\TranslaGenius\DTOs\TranslationBatchRequest;
+use CodingPartners\TranslaGenius\DTOs\TranslationBatchResult;
 use CodingPartners\TranslaGenius\DTOs\TranslationRequest;
+use CodingPartners\TranslaGenius\DTOs\TranslationResult;
+use CodingPartners\TranslaGenius\Providers\CachingProvider;
+use CodingPartners\TranslaGenius\Providers\FallbackProvider;
 use CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider;
 use CodingPartners\TranslaGenius\TranslaGeniusServiceProvider;
 use Illuminate\Http\Client\Request;
@@ -39,7 +44,7 @@ class ShippedPresetsTest extends Orchestra
     /**
      * Set env vars, then reload the shipped config so env() sees them.
      *
-     * @param array<string, string> $env
+     * @param  array<string, string>  $env
      */
     protected function withEnv(array $env): void
     {
@@ -49,7 +54,7 @@ class ShippedPresetsTest extends Orchestra
             $_ENV[$key] = $_SERVER[$key] = $value;
         }
 
-        $this->app['config']->set('translagenius', require __DIR__ . '/../../src/config/translagenius.php');
+        $this->app['config']->set('translagenius', require __DIR__.'/../../src/config/translagenius.php');
         $this->app->forgetInstance(TranslationProviderInterface::class);
     }
 
@@ -68,7 +73,7 @@ class ShippedPresetsTest extends Orchestra
         ]);
     }
 
-    protected function translate(): \CodingPartners\TranslaGenius\DTOs\TranslationResult
+    protected function translate(): TranslationResult
     {
         return $this->app->make(TranslationProviderInterface::class)
             ->translate(new TranslationRequest('Hello', 'en', 'ar'));
@@ -87,8 +92,8 @@ class ShippedPresetsTest extends Orchestra
         Http::assertSent(fn (Request $r) => $r->url() === 'https://api.openai.com/v1/chat/completions'
             && $r->header('Authorization') === ['Bearer sk-openai']
             && $r['model'] === 'gpt-6-luna'
-            && !isset($r['max_completion_tokens'])
-            && !isset($r['max_tokens']));
+            && ! isset($r['max_completion_tokens'])
+            && ! isset($r['max_tokens']));
     }
 
     public function test_gemini_preset_is_selected_by_env_alone()
@@ -103,7 +108,7 @@ class ShippedPresetsTest extends Orchestra
         Http::assertSent(fn (Request $r) => $r->url() === 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'
             && $r->header('Authorization') === ['Bearer g-key']
             && $r['model'] === 'gemini-3.5-flash-lite'
-            && !isset($r['max_tokens']));
+            && ! isset($r['max_tokens']));
     }
 
     public function test_custom_preset_uses_the_generic_translation_env_vars()
@@ -139,7 +144,7 @@ class ShippedPresetsTest extends Orchestra
         $this->translate();
 
         Http::assertSent(fn (Request $r) => $r->header('api-key') === ['azure-style-key']
-            && !$r->hasHeader('Authorization'));
+            && ! $r->hasHeader('Authorization'));
     }
 
     /**
@@ -158,8 +163,8 @@ class ShippedPresetsTest extends Orchestra
         Http::assertSent(fn (Request $r) => $r->url() === 'https://openrouter.ai/api/v1/chat/completions'
             && $r->header('Authorization') === ['Bearer legacy-key']
             && $r['model'] === 'openai/gpt-4o-mini'
-            && !isset($r['max_tokens'])
-            && !$r->hasHeader('HTTP-Referer'));
+            && ! isset($r['max_tokens'])
+            && ! $r->hasHeader('HTTP-Referer'));
     }
 
     public function test_openrouter_attribution_headers_come_from_env()
@@ -273,7 +278,7 @@ class ShippedPresetsTest extends Orchestra
         $this->fakeEndpoints();
         $this->withEnv(['TRANSLATION_PROVIDER' => 'openai', 'OPENAI_API_KEY' => 'k', 'TRANSLATION_MAX_TOKENS' => '800']);
         $this->translate();
-        Http::assertSent(fn (Request $r) => $r['max_completion_tokens'] === 800 && !isset($r['max_tokens']));
+        Http::assertSent(fn (Request $r) => $r['max_completion_tokens'] === 800 && ! isset($r['max_tokens']));
 
         $this->withEnv(['TRANSLATION_PROVIDER' => 'gemini', 'GEMINI_API_KEY' => 'k']);
         $this->translate();
@@ -287,7 +292,7 @@ class ShippedPresetsTest extends Orchestra
 
         $this->translate();
 
-        Http::assertSent(fn (Request $r) => !isset($r['max_tokens']) && !isset($r['max_completion_tokens']));
+        Http::assertSent(fn (Request $r) => ! isset($r['max_tokens']) && ! isset($r['max_completion_tokens']));
     }
 
     public function test_temperature_is_omitted_by_default_except_on_openrouter()
@@ -296,7 +301,7 @@ class ShippedPresetsTest extends Orchestra
 
         $this->withEnv(['TRANSLATION_PROVIDER' => 'openai', 'OPENAI_API_KEY' => 'k']);
         $this->translate();
-        Http::assertSent(fn (Request $r) => str_contains($r->url(), 'api.openai.com') && !array_key_exists('temperature', $r->data()));
+        Http::assertSent(fn (Request $r) => str_contains($r->url(), 'api.openai.com') && ! array_key_exists('temperature', $r->data()));
 
         $this->withEnv(['TRANSLATION_PROVIDER' => 'openrouter', 'OPENROUTER_API_KEY' => 'k']);
         $this->translate();
@@ -310,7 +315,7 @@ class ShippedPresetsTest extends Orchestra
 
         $this->translate();
 
-        Http::assertSent(fn (Request $r) => str_contains($r->url(), 'openrouter.ai') && !array_key_exists('temperature', $r->data()));
+        Http::assertSent(fn (Request $r) => str_contains($r->url(), 'openrouter.ai') && ! array_key_exists('temperature', $r->data()));
     }
 
     public function test_explicit_temperature_env_is_sent_to_any_preset()
@@ -332,11 +337,11 @@ class ShippedPresetsTest extends Orchestra
         $hosts = ['openai' => 'api.openai.com', 'deepseek' => 'api.deepseek.com', 'gemini' => 'googleapis', 'openrouter' => 'openrouter.ai'];
 
         foreach ($expected as $preset => $effort) {
-            $this->withEnv(['TRANSLATION_PROVIDER' => $preset, strtoupper($preset) . '_API_KEY' => 'k']);
+            $this->withEnv(['TRANSLATION_PROVIDER' => $preset, strtoupper($preset).'_API_KEY' => 'k']);
             $this->translate();
 
             Http::assertSent(fn (Request $r) => str_contains($r->url(), $hosts[$preset])
-                && ($effort === null ? !array_key_exists('reasoning_effort', $r->data()) : $r['reasoning_effort'] === $effort));
+                && ($effort === null ? ! array_key_exists('reasoning_effort', $r->data()) : $r['reasoning_effort'] === $effort));
         }
     }
 
@@ -350,7 +355,7 @@ class ShippedPresetsTest extends Orchestra
 
         $this->withEnv(['TRANSLATION_PROVIDER' => 'openai', 'OPENAI_API_KEY' => 'k', 'OPENAI_REASONING_EFFORT' => '']);
         $this->translate();
-        Http::assertSent(fn (Request $r) => str_contains($r->url(), 'api.openai.com') && !array_key_exists('reasoning_effort', $r->data()));
+        Http::assertSent(fn (Request $r) => str_contains($r->url(), 'api.openai.com') && ! array_key_exists('reasoning_effort', $r->data()));
     }
 
     protected function batchReply(): void
@@ -360,12 +365,12 @@ class ShippedPresetsTest extends Orchestra
         ], 'finish_reason' => 'stop']]]));
     }
 
-    protected function translateBatch(): \CodingPartners\TranslaGenius\DTOs\TranslationBatchResult
+    protected function translateBatch(): TranslationBatchResult
     {
         $provider = $this->app->make(TranslationProviderInterface::class);
         $this->assertTrue($provider->supportsBatching());
 
-        return $provider->translateBatch(new \CodingPartners\TranslaGenius\DTOs\TranslationBatchRequest('Hello', 'en', ['ar', 'es']));
+        return $provider->translateBatch(new TranslationBatchRequest('Hello', 'en', ['ar', 'es']));
     }
 
     public function test_batching_is_off_by_default_and_on_with_translation_batch()
@@ -420,18 +425,18 @@ class ShippedPresetsTest extends Orchestra
 
         $this->translateBatch();
 
-        Http::assertSent(fn (Request $r) => !array_key_exists('response_format', $r->data()));
+        Http::assertSent(fn (Request $r) => ! array_key_exists('response_format', $r->data()));
     }
 
     public function test_translation_cache_env_wraps_the_resolved_provider_or_chain()
     {
         $this->withEnv(['TRANSLATION_PROVIDER' => 'gemini', 'GEMINI_API_KEY' => 'k']);
-        $this->assertSame(\CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider::class, get_class($this->app->make(TranslationProviderInterface::class)));
+        $this->assertSame(OpenAiCompatibleProvider::class, get_class($this->app->make(TranslationProviderInterface::class)));
 
         $this->withEnv(['TRANSLATION_CACHE' => 'true']);
         $provider = $this->app->make(TranslationProviderInterface::class);
-        $this->assertInstanceOf(\CodingPartners\TranslaGenius\Providers\CachingProvider::class, $provider);
-        $this->assertInstanceOf(\CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider::class, $provider->inner());
+        $this->assertInstanceOf(CachingProvider::class, $provider);
+        $this->assertInstanceOf(OpenAiCompatibleProvider::class, $provider->inner());
 
         $this->withEnv([
             'TRANSLATION_PROVIDER' => 'fallback',
@@ -439,7 +444,7 @@ class ShippedPresetsTest extends Orchestra
             'OPENAI_API_KEY' => 'k',
         ]);
         $provider = $this->app->make(TranslationProviderInterface::class);
-        $this->assertInstanceOf(\CodingPartners\TranslaGenius\Providers\CachingProvider::class, $provider);
-        $this->assertInstanceOf(\CodingPartners\TranslaGenius\Providers\FallbackProvider::class, $provider->inner());
+        $this->assertInstanceOf(CachingProvider::class, $provider);
+        $this->assertInstanceOf(FallbackProvider::class, $provider->inner());
     }
 }

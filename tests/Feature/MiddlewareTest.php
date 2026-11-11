@@ -34,7 +34,7 @@ class MiddlewareTest extends TestCase
         $request->headers->set('Accept-Language', 'ar');
 
         $response = $middleware->handle($request, function ($req) {
-            return new Response();
+            return new Response;
         });
 
         $this->assertEquals('ar', app()->getLocale());
@@ -57,7 +57,7 @@ class MiddlewareTest extends TestCase
         $request->headers->set('Accept-Language', 'fr'); // French not in supported languages
 
         $response = $middleware->handle($request, function ($req) {
-            return new Response();
+            return new Response;
         });
 
         $this->assertEquals('en', app()->getLocale());
@@ -79,7 +79,7 @@ class MiddlewareTest extends TestCase
         $request = Request::create('/', 'GET');
 
         $response = $middleware->handle($request, function ($req) {
-            return new Response();
+            return new Response;
         });
 
         $this->assertEquals('en', app()->getLocale());

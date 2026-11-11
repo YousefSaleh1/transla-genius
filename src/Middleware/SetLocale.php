@@ -2,8 +2,8 @@
 
 namespace CodingPartners\TranslaGenius\Middleware;
 
-use CodingPartners\TranslaGenius\Contracts\LocaleResolverInterface;
 use Closure;
+use CodingPartners\TranslaGenius\Contracts\LocaleResolverInterface;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -11,17 +11,15 @@ use Symfony\Component\HttpFoundation\Response;
  * Sets the application locale for the current request from its
  * Accept-Language header, constrained to the resolver's supported locales.
  *
- * @see \CodingPartners\TranslaGenius\Contracts\LocaleResolverInterface
+ * @see LocaleResolverInterface
  */
 class SetLocale
 {
     /**
-     * @param LocaleResolverInterface $resolver Supplies the supported
-     *        locale list this middleware matches Accept-Language against.
+     * @param  LocaleResolverInterface  $resolver  Supplies the supported
+     *                                             locale list this middleware matches Accept-Language against.
      */
-    public function __construct(protected LocaleResolverInterface $resolver)
-    {
-    }
+    public function __construct(protected LocaleResolverInterface $resolver) {}
 
     /**
      * Handle an incoming request and set application locale.
@@ -30,9 +28,7 @@ class SetLocale
      * in the resolver's supported locale list; falls back to the first
      * supported locale (the configured default) if none match.
      *
-     * @param  \Illuminate\Http\Request  $request
-     * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
-     * @return \Symfony\Component\HttpFoundation\Response
+     * @param  Closure(Request): (Response)  $next
      */
     public function handle(Request $request, Closure $next): Response
     {
@@ -57,9 +53,6 @@ class SetLocale
 
     /**
      * Parse the Accept-Language header into an array of languages.
-     *
-     * @param  string|null  $header
-     * @return array
      */
     protected function parseAcceptLanguageHeader(?string $header): array
     {

@@ -12,6 +12,8 @@ use Illuminate\Database\Eloquent\Model;
 class NonTranslatableModel extends Model
 {
     protected $table = 'test_translatable_models';
+
     protected $guarded = [];
+
     public $timestamps = false;
 }

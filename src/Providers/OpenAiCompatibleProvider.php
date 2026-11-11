@@ -38,7 +38,7 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
      * Placeholders are filled by renderPrompt().
      */
     public const DEFAULT_PROMPT = "You are a translation engine. Translate the user's message from {source_locale} to {target_locale}. "
-        . 'Respond with only the translated text - no explanation, commentary, or additional formatting.';
+        .'Respond with only the translated text - no explanation, commentary, or additional formatting.';
 
     /**
      * Request-body fields `body` can never set: the provider always owns the
@@ -55,9 +55,9 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
      * Mentions "json" explicitly, which some JSON modes require.
      */
     public const DEFAULT_BATCH_PROMPT = "You are a translation engine. Translate the user's message from {source_locale} into each of these languages: {target_locales}. "
-        . 'Respond with a single json object and nothing else: one key per language code listed above, each holding the translated text as a string. '
-        . 'No explanation, commentary, code fences, or additional formatting. '
-        . 'For example, for "de, fr": {"de": "...", "fr": "..."}';
+        .'Respond with a single json object and nothing else: one key per language code listed above, each holding the translated text as a string. '
+        .'No explanation, commentary, code fences, or additional formatting. '
+        .'For example, for "de, fr": {"de": "...", "fr": "..."}';
 
     /** @var bool Whether translateBatch() is used (config `batch`). */
     protected bool $batch;
@@ -67,26 +67,26 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
 
     /**
      * @var string|null response_format for batch requests: "json_schema"
-     *      (Structured Outputs), "json_object" (JSON mode), or null to rely on
-     *      the prompt alone. Only set where the provider documents support.
+     *                  (Structured Outputs), "json_object" (JSON mode), or null to rely on
+     *                  the prompt alone. Only set where the provider documents support.
      */
     protected ?string $batchResponseFormat;
 
     /**
      * @var string|null Configured system prompt template, or null for
-     *      DEFAULT_PROMPT. Only ever sent as the `system` message.
+     *                  DEFAULT_PROMPT. Only ever sent as the `system` message.
      */
     protected ?string $prompt;
 
     /**
      * @var string|null `reasoning_effort` to send (e.g. "none", "low"), or
-     *      null to omit the field and use the model's default.
+     *                  null to omit the field and use the model's default.
      */
     protected ?string $reasoningEffort;
 
     /**
      * @var array<string, mixed> Extra provider-specific request-body fields,
-     *      minus PROTECTED_BODY_FIELDS.
+     *                           minus PROTECTED_BODY_FIELDS.
      */
     protected array $extraBody;
 
@@ -101,14 +101,14 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
 
     /**
      * @var float|null Sampling temperature, or null to omit the field and use
-     *      the model's default (some reasoning models ignore or reject it).
+     *                 the model's default (some reasoning models ignore or reject it).
      */
     protected ?float $temperature;
 
     /**
      * @var int|null Output token limit, or null (the default) to send no
-     *      limit and use the provider's own default. A finish_reason of
-     *      "length" is treated as a failure either way - see translate().
+     *               limit and use the provider's own default. A finish_reason of
+     *               "length" is treated as a failure either way - see translate().
      */
     protected ?int $maxTokens;
 
@@ -117,14 +117,14 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
 
     /**
      * @var string|null The translagenius.providers key this instance was
-     *      resolved under (e.g. "gemini"), reported on every TranslationResult.
+     *                  resolved under (e.g. "gemini"), reported on every TranslationResult.
      */
     protected ?string $name;
 
     /**
      * @var string Header the API key is sent in. "Authorization" (the
-     *      default) sends "Bearer <key>"; any other header (e.g. Azure
-     *      OpenAI's "api-key") sends the raw key.
+     *             default) sends "Bearer <key>"; any other header (e.g. Azure
+     *             OpenAI's "api-key") sends the raw key.
      */
     protected string $authHeader;
 
@@ -132,32 +132,32 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
     protected array $headers;
 
     /**
-     * @var string Request-body field $maxTokens is sent as: "max_tokens"
-     *      (default) or "max_completion_tokens", which OpenAI's own API now
-     *      prefers and its reasoning models require.
+     * @var string Request-body field is sent as: "max_tokens"
+     *             (default) or "max_completion_tokens", which OpenAI's own API now
+     *             prefers and its reasoning models require.
      */
     protected string $tokenLimitParam;
 
     /**
      * @var int Extra HTTP attempts after the first, for connection errors,
-     *      429 and 5xx only. 4xx (other than 429) is never retried.
+     *          429 and 5xx only. 4xx (other than 429) is never retried.
      */
     protected int $httpRetries;
 
     /**
      * @var int Longest Retry-After (seconds) worth sleeping through inside
-     *      the request. A longer one is handed to the queue instead (see
-     *      TranslationFailedException::getRetryAfter()).
+     *          the request. A longer one is handed to the queue instead (see
+     *          TranslationFailedException::getRetryAfter()).
      */
     protected int $retryAfterMax;
 
     /**
-     * @param array{name?: string, key?: string, url?: string, model?: string, temperature?: float|null, max_tokens?: int|null, timeout?: int, auth_header?: string, headers?: array<string, string>, token_limit_param?: string, http_retries?: int, retry_after_max?: int, prompt?: string|null, reasoning_effort?: string|null, body?: array<string, mixed>} $config
-     *        Provider configuration array - one translagenius.providers.* entry
-     *        from config/translagenius.php. `name` is injected by the service
-     *        provider (the entry's config key). Every key is optional; missing
-     *        key/url are caught explicitly in translate() rather than left
-     *        to fail as an opaque HTTP error.
+     * @param  array{name?: string, key?: string, url?: string, model?: string, temperature?: float|null, max_tokens?: int|null, timeout?: int, auth_header?: string, headers?: array<string, string>, token_limit_param?: string, http_retries?: int, retry_after_max?: int, prompt?: string|null, reasoning_effort?: string|null, body?: array<string, mixed>}  $config
+     *                                                                                                                                                                                                                                                                                                                                                                     Provider configuration array - one translagenius.providers.* entry
+     *                                                                                                                                                                                                                                                                                                                                                                     from config/translagenius.php. `name` is injected by the service
+     *                                                                                                                                                                                                                                                                                                                                                                     provider (the entry's config key). Every key is optional; missing
+     *                                                                                                                                                                                                                                                                                                                                                                     key/url are caught explicitly in translate() rather than left
+     *                                                                                                                                                                                                                                                                                                                                                                     to fail as an opaque HTTP error.
      */
     public function __construct(array $config)
     {
@@ -201,13 +201,12 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
      * retries (a 429's Retry-After is honored if it's at most
      * $retryAfterMax seconds); anything else fails on the first response.
      *
-     * @param TranslationRequest $request The text and locale pair to translate.
-     * @return TranslationResult
+     * @param  TranslationRequest  $request  The text and locale pair to translate.
      *
      * @throws TranslationFailedException If the API key/URL are missing, the
-     *         connection fails, the API returns a failed response, or the
-     *         response contains no translated content. `retryable` is set
-     *         per failure mode - see isRetryableStatus().
+     *                                    connection fails, the API returns a failed response, or the
+     *                                    response contains no translated content. `retryable` is set
+     *                                    per failure mode - see isRetryableStatus().
      */
     public function translate(TranslationRequest $request): TranslationResult
     {
@@ -252,8 +251,6 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
     /**
      * Whether batching is enabled for this entry (`batch`, or the package-wide
      * TRANSLATION_BATCH).
-     *
-     * @return bool
      */
     public function supportsBatching(): bool
     {
@@ -271,8 +268,6 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
      * limit returns no translations either, flagged `truncated`. HTTP failures
      * throw exactly as in translate().
      *
-     * @param TranslationBatchRequest $request
-     * @return TranslationBatchResult
      *
      * @throws TranslationFailedException
      */
@@ -352,7 +347,7 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
      * without a `usage` object weren't billed in a way we can see, and are
      * not reported.
      *
-     * @param array<int, string> $targetLocales
+     * @param  array<int, string>  $targetLocales
      */
     protected function reportUnusedUsage(
         Response $response,
@@ -401,14 +396,13 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
      * times (a 429's Retry-After is honored if it's at most $retryAfterMax
      * seconds). Returns the first successful response.
      *
-     * @param array<string, mixed> $body
-     * @param array{0: string, 1: string, 2: array<int, string>, 3: string|null} $billing
-     *        requestId, source locale, target locales, field - for reporting
-     *        an error response that was still billed.
-     * @return Response
+     * @param  array<string, mixed>  $body
+     * @param  array{0: string, 1: string, 2: array<int, string>, 3: string|null}  $billing
+     *                                                                                       requestId, source locale, target locales, field - for reporting
+     *                                                                                       an error response that was still billed.
      *
      * @throws TranslationFailedException On a connection failure or an
-     *         unsuccessful response once retries are used up.
+     *                                    unsuccessful response once retries are used up.
      */
     protected function send(array $body, array $billing): Response
     {
@@ -433,13 +427,13 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
                 ]);
 
                 throw new TranslationFailedException(
-                    'Unable to connect to translation API: ' . $e->getMessage(),
+                    'Unable to connect to translation API: '.$e->getMessage(),
                     retryable: true,
                     previous: $e
                 );
             }
 
-            if (!$response->failed()) {
+            if (! $response->failed()) {
                 return $response;
             }
 
@@ -488,8 +482,6 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
      * A response that stopped at the output token limit is a failure, never a
      * translation - see TranslationFailedException's message for the fix.
      *
-     * @param Response $response
-     * @return void
      *
      * @throws TranslationFailedException If finish_reason is "length".
      */
@@ -507,7 +499,7 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
 
             throw new TranslationFailedException(
                 'Translation was truncated: the provider stopped at its output token limit (finish_reason "length"). '
-                . 'Raise TRANSLATION_MAX_TOKENS, or leave it unset to use the provider\'s own limit.',
+                .'Raise TRANSLATION_MAX_TOKENS, or leave it unset to use the provider\'s own limit.',
                 statusCode: $response->status(),
                 retryable: false
             );
@@ -524,9 +516,6 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
      * being translated is never substituted: it is only ever sent as the
      * `user` message (see requestBody()), so no prompt can pull field content
      * into the system role.
-     *
-     * @param TranslationRequest $request
-     * @return string
      */
     protected function renderPrompt(TranslationRequest $request): string
     {
@@ -541,9 +530,6 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
     /**
      * Fill the batch prompt template. Same rules as renderPrompt(), with
      * {target_locales} (comma-separated) in place of {target_locale}.
-     *
-     * @param TranslationBatchRequest $request
-     * @return string
      */
     protected function renderBatchPrompt(TranslationBatchRequest $request): string
     {
@@ -559,7 +545,7 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
      * response_format for a batch request: a strict JSON schema requiring
      * exactly the requested locales as strings, or plain JSON mode.
      *
-     * @param array<int, string> $locales
+     * @param  array<int, string>  $locales
      * @return array<string, mixed>
      */
     protected function responseFormat(array $locales): array
@@ -588,7 +574,6 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
      * surrounding Markdown code fence; anything else that isn't a JSON object
      * returns null.
      *
-     * @param string $content
      * @return array<string, mixed>|null
      */
     protected function decodeJsonObject(string $content): ?array
@@ -605,15 +590,13 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
 
         $decoded = json_decode($content, true);
 
-        return is_array($decoded) && !array_is_list($decoded) ? $decoded : null;
+        return is_array($decoded) && ! array_is_list($decoded) ? $decoded : null;
     }
 
     /**
      * The chat-completions request body. Instructions only ever go in the
      * `system` message and the text being translated only in the `user` one.
      *
-     * @param string $systemPrompt
-     * @param string $text
      * @return array<string, mixed>
      */
     protected function requestBody(string $systemPrompt, string $text): array
@@ -647,8 +630,7 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
      * Short jittered backoff between HTTP attempts: 200ms, 400ms, ... capped
      * at 1s. Kept brief on purpose - anything slower is the queue's job.
      *
-     * @param int $attempt The attempt that just failed (1-based).
-     * @return void
+     * @param  int  $attempt  The attempt that just failed (1-based).
      */
     protected function pause(int $attempt): void
     {
@@ -658,9 +640,6 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
     /**
      * Seconds from a Retry-After header, which may be delta-seconds or an
      * HTTP date. Null when absent or unparseable.
-     *
-     * @param Response $response
-     * @return int|null
      */
     protected function parseRetryAfter(Response $response): ?int
     {
@@ -689,7 +668,7 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
     protected function requestHeaders(): array
     {
         $auth = strcasecmp($this->authHeader, 'Authorization') === 0
-            ? 'Bearer ' . $this->apiKey
+            ? 'Bearer '.$this->apiKey
             : $this->apiKey;
 
         return array_merge(
@@ -705,9 +684,6 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
      * self-resolve on retry - the same request will fail the same way. The
      * one exception is 429 (rate limited), which is inherently transient.
      * Everything else (5xx, or no status at all) is treated as retryable.
-     *
-     * @param int $status
-     * @return bool
      */
     protected function isRetryableStatus(int $status): bool
     {

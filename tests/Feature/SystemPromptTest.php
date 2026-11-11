@@ -2,13 +2,14 @@
 
 namespace CodingPartners\TranslaGenius\Tests\Feature;
 
-use CodingPartners\TranslaGenius\DTOs\TranslationJobPayload;
 use CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface;
 use CodingPartners\TranslaGenius\Contracts\TranslatorInterface;
+use CodingPartners\TranslaGenius\DTOs\TranslationJobPayload;
 use CodingPartners\TranslaGenius\DTOs\TranslationRequest;
 use CodingPartners\TranslaGenius\Jobs\TranslateFields;
 use CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider;
 use CodingPartners\TranslaGenius\Services\TranslationWriter;
+use CodingPartners\TranslaGenius\Services\Translator;
 use CodingPartners\TranslaGenius\Tests\TestCase;
 use CodingPartners\TranslaGenius\Tests\TestModels\TestTranslatableModel;
 use Illuminate\Http\Client\Request;
@@ -19,7 +20,7 @@ class SystemPromptTest extends TestCase
 {
     /** The prompt as it was hardcoded before it became configurable. */
     private const LEGACY_PROMPT_EN_AR = "You are a translation engine. Translate the user's message from en to ar. "
-        . 'Respond with only the translated text - no explanation, commentary, or additional formatting.';
+        .'Respond with only the translated text - no explanation, commentary, or additional formatting.';
 
     /** @var array<int, array<int, array{role: string, content: string}>> */
     private array $sentMessages = [];
@@ -47,7 +48,7 @@ class SystemPromptTest extends TestCase
         config(['translagenius.supported_languages' => ['en', 'ar']]);
         $this->app->forgetInstance(TranslationProviderInterface::class);
         $this->app->forgetInstance(TranslatorInterface::class);
-        $this->app->forgetInstance(\CodingPartners\TranslaGenius\Services\Translator::class);
+        $this->app->forgetInstance(Translator::class);
 
         $model = TestTranslatableModel::create(['name' => ['en' => $text], 'description' => ['en' => '']]);
         (new TranslateFields(new TranslationJobPayload($model, ['name'])))
@@ -115,7 +116,7 @@ class SystemPromptTest extends TestCase
         $_ENV['TRANSLATION_SYSTEM_PROMPT'] = $_SERVER['TRANSLATION_SYSTEM_PROMPT'] = 'Translate to {target_locale}, formally.';
 
         try {
-            $shipped = require __DIR__ . '/../../src/config/translagenius.php';
+            $shipped = require __DIR__.'/../../src/config/translagenius.php';
         } finally {
             putenv('TRANSLATION_SYSTEM_PROMPT');
             unset($_ENV['TRANSLATION_SYSTEM_PROMPT'], $_SERVER['TRANSLATION_SYSTEM_PROMPT']);

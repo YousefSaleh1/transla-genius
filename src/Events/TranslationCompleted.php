@@ -3,6 +3,7 @@
 namespace CodingPartners\TranslaGenius\Events;
 
 use CodingPartners\TranslaGenius\DTOs\TranslationResult;
+use CodingPartners\TranslaGenius\Jobs\TranslateFields;
 use Illuminate\Foundation\Events\Dispatchable;
 
 /**
@@ -18,21 +19,21 @@ use Illuminate\Foundation\Events\Dispatchable;
  * listener (Phase 3's ranked-feature list) without that listener needing to
  * touch TranslateFields or TranslationWriter itself.
  *
- * @see \CodingPartners\TranslaGenius\Jobs\TranslateFields
- * @see \CodingPartners\TranslaGenius\DTOs\TranslationResult
+ * @see TranslateFields
+ * @see TranslationResult
  */
 final readonly class TranslationCompleted
 {
     use Dispatchable;
 
     /**
-     * @param string $modelClass Fully-qualified class of the model being translated.
-     * @param int|string $modelId Primary key of the model being translated.
-     * @param string $field The translatable attribute name (e.g. "name").
-     * @param string $sourceLocale The locale the source text was written in.
-     * @param string $targetLocale The locale the text was translated into.
-     * @param TranslationResult $result The provider's result, including any
-     *        token-usage metadata it reported.
+     * @param  string  $modelClass  Fully-qualified class of the model being translated.
+     * @param  int|string  $modelId  Primary key of the model being translated.
+     * @param  string  $field  The translatable attribute name (e.g. "name").
+     * @param  string  $sourceLocale  The locale the source text was written in.
+     * @param  string  $targetLocale  The locale the text was translated into.
+     * @param  TranslationResult  $result  The provider's result, including any
+     *                                     token-usage metadata it reported.
      */
     /**
      * $pendingReview: the translation was produced but, with the review
@@ -48,6 +49,5 @@ final readonly class TranslationCompleted
         public string $targetLocale,
         public TranslationResult $result,
         public bool $pendingReview = false,
-    ) {
-    }
+    ) {}
 }

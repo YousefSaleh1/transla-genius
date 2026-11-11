@@ -14,17 +14,17 @@ namespace CodingPartners\TranslaGenius\DTOs;
 final readonly class TranslationBatchResult
 {
     /**
-     * @param array<string, string> $translations Valid locale => non-empty text.
-     * @param string|null $provider Config key of the provider that served it.
-     * @param int|null $promptTokens Prompt tokens for the whole request.
-     * @param int|null $completionTokens Completion tokens for the whole request.
-     * @param string|null $requestId Identifies the request.
-     * @param bool $truncated The reply stopped at the output token limit, so
-     *        nothing was taken from it. The caller translates every locale one
-     *        at a time instead (smaller replies), or a fallback chain tries
-     *        its next member. Token counts are still what the request billed.
-     * @param array<int, string> $cachedLocales Locales served from the cache
-     *        (no request; the token counts never cover them).
+     * @param  array<string, string>  $translations  Valid locale => non-empty text.
+     * @param  string|null  $provider  Config key of the provider that served it.
+     * @param  int|null  $promptTokens  Prompt tokens for the whole request.
+     * @param  int|null  $completionTokens  Completion tokens for the whole request.
+     * @param  string|null  $requestId  Identifies the request.
+     * @param  bool  $truncated  The reply stopped at the output token limit, so
+     *                           nothing was taken from it. The caller translates every locale one
+     *                           at a time instead (smaller replies), or a fallback chain tries
+     *                           its next member. Token counts are still what the request billed.
+     * @param  array<int, string>  $cachedLocales  Locales served from the cache
+     *                                             (no request; the token counts never cover them).
      */
     public function __construct(
         public array $translations,
@@ -34,8 +34,7 @@ final readonly class TranslationBatchResult
         public ?string $requestId = null,
         public bool $truncated = false,
         public array $cachedLocales = [],
-    ) {
-    }
+    ) {}
 
     /** Whether $locale's translation came from the cache rather than a request. */
     public function isCached(string $locale): bool
@@ -54,9 +53,8 @@ final readonly class TranslationBatchResult
      * carried by exactly one pair - pass $withTokens for it - and the other
      * pairs get null, so summing usage across pairs equals what was billed.
      *
-     * @param string $locale A key of $translations.
-     * @param bool $withTokens Whether this pair carries the request's tokens.
-     * @return TranslationResult
+     * @param  string  $locale  A key of $translations.
+     * @param  bool  $withTokens  Whether this pair carries the request's tokens.
      */
     public function resultFor(string $locale, bool $withTokens): TranslationResult
     {
@@ -65,8 +63,8 @@ final readonly class TranslationBatchResult
         return new TranslationResult(
             text: $this->translations[$locale],
             provider: $this->provider,
-            promptTokens: $withTokens && !$cached ? $this->promptTokens : null,
-            completionTokens: $withTokens && !$cached ? $this->completionTokens : null,
+            promptTokens: $withTokens && ! $cached ? $this->promptTokens : null,
+            completionTokens: $withTokens && ! $cached ? $this->completionTokens : null,
             requestId: $cached ? null : $this->requestId,
             cached: $cached,
         );

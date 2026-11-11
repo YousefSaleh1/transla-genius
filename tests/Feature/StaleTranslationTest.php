@@ -5,6 +5,7 @@ namespace CodingPartners\TranslaGenius\Tests\Feature;
 use CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface;
 use CodingPartners\TranslaGenius\Contracts\TranslatorInterface;
 use CodingPartners\TranslaGenius\Events\TranslationCompleted;
+use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
 use CodingPartners\TranslaGenius\Jobs\TranslateFields;
 use CodingPartners\TranslaGenius\Services\TranslationWriter;
 use CodingPartners\TranslaGenius\Services\Translator;
@@ -53,7 +54,7 @@ class StaleTranslationTest extends TestCase
 
             if (preg_match('/into each of these languages: (.+?)\. Respond/', $system, $m) === 1) {
                 $locales = explode(', ', $m[1]);
-                $this->requests[] = "batch {$text} " . implode(',', $locales);
+                $this->requests[] = "batch {$text} ".implode(',', $locales);
                 $content = json_encode(array_combine($locales, array_map(fn ($l) => "{$text}|{$l}", $locales)));
             } else {
                 preg_match('/ to (\w+)\./', $system, $m);
@@ -244,7 +245,7 @@ class StaleTranslationTest extends TestCase
     {
         // As a worker would: the model is re-read from the database.
         $fresh = unserialize(serialize($job));
-        $fresh->handle($this->app->make(TranslatorInterface::class), new TranslationWriter());
+        $fresh->handle($this->app->make(TranslatorInterface::class), new TranslationWriter);
     }
 
     // --- target snapshots (retries, hand edits) ------------------------------
@@ -262,7 +263,7 @@ class StaleTranslationTest extends TestCase
     {
         try {
             $this->runQueued($job);
-        } catch (\CodingPartners\TranslaGenius\Exceptions\TranslationFailedException $e) {
+        } catch (TranslationFailedException $e) {
             $this->assertTrue($e->isRetryable());
         }
     }

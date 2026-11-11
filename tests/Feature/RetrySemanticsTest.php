@@ -4,6 +4,7 @@ namespace CodingPartners\TranslaGenius\Tests\Feature;
 
 use CodingPartners\TranslaGenius\DTOs\TranslationRequest;
 use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
+use CodingPartners\TranslaGenius\Providers\FallbackProvider;
 use CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
@@ -188,7 +189,7 @@ class RetrySemanticsTest extends TestCase
             'secondary.test/*' => Http::response(['choices' => [['message' => ['content' => 'whole'], 'finish_reason' => 'stop']]]),
         ]);
 
-        $chain = new \CodingPartners\TranslaGenius\Providers\FallbackProvider([
+        $chain = new FallbackProvider([
             $this->provider(['name' => 'primary', 'url' => 'https://primary.test/v1/chat/completions']),
             $this->provider(['name' => 'secondary', 'url' => 'https://secondary.test/v1/chat/completions']),
         ]);

@@ -17,6 +17,7 @@ use CodingPartners\TranslaGenius\Services\TranslationWriter;
 use CodingPartners\TranslaGenius\Support\TranslationJobDispatcher;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -62,7 +63,7 @@ class ReviewManager
         $outcome = DB::transaction(function () use ($model, $field, $locale, $result, $sourceLocale, $sourceText, $staleValue, &$superseded, &$review) {
             $locked = $model->newQuery()->lockForUpdate()->find($model->getKey());
 
-            if (!$locked) {
+            if (! $locked) {
                 return TranslationWriter::MISSING;
             }
 
@@ -177,10 +178,10 @@ class ReviewManager
     /**
      * Publish a pending translation - the produced text, or $editedText.
      *
-     * @param bool $cacheEdit With an edit: store it in the translation cache so
-     *        the next identical source text gets the corrected version.
-     * @param bool $force Publish even if the published value was edited by hand
-     *        since the translation was produced.
+     * @param  bool  $cacheEdit  With an edit: store it in the translation cache so
+     *                           the next identical source text gets the corrected version.
+     * @param  bool  $force  Publish even if the published value was edited by hand
+     *                       since the translation was produced.
      *
      * @throws StaleReviewException The source changed; the review is now superseded.
      * @throws ReviewConflictException The published value changed since; nothing written.
@@ -209,7 +210,7 @@ class ReviewManager
             }
 
             $current = (string) $owner->getTranslation($review->field, $review->locale, false);
-            if (!$force && $current !== (string) $review->published_snapshot) {
+            if (! $force && $current !== (string) $review->published_snapshot) {
                 return ['conflict', $current];
             }
 
@@ -400,7 +401,7 @@ class ReviewManager
     {
         $locked = TranslationReview::query()->lockForUpdate()->find($review->id);
 
-        if ($locked === null || !$locked->isPending()) {
+        if ($locked === null || ! $locked->isPending()) {
             throw new InvalidReviewStateException($locked ?? $review);
         }
 
@@ -409,9 +410,9 @@ class ReviewManager
 
     protected function lockOwner(TranslationReview $review): ?Model
     {
-        $class = \Illuminate\Database\Eloquent\Relations\Relation::getMorphedModel($review->translatable_type) ?? $review->translatable_type;
+        $class = Relation::getMorphedModel($review->translatable_type) ?? $review->translatable_type;
 
-        if (!class_exists($class)) {
+        if (! class_exists($class)) {
             return null;
         }
 
@@ -443,7 +444,7 @@ class ReviewManager
     /** The class basename used as {model} context in cache keys. */
     protected function modelName(TranslationReview $review): string
     {
-        $class = \Illuminate\Database\Eloquent\Relations\Relation::getMorphedModel($review->translatable_type) ?? $review->translatable_type;
+        $class = Relation::getMorphedModel($review->translatable_type) ?? $review->translatable_type;
 
         return class_basename($class);
     }

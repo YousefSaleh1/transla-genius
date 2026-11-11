@@ -5,6 +5,7 @@ namespace CodingPartners\TranslaGenius\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Support\Carbon;
 
 /**
  * One AI translation in the review workflow (TRANSLATION_REVIEW): pending a
@@ -29,14 +30,17 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
  * @property bool $cached
  * @property string|null $reviewer_type
  * @property string|null $reviewer_id
- * @property \Illuminate\Support\Carbon|null $reviewed_at
+ * @property Carbon|null $reviewed_at
  * @property string|null $note
  */
 class TranslationReview extends Model
 {
     public const PENDING = 'pending';
+
     public const APPROVED = 'approved';
+
     public const REJECTED = 'rejected';
+
     public const SUPERSEDED = 'superseded';
 
     protected $table = 'translation_reviews';
@@ -86,7 +90,7 @@ class TranslationReview extends Model
     /** Rows for every record of a model class (or morph alias). */
     public function scopeForModel(Builder $query, string $modelClass): Builder
     {
-        $type = class_exists($modelClass) ? (new $modelClass())->getMorphClass() : $modelClass;
+        $type = class_exists($modelClass) ? (new $modelClass)->getMorphClass() : $modelClass;
 
         return $query->where('translatable_type', $type);
     }

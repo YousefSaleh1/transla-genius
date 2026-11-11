@@ -3,6 +3,7 @@
 namespace CodingPartners\TranslaGenius\Contracts;
 
 use CodingPartners\TranslaGenius\DTOs\TranslationBatchResult;
+use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
 
 /**
  * Optional capability of a TranslatorInterface: hand several target locales
@@ -15,20 +16,14 @@ interface BatchTranslatorInterface extends TranslatorInterface
     /**
      * Whether translateBatch() will actually batch (the bound provider can,
      * and batching is enabled for it).
-     *
-     * @return bool
      */
     public function canBatch(): bool;
 
     /**
-     * @param string $text
-     * @param string $sourceLocale
-     * @param array<int, string> $targetLocales
-     * @param string|null $field
-     * @param string|null $model
+     * @param  array<int, string>  $targetLocales
      * @return TranslationBatchResult Only the locales that came back valid.
      *
-     * @throws \CodingPartners\TranslaGenius\Exceptions\TranslationFailedException
+     * @throws TranslationFailedException
      */
     public function translateBatch(
         string $text,

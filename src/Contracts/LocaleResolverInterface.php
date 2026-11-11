@@ -16,8 +16,6 @@ interface LocaleResolverInterface
 {
     /**
      * The locale content is currently being read/written in.
-     *
-     * @return string
      */
     public function currentLocale(): string;
 

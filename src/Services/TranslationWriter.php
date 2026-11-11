@@ -2,6 +2,8 @@
 
 namespace CodingPartners\TranslaGenius\Services;
 
+use CodingPartners\TranslaGenius\Contracts\HasTranslatableAttributes;
+use CodingPartners\TranslaGenius\Traits\Translatable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -44,20 +46,20 @@ class TranslationWriter
      * translation was made from. If the source changed again in the meantime,
      * a newer job owns the field, so this field's pairs are discarded.
      *
-     * @param Model&\CodingPartners\TranslaGenius\Contracts\HasTranslatableAttributes $model
-     * @param array<string, array<string, string>> $translations Map of
-     *        field => [locale => text] to apply.
-     * @param array<string, array{locale: string, text: string}> $sourceSnapshots
-     *        field => the source locale and text its translations were made from.
+     * @param  Model&HasTranslatableAttributes  $model
+     * @param  array<string, array<string, string>>  $translations  Map of
+     *                                                              field => [locale => text] to apply.
+     * @param  array<string, array{locale: string, text: string}>  $sourceSnapshots
+     *                                                                               field => the source locale and text its translations were made from.
      * @return int Number of pairs written.
      *
      * @throws InvalidArgumentException if $model doesn't use the
-     *         Translatable trait (or otherwise doesn't implement
-     *         getTranslation()/setTranslation()) - PHP's type system can't
-     *         express this precondition on a trait, so it's enforced here
-     *         instead, with a clear message rather than the confusing
-     *         BadMethodCallException that would otherwise surface deep
-     *         inside the transaction below.
+     *                                  Translatable trait (or otherwise doesn't implement
+     *                                  getTranslation()/setTranslation()) - PHP's type system can't
+     *                                  express this precondition on a trait, so it's enforced here
+     *                                  instead, with a clear message rather than the confusing
+     *                                  BadMethodCallException that would otherwise surface deep
+     *                                  inside the transaction below.
      */
     public function apply(Model $model, array $translations, array $sourceSnapshots = []): int
     {
@@ -65,11 +67,11 @@ class TranslationWriter
             return 0;
         }
 
-        if (!method_exists($model, 'getTranslation') || !method_exists($model, 'setTranslation')) {
+        if (! method_exists($model, 'getTranslation') || ! method_exists($model, 'setTranslation')) {
             throw new InvalidArgumentException(sprintf(
                 '%s must use the %s trait (getTranslation()/setTranslation() are missing).',
                 get_class($model),
-                \CodingPartners\TranslaGenius\Traits\Translatable::class
+                Translatable::class
             ));
         }
 
@@ -77,7 +79,7 @@ class TranslationWriter
             $locked = $model->newQuery()->lockForUpdate()->find($model->getKey());
 
             // Model was deleted between dispatch and execution - nothing to save.
-            if (!$locked) {
+            if (! $locked) {
                 return 0;
             }
 
@@ -116,8 +118,11 @@ class TranslationWriter
     }
 
     public const WRITTEN = 'written';
+
     public const SOURCE_CHANGED = 'source_changed';
+
     public const TARGET_CHANGED = 'target_changed';
+
     public const MISSING = 'missing';
 
     /**
@@ -130,12 +135,11 @@ class TranslationWriter
      *   was made (else it was already replaced - by an earlier attempt of this
      *   job - or edited by hand since: TARGET_CHANGED). Null skips this check.
      *
-     * @param Model&\CodingPartners\TranslaGenius\Contracts\HasTranslatableAttributes $model
-     * @param string $field
-     * @param string $locale Target locale.
-     * @param string $text New translation.
-     * @param array{locale: string, text: string} $source Source snapshot.
-     * @param string|null $staleValue Target snapshot.
+     * @param  Model&HasTranslatableAttributes  $model
+     * @param  string  $locale  Target locale.
+     * @param  string  $text  New translation.
+     * @param  array{locale: string, text: string}  $source  Source snapshot.
+     * @param  string|null  $staleValue  Target snapshot.
      * @return string One of WRITTEN, SOURCE_CHANGED, TARGET_CHANGED, MISSING.
      */
     public function applyRetranslation(Model $model, string $field, string $locale, string $text, array $source, ?string $staleValue): string
@@ -143,7 +147,7 @@ class TranslationWriter
         return DB::transaction(function () use ($model, $field, $locale, $text, $source, $staleValue) {
             $locked = $model->newQuery()->lockForUpdate()->find($model->getKey());
 
-            if (!$locked) {
+            if (! $locked) {
                 return self::MISSING;
             }
 

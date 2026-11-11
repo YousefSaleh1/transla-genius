@@ -18,23 +18,21 @@ class TranslationWriterTest extends TestCase
 {
     public function test_rejects_a_model_that_does_not_use_the_translatable_trait()
     {
-        $model = new class extends Model {
-        };
+        $model = new class extends Model {};
 
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessageMatches('/must use the .*Translatable trait/');
 
-        (new TranslationWriter())->apply($model, ['name' => ['ar' => 'test']]);
+        (new TranslationWriter)->apply($model, ['name' => ['ar' => 'test']]);
     }
 
     public function test_empty_translations_short_circuits_before_the_guard()
     {
         // Passing an empty array is a no-op regardless of the model - the
         // guard (and any DB interaction) is never reached.
-        $model = new class extends Model {
-        };
+        $model = new class extends Model {};
 
-        (new TranslationWriter())->apply($model, []);
+        (new TranslationWriter)->apply($model, []);
 
         $this->addToAssertionCount(1); // reaching here without an exception is the assertion
     }

@@ -48,7 +48,7 @@ class UsageTrackingDisabledTest extends Orchestra
 
         Config::set('translagenius.supported_languages', ['en', 'ar', 'es']);
 
-        $modelsMigration = include __DIR__ . '/../database/migrations/2024_01_01_000000_create_test_tables.php';
+        $modelsMigration = include __DIR__.'/../database/migrations/2024_01_01_000000_create_test_tables.php';
         $modelsMigration->up();
 
         // Deliberately NOT running create_translation_usage_logs_table -

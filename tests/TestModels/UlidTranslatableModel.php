@@ -12,7 +12,9 @@ class UlidTranslatableModel extends Model
     use HasUlids, Translatable;
 
     protected $table = 'test_string_key_models';
+
     protected $guarded = [];
+
     public $timestamps = false;
 
     public $translatable = ['name', 'description'];

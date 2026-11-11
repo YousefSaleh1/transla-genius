@@ -35,8 +35,8 @@ use InvalidArgumentException;
  * translagenius.providers.*.chain and TranslaGeniusServiceProvider - rather
  * than ever being instantiated directly outside that resolution path.
  *
- * @see \CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface
- * @see \CodingPartners\TranslaGenius\Exceptions\AllProvidersFailedException
+ * @see TranslationProviderInterface
+ * @see AllProvidersFailedException
  */
 final class FallbackProvider implements BatchTranslationProviderInterface
 {
@@ -44,26 +44,26 @@ final class FallbackProvider implements BatchTranslationProviderInterface
     protected array $providers;
 
     /**
-     * @param array<int, TranslationProviderInterface> $providers Ordered
-     *        chain, tried first-to-last. At least 2 required - a single
-     *        provider needs no fallback wrapper.
+     * @param  array<int, TranslationProviderInterface>  $providers  Ordered
+     *                                                               chain, tried first-to-last. At least 2 required - a single
+     *                                                               provider needs no fallback wrapper.
      *
      * @throws InvalidArgumentException If fewer than 2 providers are given,
-     *         or any element doesn't implement TranslationProviderInterface.
+     *                                  or any element doesn't implement TranslationProviderInterface.
      */
     public function __construct(array $providers)
     {
         if (count($providers) < 2) {
             throw new InvalidArgumentException(
-                'FallbackProvider requires at least 2 providers in its chain, got ' . count($providers) . '.'
+                'FallbackProvider requires at least 2 providers in its chain, got '.count($providers).'.'
             );
         }
 
         foreach ($providers as $provider) {
-            if (!$provider instanceof TranslationProviderInterface) {
+            if (! $provider instanceof TranslationProviderInterface) {
                 throw new InvalidArgumentException(
                     'Every entry in a FallbackProvider chain must implement TranslationProviderInterface, got '
-                    . get_debug_type($provider) . '.'
+                    .get_debug_type($provider).'.'
                 );
             }
         }
@@ -77,8 +77,6 @@ final class FallbackProvider implements BatchTranslationProviderInterface
      * docblock for why fallback happens on any failure, not only a
      * retryable one.
      *
-     * @param TranslationRequest $request
-     * @return TranslationResult
      *
      * @throws AllProvidersFailedException If every provider in the chain fails.
      */
@@ -122,8 +120,6 @@ final class FallbackProvider implements BatchTranslationProviderInterface
 
     /**
      * True if at least one member can batch right now.
-     *
-     * @return bool
      */
     public function supportsBatching(): bool
     {
@@ -154,8 +150,6 @@ final class FallbackProvider implements BatchTranslationProviderInterface
      *   through the chain one at a time; when every member could batch and
      *   every attempt threw, AllProvidersFailedException.
      *
-     * @param TranslationBatchRequest $request
-     * @return TranslationBatchResult
      *
      * @throws AllProvidersFailedException
      */
@@ -166,15 +160,16 @@ final class FallbackProvider implements BatchTranslationProviderInterface
         $anyTruncated = false;
 
         foreach ($this->providers as $position => $provider) {
-            if (!$this->canBatch($provider)) {
+            if (! $this->canBatch($provider)) {
                 $hasSingleOnlyMember = true;
+
                 continue;
             }
 
             try {
                 $result = $provider->translateBatch($request);
 
-                if (!$result->truncated) {
+                if (! $result->truncated) {
                     return $result;
                 }
 
@@ -208,10 +203,6 @@ final class FallbackProvider implements BatchTranslationProviderInterface
         throw new AllProvidersFailedException($failures);
     }
 
-    /**
-     * @param TranslationProviderInterface $provider
-     * @return bool
-     */
     protected function canBatch(TranslationProviderInterface $provider): bool
     {
         return $provider instanceof BatchTranslationProviderInterface && $provider->supportsBatching();

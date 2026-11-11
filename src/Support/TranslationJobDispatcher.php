@@ -26,16 +26,14 @@ final class TranslationJobDispatcher
     private static array $warned = [];
 
     /**
-     * @param class-string<TranslationJob> $jobClass Constructed with one
-     *        TranslationJobPayload built from the arguments below.
-     * @param Model $model
-     * @param array<int, string> $fields
-     * @param array<string, array{locale: string, text: string, keep: array<int, string>}> $retranslate
-     *        Fields whose source text changed in this save - see Translatable.
-     * @param string|null $sourceLocale The locale the content was written in;
-     *        null = self::sourceLocale(), resolved now, at dispatch time.
-     * @param array<string, mixed> $options Extra job options (TranslateFields::$options).
-     * @return void
+     * @param  class-string<TranslationJob>  $jobClass  Constructed with one
+     *                                                  TranslationJobPayload built from the arguments below.
+     * @param  array<int, string>  $fields
+     * @param  array<string, array{locale: string, text: string, keep: array<int, string>}>  $retranslate
+     *                                                                                                     Fields whose source text changed in this save - see Translatable.
+     * @param  string|null  $sourceLocale  The locale the content was written in;
+     *                                     null = self::sourceLocale(), resolved now, at dispatch time.
+     * @param  array<string, mixed>  $options  Extra job options (TranslateFields::$options).
      */
     public static function dispatch(string $jobClass, Model $model, array $fields, array $retranslate = [], ?string $sourceLocale = null, array $options = []): void
     {
@@ -43,7 +41,7 @@ final class TranslationJobDispatcher
 
         // Every job gets the same single payload; a class that doesn't take it
         // is rejected here, never silently given less.
-        if (!is_a($jobClass, TranslationJob::class, true)) {
+        if (! is_a($jobClass, TranslationJob::class, true)) {
             throw new InvalidTranslationJobException($jobClass);
         }
 
@@ -55,7 +53,7 @@ final class TranslationJobDispatcher
         $hasConnection = $connection !== null && $connection !== '';
         $hasQueue = $queue !== null && $queue !== '';
 
-        if (($hasConnection && !method_exists($job, 'onConnection')) || ($hasQueue && !method_exists($job, 'onQueue'))) {
+        if (($hasConnection && ! method_exists($job, 'onConnection')) || ($hasQueue && ! method_exists($job, 'onQueue'))) {
             self::warnOnce($jobClass);
         }
 
@@ -83,8 +81,6 @@ final class TranslationJobDispatcher
      * (never inside the job, where the queue worker's locale is unrelated to
      * the request that saved the record): TRANSLATION_SOURCE_LOCALE when set,
      * otherwise the current (request) locale.
-     *
-     * @return string
      */
     public static function sourceLocale(): string
     {
@@ -99,8 +95,6 @@ final class TranslationJobDispatcher
      * app's configured locale (config('app.locale') as it was at boot).
      * Deterministic - not the process's current locale, which
      * app()->setLocale() may have changed (along with config('app.locale')).
-     *
-     * @return string
      */
     public static function defaultSourceLocale(): string
     {
@@ -116,8 +110,7 @@ final class TranslationJobDispatcher
     }
 
     /**
-     * @param class-string $jobClass
-     * @return void
+     * @param  class-string  $jobClass
      */
     private static function warnOnce(string $jobClass): void
     {
@@ -129,15 +122,13 @@ final class TranslationJobDispatcher
 
         Log::warning(
             "TranslaGenius: {$jobClass} does not use Illuminate\\Bus\\Queueable, so TRANSLATION_QUEUE_CONNECTION / "
-            . 'TRANSLATION_QUEUE are ignored for it and it is dispatched on the app defaults.',
+            .'TRANSLATION_QUEUE are ignored for it and it is dispatched on the app defaults.',
             ['job_class' => $jobClass]
         );
     }
 
     /**
      * Forget which classes were warned about (for tests).
-     *
-     * @return void
      */
     public static function resetWarnings(): void
     {

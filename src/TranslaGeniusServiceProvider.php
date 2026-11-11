@@ -4,15 +4,20 @@ namespace CodingPartners\TranslaGenius;
 
 use CodingPartners\TranslaGenius\Console\Commands\BackfillCommand;
 use CodingPartners\TranslaGenius\Console\Commands\CheckCommand;
+use CodingPartners\TranslaGenius\Console\Commands\ReviewApproveAllCommand;
+use CodingPartners\TranslaGenius\Console\Commands\ReviewListCommand;
+use CodingPartners\TranslaGenius\Console\Commands\ReviewPruneCommand;
 use CodingPartners\TranslaGenius\Contracts\LocaleResolverInterface;
 use CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface;
 use CodingPartners\TranslaGenius\Contracts\TranslatorInterface;
 use CodingPartners\TranslaGenius\Events\TranslationCompleted;
+use CodingPartners\TranslaGenius\Events\TranslationRequestBilled;
 use CodingPartners\TranslaGenius\Listeners\LogTranslationUsage;
 use CodingPartners\TranslaGenius\LocaleResolvers\DefaultLocaleResolver;
 use CodingPartners\TranslaGenius\Providers\CachingProvider;
 use CodingPartners\TranslaGenius\Providers\FallbackProvider;
 use CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider;
+use CodingPartners\TranslaGenius\Review\ReviewManager;
 use CodingPartners\TranslaGenius\Services\Translator;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
@@ -25,8 +30,6 @@ use RuntimeException;
  * binds the configured TranslationProviderInterface driver, the
  * TranslatorInterface that resolves and delegates to it, and the
  * LocaleResolverInterface used throughout the package.
- *
- * @package CodingPartners\TranslaGenius
  */
 class TranslaGeniusServiceProvider extends ServiceProvider
 {
@@ -35,15 +38,15 @@ class TranslaGeniusServiceProvider extends ServiceProvider
      *
      * @return void
      *
-     * @throws \RuntimeException When TranslationProviderInterface is
-     *         resolved and no provider is configured for
-     *         translagenius.default (raised lazily, inside the singleton
-     *         factory - not at register() call time).
+     * @throws RuntimeException When TranslationProviderInterface is
+     *                          resolved and no provider is configured for
+     *                          translagenius.default (raised lazily, inside the singleton
+     *                          factory - not at register() call time).
      */
     public function register()
     {
         $this->mergeConfigFrom(
-            __DIR__ . '/config/translagenius.php',
+            __DIR__.'/config/translagenius.php',
             'translagenius'
         );
 
@@ -67,7 +70,7 @@ class TranslaGeniusServiceProvider extends ServiceProvider
 
         $this->app->singleton(LocaleResolverInterface::class, DefaultLocaleResolver::class);
 
-        $this->app->singleton(\CodingPartners\TranslaGenius\Review\ReviewManager::class);
+        $this->app->singleton(ReviewManager::class);
     }
 
     /**
@@ -84,27 +87,25 @@ class TranslaGeniusServiceProvider extends ServiceProvider
      * `$app->make($driver, ['config' => $providerConfig])`, with the entry's
      * own key added as `name` so the provider can report which entry it is.
      *
-     * @param Application $app
-     * @param string $name Key under translagenius.providers.
-     * @param array<int, string> $seen Provider names already being
-     *        resolved in this call chain, to detect a `chain` that
-     *        (directly or indirectly) references itself.
-     * @param bool $inChain Whether $name is being resolved as a member of a
-     *        fallback chain. Chain members get translagenius.retries.fallback_http
-     *        HTTP retries and never sleep on Retry-After, so failover is fast.
-     * @return TranslationProviderInterface
+     * @param  string  $name  Key under translagenius.providers.
+     * @param  array<int, string>  $seen  Provider names already being
+     *                                    resolved in this call chain, to detect a `chain` that
+     *                                    (directly or indirectly) references itself.
+     * @param  bool  $inChain  Whether $name is being resolved as a member of a
+     *                         fallback chain. Chain members get translagenius.retries.fallback_http
+     *                         HTTP retries and never sleep on Retry-After, so failover is fast.
      *
      * @throws RuntimeException If $name has no config, no `driver`, a
-     *         `driver` class that doesn't exist or doesn't implement
-     *         TranslationProviderInterface, an empty `chain` (for a
-     *         FallbackProvider driver), or `chain` forms a cycle.
+     *                          `driver` class that doesn't exist or doesn't implement
+     *                          TranslationProviderInterface, an empty `chain` (for a
+     *                          FallbackProvider driver), or `chain` forms a cycle.
      */
     protected function resolveProvider(Application $app, string $name, array $seen = [], bool $inChain = false): TranslationProviderInterface
     {
         if (in_array($name, $seen, true)) {
             throw new RuntimeException(
                 'TranslaGenius: provider chain forms a cycle: '
-                . implode(' -> ', [...$seen, $name])
+                .implode(' -> ', [...$seen, $name])
             );
         }
 
@@ -114,7 +115,7 @@ class TranslaGeniusServiceProvider extends ServiceProvider
         if (empty($providerConfig) || empty($providerConfig['driver'])) {
             throw new RuntimeException(
                 "TranslaGenius: no provider configured for [{$name}]. "
-                . 'Check the `default` and `providers` keys in config/translagenius.php.'
+                .'Check the `default` and `providers` keys in config/translagenius.php.'
             );
         }
 
@@ -124,8 +125,8 @@ class TranslaGeniusServiceProvider extends ServiceProvider
             if (empty($chain)) {
                 throw new RuntimeException(
                     "TranslaGenius: fallback provider [{$name}] has no `chain` configured. "
-                    . 'Set `chain` (or TRANSLATION_FALLBACK_CHAIN for the shipped `fallback` entry) '
-                    . 'to at least 2 other provider names from `providers`, e.g. "openai,gemini".'
+                    .'Set `chain` (or TRANSLATION_FALLBACK_CHAIN for the shipped `fallback` entry) '
+                    .'to at least 2 other provider names from `providers`, e.g. "openai,gemini".'
                 );
             }
 
@@ -148,16 +149,16 @@ class TranslaGeniusServiceProvider extends ServiceProvider
 
         $driver = $providerConfig['driver'];
 
-        if (!is_string($driver) || !class_exists($driver)) {
+        if (! is_string($driver) || ! class_exists($driver)) {
             throw new RuntimeException(sprintf(
                 'TranslaGenius: provider [%s] has driver class [%s], which does not exist. '
-                . 'Check the class name and that it is autoloadable.',
+                .'Check the class name and that it is autoloadable.',
                 $name,
                 is_string($driver) ? $driver : get_debug_type($driver)
             ));
         }
 
-        if (!is_subclass_of($driver, TranslationProviderInterface::class)) {
+        if (! is_subclass_of($driver, TranslationProviderInterface::class)) {
             throw new RuntimeException(sprintf(
                 'TranslaGenius: provider [%s] has driver class [%s], which does not implement %s.',
                 $name,
@@ -219,8 +220,7 @@ class TranslaGeniusServiceProvider extends ServiceProvider
      * driver other than OpenAiCompatibleProvider, whose prompts can't be
      * inspected, they always are.
      *
-     * @param string $driver
-     * @param array<string, mixed> $config The entry as passed to the driver.
+     * @param  array<string, mixed>  $config  The entry as passed to the driver.
      * @return array<string, mixed>
      */
     protected function cacheProfile(string $driver, array $config): array
@@ -228,7 +228,7 @@ class TranslaGeniusServiceProvider extends ServiceProvider
         $isOpenAiCompatible = is_a($driver, OpenAiCompatibleProvider::class, true);
         $prompt = self::normalize($config['prompt'] ?? null) ?? ($isOpenAiCompatible ? OpenAiCompatibleProvider::DEFAULT_PROMPT : null);
         $batchPrompt = self::normalize($config['batch_prompt'] ?? null) ?? ($isOpenAiCompatible ? OpenAiCompatibleProvider::DEFAULT_BATCH_PROMPT : null);
-        $templates = $prompt . "\n" . $batchPrompt;
+        $templates = $prompt."\n".$batchPrompt;
 
         $fingerprint = ['driver' => $driver, 'name' => $config['name']];
         foreach (['url', 'model', 'temperature', 'reasoning_effort', 'batch_response_format'] as $key) {
@@ -240,8 +240,8 @@ class TranslaGeniusServiceProvider extends ServiceProvider
 
         return [
             'fingerprint' => $fingerprint,
-            'uses_field' => !$isOpenAiCompatible || str_contains($templates, '{field}'),
-            'uses_model' => !$isOpenAiCompatible || str_contains($templates, '{model}'),
+            'uses_field' => ! $isOpenAiCompatible || str_contains($templates, '{field}'),
+            'uses_model' => ! $isOpenAiCompatible || str_contains($templates, '{model}'),
             'primary' => $config['name'],
             'is_chain' => false,
         ];
@@ -281,17 +281,14 @@ class TranslaGeniusServiceProvider extends ServiceProvider
      * resolved provider - a single entry or a whole fallback chain - in a
      * CachingProvider. Off: returned as is, not wrapped at all.
      *
-     * @param Application $app
-     * @param TranslationProviderInterface $provider
-     * @param array<string, mixed> $profile From cacheProfile() / the chain branch.
-     * @return TranslationProviderInterface
+     * @param  array<string, mixed>  $profile  From cacheProfile() / the chain branch.
      */
     protected function wrapWithCache(Application $app, TranslationProviderInterface $provider, array $profile): TranslationProviderInterface
     {
         $settings = (array) $app->make('config')->get('translagenius.cache', []);
         $enabled = filter_var($settings['enabled'] ?? false, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? false;
 
-        if (!$enabled) {
+        if (! $enabled) {
             return $provider;
         }
 
@@ -312,10 +309,6 @@ class TranslaGeniusServiceProvider extends ServiceProvider
     /**
      * An integer setting read from env-backed config: null or '' (an empty
      * `VAR=` in .env) means "use the default".
-     *
-     * @param mixed $value
-     * @param int $default
-     * @return int
      */
     public static function intSetting(mixed $value, int $default): int
     {
@@ -328,7 +321,7 @@ class TranslaGeniusServiceProvider extends ServiceProvider
      * TRANSLATION_FALLBACK_CHAIN); trims each name and drops empty items, so
      * " openai, ,gemini " becomes ['openai', 'gemini'].
      *
-     * @param array<int, string>|string|null $chain
+     * @param  array<int, string>|string|null  $chain
      * @return array<int, string>
      */
     protected function normalizeChain(array|string|null $chain): array
@@ -350,19 +343,19 @@ class TranslaGeniusServiceProvider extends ServiceProvider
     {
         // Publish the configuration file to the application's configuration directory.
         $this->publishes([
-            __DIR__ . '/config/translagenius.php' => config_path('translagenius.php'),
+            __DIR__.'/config/translagenius.php' => config_path('translagenius.php'),
         ], 'translagenius-config');
 
         // Publish the usage-log migration - opt-in, same as the feature it
         // backs (translagenius.usage_tracking.enabled). Timestamped fresh
         // at publish time, like any other package-shipped migration stub.
         $this->publishes([
-            __DIR__ . '/database/migrations/create_translation_usage_logs_table.php.stub' => database_path(
-                'migrations/' . date('Y_m_d_His') . '_create_translation_usage_logs_table.php'
+            __DIR__.'/database/migrations/create_translation_usage_logs_table.php.stub' => database_path(
+                'migrations/'.date('Y_m_d_His').'_create_translation_usage_logs_table.php'
             ),
             // Only needed with the review workflow on (TRANSLATION_REVIEW).
-            __DIR__ . '/database/migrations/create_translation_reviews_table.php.stub' => database_path(
-                'migrations/' . date('Y_m_d_His', time() + 1) . '_create_translation_reviews_table.php'
+            __DIR__.'/database/migrations/create_translation_reviews_table.php.stub' => database_path(
+                'migrations/'.date('Y_m_d_His', time() + 1).'_create_translation_reviews_table.php'
             ),
         ], 'translagenius-migrations');
 
@@ -370,9 +363,9 @@ class TranslaGeniusServiceProvider extends ServiceProvider
             $this->commands([
                 CheckCommand::class,
                 BackfillCommand::class,
-                \CodingPartners\TranslaGenius\Console\Commands\ReviewListCommand::class,
-                \CodingPartners\TranslaGenius\Console\Commands\ReviewApproveAllCommand::class,
-                \CodingPartners\TranslaGenius\Console\Commands\ReviewPruneCommand::class,
+                ReviewListCommand::class,
+                ReviewApproveAllCommand::class,
+                ReviewPruneCommand::class,
             ]);
         }
 
@@ -387,18 +380,16 @@ class TranslaGeniusServiceProvider extends ServiceProvider
      * never wired up at all (no listener registered, nothing runs, no
      * query against a table that may not even exist), not merely "runs but
      * writes nothing."
-     *
-     * @return void
      */
     protected function registerUsageTrackingListener(): void
     {
-        if (!$this->app['config']->get('translagenius.usage_tracking.enabled', false)) {
+        if (! $this->app['config']->get('translagenius.usage_tracking.enabled', false)) {
             return;
         }
 
         $this->app['events']->listen(TranslationCompleted::class, LogTranslationUsage::class);
         $this->app['events']->listen(
-            \CodingPartners\TranslaGenius\Events\TranslationRequestBilled::class,
+            TranslationRequestBilled::class,
             [LogTranslationUsage::class, 'handleBilled']
         );
     }

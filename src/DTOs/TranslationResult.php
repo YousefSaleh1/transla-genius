@@ -25,20 +25,19 @@ use InvalidArgumentException;
 final readonly class TranslationResult
 {
     /**
-     * @param string $text The translated text. Must be non-empty.
-     * @param string|null $provider Identifier of the provider that produced
-     *        this result (e.g. "openrouter"), if the provider reports one.
-     * @param int|null $promptTokens Prompt token usage, if the provider
-     *        reports token-level usage metadata.
-     * @param int|null $completionTokens Completion token usage, if the
-     *        provider reports token-level usage metadata.
+     * @param  string  $text  The translated text. Must be non-empty.
+     * @param  string|null  $provider  Identifier of the provider that produced
+     *                                 this result (e.g. "openrouter"), if the provider reports one.
+     * @param  int|null  $promptTokens  Prompt token usage, if the provider
+     *                                  reports token-level usage metadata.
+     * @param  int|null  $completionTokens  Completion token usage, if the
+     *                                      provider reports token-level usage metadata.
+     * @param  string|null  $requestId  Identifies the API request this result
+     *                                  came from. Every pair translated by one batch request shares it.
+     * @param  bool  $cached  Served from the translation cache: no request was
+     *                        made, so there are no tokens to report (see CachingProvider).
      *
-     * @param string|null $requestId Identifies the API request this result
-     *        came from. Every pair translated by one batch request shares it.
-     * @param bool $cached Served from the translation cache: no request was
-     *        made, so there are no tokens to report (see CachingProvider).
-     *
-     * @throws \InvalidArgumentException If $text is empty or all whitespace.
+     * @throws InvalidArgumentException If $text is empty or all whitespace.
      */
     public function __construct(
         public string $text,

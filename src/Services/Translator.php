@@ -10,6 +10,7 @@ use CodingPartners\TranslaGenius\DTOs\TranslationBatchRequest;
 use CodingPartners\TranslaGenius\DTOs\TranslationBatchResult;
 use CodingPartners\TranslaGenius\DTOs\TranslationRequest;
 use CodingPartners\TranslaGenius\DTOs\TranslationResult;
+use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
 
 /**
  * Default TranslatorInterface implementation: resolves to whichever
@@ -24,32 +25,29 @@ use CodingPartners\TranslaGenius\DTOs\TranslationResult;
  * chaining, ...) means rebinding TranslatorInterface to a different
  * implementation - neither touches the job or the Translatable trait.
  *
- * @see \CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface
+ * @see TranslationProviderInterface
  */
 class Translator implements BatchTranslatorInterface
 {
     /**
-     * @param TranslationProviderInterface $provider The backend to delegate
-     *        translate() calls to - whichever implementation is bound (see
-     *        translagenius.default / translagenius.providers.*).
+     * @param  TranslationProviderInterface  $provider  The backend to delegate
+     *                                                  translate() calls to - whichever implementation is bound (see
+     *                                                  translagenius.default / translagenius.providers.*).
      */
-    public function __construct(protected TranslationProviderInterface $provider)
-    {
-    }
+    public function __construct(protected TranslationProviderInterface $provider) {}
 
     /**
      * Translate a piece of text by delegating to the bound
      * TranslationProviderInterface.
      *
-     * @param string $text The source text to translate.
-     * @param string $sourceLocale The locale $text is written in.
-     * @param string $targetLocale The locale to translate $text into.
-     * @param string|null $field Optional context: the attribute being translated.
-     * @param string|null $model Optional context: the owning model's class basename.
-     * @return TranslationResult
+     * @param  string  $text  The source text to translate.
+     * @param  string  $sourceLocale  The locale $text is written in.
+     * @param  string  $targetLocale  The locale to translate $text into.
+     * @param  string|null  $field  Optional context: the attribute being translated.
+     * @param  string|null  $model  Optional context: the owning model's class basename.
      *
-     * @throws \CodingPartners\TranslaGenius\Exceptions\TranslationFailedException
-     *         If the underlying provider cannot complete the translation.
+     * @throws TranslationFailedException
+     *                                    If the underlying provider cannot complete the translation.
      */
     public function translate(
         string $text,
@@ -65,8 +63,6 @@ class Translator implements BatchTranslatorInterface
      * True when the bound provider implements BatchTranslationProviderInterface
      * and has batching enabled. A single-call-only provider never batches:
      * TranslateFields then translates each locale with its own translate().
-     *
-     * @return bool
      */
     public function canBatch(): bool
     {
@@ -79,14 +75,9 @@ class Translator implements BatchTranslatorInterface
      * the provider can't batch, nothing is requested and an empty result is
      * returned, so the caller translates every locale one at a time.
      *
-     * @param string $text
-     * @param string $sourceLocale
-     * @param array<int, string> $targetLocales
-     * @param string|null $field
-     * @param string|null $model
-     * @return TranslationBatchResult
+     * @param  array<int, string>  $targetLocales
      *
-     * @throws \CodingPartners\TranslaGenius\Exceptions\TranslationFailedException
+     * @throws TranslationFailedException
      */
     public function translateBatch(
         string $text,
@@ -95,7 +86,7 @@ class Translator implements BatchTranslatorInterface
         ?string $field = null,
         ?string $model = null,
     ): TranslationBatchResult {
-        if (!$this->canBatch()) {
+        if (! $this->canBatch()) {
             return TranslationBatchResult::empty();
         }
 

@@ -26,15 +26,21 @@ class FakeConfigurableProvider implements TranslationProviderInterface
     public static array $callCounts = [];
 
     protected string $id;
+
     protected string $prefix;
+
     protected bool $shouldFail;
+
     protected bool $retryable;
+
     protected ?int $statusCode;
+
     protected ?int $promptTokens;
+
     protected ?int $completionTokens;
 
     /**
-     * @param array{id?: string, prefix?: string, fail?: bool, retryable?: bool, status_code?: int|null, prompt_tokens?: int|null, completion_tokens?: int|null} $config
+     * @param  array{id?: string, prefix?: string, fail?: bool, retryable?: bool, status_code?: int|null, prompt_tokens?: int|null, completion_tokens?: int|null}  $config
      */
     public function __construct(array $config)
     {

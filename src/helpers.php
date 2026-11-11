@@ -2,7 +2,7 @@
 
 use CodingPartners\TranslaGenius\Contracts\LocaleResolverInterface;
 
-if (!function_exists('get_current_locale')) {
+if (! function_exists('get_current_locale')) {
     /**
      * Get the current application locale.
      *
@@ -20,7 +20,7 @@ if (!function_exists('get_current_locale')) {
     }
 }
 
-if (!function_exists('get_supported_languages')) {
+if (! function_exists('get_supported_languages')) {
     /**
      * Get all supported languages except the current locale.
      *
@@ -28,7 +28,7 @@ if (!function_exists('get_supported_languages')) {
      * get_current_locale() for why this exists as a function rather than
      * requiring callers to resolve the interface themselves.
      *
-     * @param string|null $excludeLang Language to exclude (default: current locale)
+     * @param  string|null  $excludeLang  Language to exclude (default: current locale)
      * @return array<int, string>
      */
     function get_supported_languages(?string $excludeLang = null)

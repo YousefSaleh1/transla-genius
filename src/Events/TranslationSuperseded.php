@@ -14,11 +14,11 @@ class TranslationSuperseded
     use Dispatchable;
 
     public const SOURCE_CHANGED = 'source_changed';
+
     public const REPLACED = 'replaced';
 
     public function __construct(
         public TranslationReview $review,
         public string $reason,
-    ) {
-    }
+    ) {}
 }

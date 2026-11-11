@@ -17,17 +17,17 @@ use Throwable;
 class TranslationFailedException extends RuntimeException
 {
     /**
-     * @param string $message Human-readable failure description (safe to log).
-     * @param int|null $statusCode HTTP status code from the provider, if any.
-     * @param string|null $responseSnippet A bounded, already-redacted excerpt
-     *        of the provider's response body/error message, if any.
-     * @param bool $retryable Whether TranslateFields should let the queue
-     *        retry this job ($tries/backoff()) rather than failing it
-     *        immediately. Defaults to true (the safer default when a caller
-     *        constructs this without specifying).
-     * @param \Throwable|null $previous The original exception this wraps, if any.
-     * @param int|null $retryAfter Seconds the provider asked us to wait before
-     *        retrying (its Retry-After header), if it sent one.
+     * @param  string  $message  Human-readable failure description (safe to log).
+     * @param  int|null  $statusCode  HTTP status code from the provider, if any.
+     * @param  string|null  $responseSnippet  A bounded, already-redacted excerpt
+     *                                        of the provider's response body/error message, if any.
+     * @param  bool  $retryable  Whether TranslateFields should let the queue
+     *                           retry this job ($tries/backoff()) rather than failing it
+     *                           immediately. Defaults to true (the safer default when a caller
+     *                           constructs this without specifying).
+     * @param  Throwable|null  $previous  The original exception this wraps, if any.
+     * @param  int|null  $retryAfter  Seconds the provider asked us to wait before
+     *                                retrying (its Retry-After header), if it sent one.
      */
     public function __construct(
         string $message,
@@ -43,8 +43,6 @@ class TranslationFailedException extends RuntimeException
     /**
      * The HTTP status code returned by the provider, if the failure
      * happened at the HTTP layer.
-     *
-     * @return int|null
      */
     public function getStatusCode(): ?int
     {
@@ -53,8 +51,6 @@ class TranslationFailedException extends RuntimeException
 
     /**
      * A bounded, redacted excerpt of the provider's response, if captured.
-     *
-     * @return string|null
      */
     public function getResponseSnippet(): ?string
     {
@@ -64,8 +60,6 @@ class TranslationFailedException extends RuntimeException
     /**
      * Whether TranslateFields should retry the job for this failure
      * (true) or call $this->fail() immediately (false).
-     *
-     * @return bool
      */
     public function isRetryable(): bool
     {
@@ -75,8 +69,6 @@ class TranslationFailedException extends RuntimeException
     /**
      * Seconds the provider asked to wait before retrying (from Retry-After),
      * if it said. TranslateFields uses this as the queue release delay.
-     *
-     * @return int|null
      */
     public function getRetryAfter(): ?int
     {

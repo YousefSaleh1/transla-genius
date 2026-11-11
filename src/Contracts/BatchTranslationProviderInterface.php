@@ -4,6 +4,7 @@ namespace CodingPartners\TranslaGenius\Contracts;
 
 use CodingPartners\TranslaGenius\DTOs\TranslationBatchRequest;
 use CodingPartners\TranslaGenius\DTOs\TranslationBatchResult;
+use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
 
 /**
  * Optional capability: translate one text into several locales in a single
@@ -15,8 +16,6 @@ interface BatchTranslationProviderInterface extends TranslationProviderInterface
     /**
      * Whether this instance will batch right now (e.g. batching may be
      * switched off in its config). When false, translateBatch() isn't called.
-     *
-     * @return bool
      */
     public function supportsBatching(): bool;
 
@@ -31,10 +30,8 @@ interface BatchTranslationProviderInterface extends TranslationProviderInterface
      * TranslationFailedException for request-level failures (HTTP errors),
      * exactly like translate().
      *
-     * @param TranslationBatchRequest $request
-     * @return TranslationBatchResult
      *
-     * @throws \CodingPartners\TranslaGenius\Exceptions\TranslationFailedException
+     * @throws TranslationFailedException
      */
     public function translateBatch(TranslationBatchRequest $request): TranslationBatchResult;
 }

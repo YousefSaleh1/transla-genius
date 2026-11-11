@@ -2,14 +2,15 @@
 
 namespace CodingPartners\TranslaGenius\Tests\Feature;
 
+use CodingPartners\TranslaGenius\Contracts\TranslatorInterface;
 use CodingPartners\TranslaGenius\DTOs\TranslationJobPayload;
 use CodingPartners\TranslaGenius\DTOs\TranslationResult;
 use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
 use CodingPartners\TranslaGenius\Jobs\TranslateFields;
 use CodingPartners\TranslaGenius\Services\TranslationWriter;
-use CodingPartners\TranslaGenius\Contracts\TranslatorInterface;
-use CodingPartners\TranslaGenius\Tests\TestModels\TestTranslatableModel;
 use CodingPartners\TranslaGenius\Tests\TestCase;
+use CodingPartners\TranslaGenius\Tests\TestModels\TestTranslatableModel;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Mockery;
 
@@ -47,7 +48,7 @@ class TranslateFieldsJobTest extends TestCase
 {
     protected function writer(): TranslationWriter
     {
-        return new TranslationWriter();
+        return new TranslationWriter;
     }
 
     protected function translationResult(string $text): TranslationResult
@@ -72,7 +73,7 @@ class TranslateFieldsJobTest extends TestCase
         // Create test model with English-only content
         $model = TestTranslatableModel::create([
             'name' => ['en' => 'Test Name'],
-            'description' => ['en' => 'Test Description']
+            'description' => ['en' => 'Test Description'],
         ]);
 
         // Mock the translator with expected calls and responses
@@ -120,7 +121,7 @@ class TranslateFieldsJobTest extends TestCase
         // Create test model with existing Arabic translation for name
         $model = TestTranslatableModel::create([
             'name' => ['en' => 'Test Name', 'ar' => 'Existing Arabic'],
-            'description' => ['en' => 'Test Description']
+            'description' => ['en' => 'Test Description'],
         ]);
 
         // Mock the translator with expected calls only for missing translations
@@ -202,7 +203,7 @@ class TranslateFieldsJobTest extends TestCase
     public function test_truncated_translation_fails_the_job_and_saves_nothing()
     {
         Queue::fake();
-        \Illuminate\Support\Facades\Http::fake(['test-api-url.com' => \Illuminate\Support\Facades\Http::response([
+        Http::fake(['test-api-url.com' => Http::response([
             'choices' => [['message' => ['content' => 'half a transl'], 'finish_reason' => 'length']],
         ])]);
 
@@ -213,7 +214,7 @@ class TranslateFieldsJobTest extends TestCase
 
         $job->assertFailedWith(TranslationFailedException::class);
         $job->assertNotReleased();
-        \Illuminate\Support\Facades\Http::assertSentCount(1);
+        Http::assertSentCount(1);
         $this->assertArrayNotHasKey('ar', $model->fresh()->getTranslations('name'));
     }
 
@@ -378,7 +379,8 @@ class TranslateFieldsJobTest extends TestCase
     {
         Queue::fake();
 
-        $model = new class extends TestTranslatableModel {
+        $model = new class extends TestTranslatableModel
+        {
             public function shouldTranslateField(string $field, string $value): bool
             {
                 return $field !== 'description';
@@ -411,8 +413,6 @@ class TranslateFieldsJobTest extends TestCase
 
     /**
      * Clean up mock objects after each test
-     *
-     * @return void
      */
     protected function tearDown(): void
     {
