@@ -66,6 +66,8 @@ class TranslaGeniusServiceProvider extends ServiceProvider
         $this->app->singleton(TranslatorInterface::class, fn ($app) => $app->make(Translator::class));
 
         $this->app->singleton(LocaleResolverInterface::class, DefaultLocaleResolver::class);
+
+        $this->app->singleton(\CodingPartners\TranslaGenius\Review\ReviewManager::class);
     }
 
     /**
@@ -358,12 +360,19 @@ class TranslaGeniusServiceProvider extends ServiceProvider
             __DIR__ . '/database/migrations/create_translation_usage_logs_table.php.stub' => database_path(
                 'migrations/' . date('Y_m_d_His') . '_create_translation_usage_logs_table.php'
             ),
+            // Only needed with the review workflow on (TRANSLATION_REVIEW).
+            __DIR__ . '/database/migrations/create_translation_reviews_table.php.stub' => database_path(
+                'migrations/' . date('Y_m_d_His', time() + 1) . '_create_translation_reviews_table.php'
+            ),
         ], 'translagenius-migrations');
 
         if ($this->app->runningInConsole()) {
             $this->commands([
                 CheckCommand::class,
                 BackfillCommand::class,
+                \CodingPartners\TranslaGenius\Console\Commands\ReviewListCommand::class,
+                \CodingPartners\TranslaGenius\Console\Commands\ReviewApproveAllCommand::class,
+                \CodingPartners\TranslaGenius\Console\Commands\ReviewPruneCommand::class,
             ]);
         }
 

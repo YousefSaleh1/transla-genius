@@ -260,4 +260,35 @@ trait Translatable
             }
         });
     }
+
+    /**
+     * Records with at least one translation awaiting review (review workflow,
+     * TRANSLATION_REVIEW), optionally for one field and/or locale. Published
+     * translations are what fullyTranslated()/notFullyTranslated() look at;
+     * this looks at the pending ones.
+     *
+     * @param \Illuminate\Database\Eloquent\Builder $query
+     * @param string|null $field
+     * @param string|null $locale
+     * @return \Illuminate\Database\Eloquent\Builder
+     */
+    public function scopePendingReview(Builder $query, ?string $field = null, ?string $locale = null)
+    {
+        $model = $query->getModel();
+
+        // Ids first, then a plain whereIn: translatable_id is a string column
+        // (to fit integer, UUID and ULID keys), and comparing it to an integer
+        // key column inside SQL isn't portable (PostgreSQL rejects varchar =
+        // bigint, and there's no CAST syntax all five drivers share).
+        $ids = \CodingPartners\TranslaGenius\Models\TranslationReview::query()
+            ->pending()
+            ->where('translatable_type', $model->getMorphClass())
+            ->when($field !== null, fn ($q) => $q->where('field', $field))
+            ->when($locale !== null, fn ($q) => $q->where('locale', $locale))
+            ->distinct()
+            ->pluck('translatable_id')
+            ->all();
+
+        return $query->whereIn($model->getQualifiedKeyName(), $ids);
+    }
 }

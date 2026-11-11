@@ -10,6 +10,8 @@ use CodingPartners\TranslaGenius\Events\TranslationFailed as TranslationFailedEv
 use CodingPartners\TranslaGenius\Events\TranslationRequestBilled;
 use CodingPartners\TranslaGenius\Events\TranslationStarted;
 use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
+use CodingPartners\TranslaGenius\Review\ReviewManager;
+use CodingPartners\TranslaGenius\Review\ReviewSettings;
 use CodingPartners\TranslaGenius\Services\TranslationWriter;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -79,6 +81,18 @@ class TranslateFields implements ShouldQueue
     protected ?string $sourceLocale = null;
 
     /**
+     * Extra dispatch options. `include_rejected`: with review on, also request
+     * pairs whose translation was rejected for the current source text
+     * (backfill sets it; a model save doesn't, so a rejection stays put).
+     *
+     * @var array<string, mixed>
+     */
+    protected array $options = [];
+
+    /** Set per run when the review workflow is on; null when it's off. */
+    protected ?ReviewManager $reviews = null;
+
+    /**
      * Number of attempts before the job is considered permanently failed
      * (translaGenius.retries.job_tries / TRANSLATION_JOB_TRIES, default 3),
      * set at construction so it's captured in the queued payload. Transient
@@ -121,9 +135,11 @@ class TranslateFields implements ShouldQueue
      *        Re-translation plan for fields whose source changed (see $retranslate).
      * @param string|null $sourceLocale Locale the content was authored in, as
      *        decided at dispatch time.
+     * @param array<string, mixed> $options See $options.
      */
-    public function __construct(Model $model, array $fields, array $retranslate = [], ?string $sourceLocale = null)
+    public function __construct(Model $model, array $fields, array $retranslate = [], ?string $sourceLocale = null, array $options = [])
     {
+        $this->options = $options;
         $this->model = $model;
         $this->fields = $fields;
         $this->retranslate = $retranslate;
@@ -159,6 +175,9 @@ class TranslateFields implements ShouldQueue
             // request that saved the record.
             $currentLocale = $this->resolvedSourceLocale();
             $targetLanguages = get_supported_languages($currentLocale);
+
+            // Review off: no review queries at all.
+            $this->reviews = ReviewSettings::enabled() ? app(ReviewManager::class) : null;
 
             $saved = $this->translateMissingPairs($translator, $writer, $currentLocale, $targetLanguages);
 
@@ -281,6 +300,7 @@ class TranslateFields implements ShouldQueue
         array $targetLanguages
     ): int {
         $saved = 0;
+        $skip = $this->reviews?->pairsToSkip($this->model, $currentLocale, (bool) ($this->options['include_rejected'] ?? false)) ?? [];
 
         foreach ($this->fields as $field) {
             if (isset($this->retranslate[$field])) {
@@ -320,9 +340,11 @@ class TranslateFields implements ShouldQueue
                 continue;
             }
 
+            // With review on: not a pair already awaiting review, or one rejected
+            // for this source text (see ReviewManager::pairsToSkip()).
             $missing = array_values(array_filter(
                 $targetLanguages,
-                fn (string $locale) => empty($fieldTranslations[$locale])
+                fn (string $locale) => empty($fieldTranslations[$locale]) && !in_array($locale, $skip[$field] ?? [], true)
             ));
 
             $saved += $this->translateField($translator, $writer, $field, $sourceText, $currentLocale, $missing);
@@ -362,6 +384,9 @@ class TranslateFields implements ShouldQueue
         if (!$this->shouldTranslateField($field, $plan['text'])) {
             return 0;
         }
+
+        // Pending reviews of the old source text are obsolete now.
+        $this->reviews?->supersedeForSourceChange($this->model, $field, $plan['text']);
 
         $targets = array_values(array_diff(
             get_supported_languages($plan['locale']),
@@ -450,7 +475,7 @@ class TranslateFields implements ShouldQueue
                 $result = $batch->resultFor($locale, $carriesTokens);
                 $tokensAttributed = $tokensAttributed || $carriesTokens;
 
-                $outcome = $this->savePair($writer, $field, $currentLocale, $locale, $result, $snapshot);
+                $outcome = $this->savePair($writer, $field, $currentLocale, $locale, $result, $snapshot, $sourceText);
                 if ($outcome === false) {
                     return $saved;
                 }
@@ -467,7 +492,7 @@ class TranslateFields implements ShouldQueue
 
             $result = $translator->translate($sourceText, $currentLocale, $locale, $field, $this->modelContextName());
 
-            $outcome = $this->savePair($writer, $field, $currentLocale, $locale, $result, $snapshot);
+            $outcome = $this->savePair($writer, $field, $currentLocale, $locale, $result, $snapshot, $sourceText);
             if ($outcome === false) {
                 return $saved;
             }
@@ -497,21 +522,37 @@ class TranslateFields implements ShouldQueue
         string $sourceLocale,
         string $targetLocale,
         TranslationResult $result,
-        ?array $snapshot = null
+        ?array $snapshot = null,
+        ?string $sourceText = null
     ): ?bool {
+        $staleValues = $snapshot['targets'] ?? null;
+        $staleValue = is_array($staleValues) && array_key_exists($targetLocale, $staleValues) ? $staleValues[$targetLocale] : null;
+        $pendingReview = $this->reviews !== null && ReviewSettings::appliesTo($this->model, $field, $targetLocale);
+
         try {
-            if ($snapshot === null) {
+            if ($pendingReview) {
+                // Reviewed: stored as pending instead of published, under the
+                // same source/target snapshot rules as a direct write.
+                $outcome = $this->reviews->propose(
+                    $this->model,
+                    $field,
+                    $targetLocale,
+                    $result,
+                    $snapshot['locale'] ?? $sourceLocale,
+                    $snapshot['text'] ?? (string) $sourceText,
+                    $staleValue,
+                );
+            } elseif ($snapshot === null) {
                 $writer->apply($this->model, [$field => [$targetLocale => $result->text]]);
                 $outcome = TranslationWriter::WRITTEN;
             } else {
-                $staleValues = $snapshot['targets'] ?? null;
                 $outcome = $writer->applyRetranslation(
                     $this->model,
                     $field,
                     $targetLocale,
                     $result->text,
                     ['locale' => $snapshot['locale'], 'text' => $snapshot['text']],
-                    is_array($staleValues) && array_key_exists($targetLocale, $staleValues) ? $staleValues[$targetLocale] : null,
+                    $staleValue,
                 );
             }
         } catch (Throwable $e) {
@@ -522,7 +563,7 @@ class TranslateFields implements ShouldQueue
             throw $e;
         }
 
-        if ($snapshot !== null) {
+        if ($snapshot !== null || $pendingReview) {
             if ($outcome !== TranslationWriter::WRITTEN) {
                 $this->reportUnused($result, TranslationRequestBilled::DISCARDED, $field, $sourceLocale, $targetLocale);
 
@@ -555,6 +596,7 @@ class TranslateFields implements ShouldQueue
             $sourceLocale,
             $targetLocale,
             $result,
+            $pendingReview,
         );
 
         return true;

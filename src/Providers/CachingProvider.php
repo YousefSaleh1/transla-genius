@@ -209,4 +209,30 @@ class CachingProvider implements BatchTranslationProviderInterface
 
         return $this->cacheableProvider === null || $provider === $this->cacheableProvider;
     }
+
+    /**
+     * Remove the entry for one text/locale pair (the review workflow does this
+     * when a translation is rejected).
+     */
+    public function forgetTranslation(string $text, string $sourceLocale, string $targetLocale, ?string $field = null, ?string $model = null): void
+    {
+        $this->cache->forget($this->cacheKey($text, $sourceLocale, $targetLocale, $field, $model));
+    }
+
+    /**
+     * Store a reviewer-approved edit as the entry for one text/locale pair, so
+     * the next identical source text gets the corrected version. It's human
+     * approved, so it is stored whichever provider produced the original.
+     */
+    public function storeReviewed(string $text, string $sourceLocale, string $targetLocale, ?string $field, ?string $model, string $translation, ?string $provider): void
+    {
+        if (trim($translation) === '') {
+            return;
+        }
+
+        $key = $this->cacheKey($text, $sourceLocale, $targetLocale, $field, $model);
+        $value = ['text' => $translation, 'provider' => $provider];
+
+        $this->ttl === null ? $this->cache->forever($key, $value) : $this->cache->put($key, $value, $this->ttl);
+    }
 }

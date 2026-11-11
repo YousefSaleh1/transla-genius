@@ -147,7 +147,9 @@ class BackfillCommand extends Command
 
         $buildQuery()->chunkById($chunkSize, function ($records) use (&$dispatched, $bar, $jobClass, $sourceLocale) {
             foreach ($records as $record) {
-                TranslationJobDispatcher::dispatch($jobClass, $record, $record->getTranslatableAttributes(), [], $sourceLocale);
+                // With review on, pairs awaiting review are skipped by the job,
+                // and pairs that were rejected are requested again.
+                TranslationJobDispatcher::dispatch($jobClass, $record, $record->getTranslatableAttributes(), [], $sourceLocale, ['include_rejected' => true]);
                 $dispatched++;
                 $bar->advance();
             }

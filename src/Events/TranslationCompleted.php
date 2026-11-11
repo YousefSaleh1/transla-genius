@@ -34,6 +34,12 @@ final readonly class TranslationCompleted
      * @param TranslationResult $result The provider's result, including any
      *        token-usage metadata it reported.
      */
+    /**
+     * $pendingReview: the translation was produced but, with the review
+     * workflow on, stored as pending rather than published (see
+     * Events\TranslationPendingReview). Usage tracking logs it either way:
+     * the cost was incurred when it was produced.
+     */
     public function __construct(
         public string $modelClass,
         public int|string $modelId,
@@ -41,6 +47,7 @@ final readonly class TranslationCompleted
         public string $sourceLocale,
         public string $targetLocale,
         public TranslationResult $result,
+        public bool $pendingReview = false,
     ) {
     }
 }

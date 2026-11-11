@@ -284,6 +284,44 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Review Workflow
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, AI translations are stored as pending reviews (table
+    | translation_reviews - publish the migrations) and only reach the model's
+    | translatable column once approved: TranslaGenius::reviews()->approve().
+    | Off by default; with it off nothing here is read and the table isn't
+    | needed.
+    |
+    |   models   Class => ['field', ...] or ['*']: what is reviewed.
+    |   fields   Field names reviewed on every model.
+    |            With `models` and `fields` both empty, every translatable
+    |            field of every model is reviewed.
+    |   locales  Only these target locales are reviewed (empty = all); the
+    |            others publish directly. Also TRANSLATION_REVIEW_LOCALES=ar,fr.
+    |   while_pending  When a re-translation of changed source text is
+    |            pending: 'keep' (default) leaves the old, now stale, published
+    |            text visible until approval; 'clear' removes it so the
+    |            fallback locale shows. Override per model or per field in
+    |            while_pending_overrides: [Class => 'clear'] or
+    |            [Class => ['field' => 'clear']].
+    |   on_reject  'leave' (default): the locale stays missing until
+    |            TranslaGenius::reviews()->retranslate(); 'retranslate':
+    |            request a fresh translation automatically.
+    |
+    */
+    'review' => [
+        'enabled' => env('TRANSLATION_REVIEW', false),
+        'models' => [],
+        'fields' => [],
+        'locales' => env('TRANSLATION_REVIEW_LOCALES', ''),
+        'while_pending' => env('TRANSLATION_REVIEW_WHILE_PENDING', 'keep'),
+        'while_pending_overrides' => [],
+        'on_reject' => env('TRANSLATION_REVIEW_ON_REJECT', 'leave'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Queue
     |--------------------------------------------------------------------------
     |

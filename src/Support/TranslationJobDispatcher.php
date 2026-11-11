@@ -31,17 +31,18 @@ final class TranslationJobDispatcher
      *        Fields whose source text changed in this save - see Translatable.
      * @param string|null $sourceLocale The locale the content was written in;
      *        null = self::sourceLocale(), resolved now, at dispatch time.
+     * @param array<string, mixed> $options Extra job options (TranslateFields::$options).
      * @return void
      */
-    public static function dispatch(string $jobClass, Model $model, array $fields, array $retranslate = [], ?string $sourceLocale = null): void
+    public static function dispatch(string $jobClass, Model $model, array $fields, array $retranslate = [], ?string $sourceLocale = null, array $options = []): void
     {
         $sourceLocale ??= self::sourceLocale();
 
-        // TranslateFields takes (model, fields, retranslate, sourceLocale). A
+        // TranslateFields takes (model, fields, retranslate, sourceLocale, options). A
         // custom job from translationJobClass() gets only as many of those as
         // its constructor declares, so an existing (model, fields) job keeps
         // working unchanged.
-        $arguments = [$model, $fields, $retranslate, $sourceLocale];
+        $arguments = [$model, $fields, $retranslate, $sourceLocale, $options];
         $constructor = (new \ReflectionClass($jobClass))->getConstructor();
         $accepted = $constructor === null ? 0 : ($constructor->isVariadic() ? count($arguments) : $constructor->getNumberOfParameters());
         $job = new $jobClass(...array_slice($arguments, 0, max(2, $accepted)));
