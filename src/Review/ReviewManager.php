@@ -340,18 +340,23 @@ class ReviewManager
 
         $summary = ['approved' => 0, 'skipped_stale' => 0, 'skipped_conflict' => 0];
 
-        foreach ($query->orderBy('id')->get() as $review) {
-            try {
-                $this->approve($review, reviewer: $reviewer);
-                $summary['approved']++;
-            } catch (StaleReviewException) {
-                $summary['skipped_stale']++;
-            } catch (ReviewConflictException) {
-                $summary['skipped_conflict']++;
-            } catch (InvalidReviewStateException) {
-                // Decided concurrently; nothing to do.
+        // In chunks, so a large backlog isn't loaded into memory at once.
+        // chunkById() pages by id, so rows leaving the pending set as they're
+        // approved don't make it skip any.
+        $query->chunkById(200, function ($reviews) use (&$summary, $reviewer) {
+            foreach ($reviews as $review) {
+                try {
+                    $this->approve($review, reviewer: $reviewer);
+                    $summary['approved']++;
+                } catch (StaleReviewException) {
+                    $summary['skipped_stale']++;
+                } catch (ReviewConflictException) {
+                    $summary['skipped_conflict']++;
+                } catch (InvalidReviewStateException) {
+                    // Decided concurrently; nothing to do.
+                }
             }
-        }
+        });
 
         return $summary;
     }

@@ -275,20 +275,25 @@ trait Translatable
     public function scopePendingReview(Builder $query, ?string $field = null, ?string $locale = null)
     {
         $model = $query->getModel();
+        $ownerKey = \CodingPartners\TranslaGenius\Support\KeyCast::asString($query->getConnection(), $model->getQualifiedKeyName());
 
-        // Ids first, then a plain whereIn: translatable_id is a string column
-        // (to fit integer, UUID and ULID keys), and comparing it to an integer
-        // key column inside SQL isn't portable (PostgreSQL rejects varchar =
-        // bigint, and there's no CAST syntax all five drivers share).
-        $ids = \CodingPartners\TranslaGenius\Models\TranslationReview::query()
-            ->pending()
-            ->where('translatable_type', $model->getMorphClass())
-            ->when($field !== null, fn ($q) => $q->where('field', $field))
-            ->when($locale !== null, fn ($q) => $q->where('locale', $locale))
-            ->distinct()
-            ->pluck('translatable_id')
-            ->all();
+        // A correlated subquery: no list of ids is ever bound, so it works at
+        // any queue size (a bound id list would hit SQL Server's ~2,100
+        // parameter limit). See KeyCast for the string/integer key comparison.
+        return $query->whereExists(function ($sub) use ($model, $ownerKey, $field, $locale) {
+            $sub->selectRaw('1')
+                ->from('translation_reviews')
+                ->where('translation_reviews.translatable_type', $model->getMorphClass())
+                ->where('translation_reviews.status', \CodingPartners\TranslaGenius\Models\TranslationReview::PENDING)
+                ->whereColumn('translation_reviews.translatable_id', '=', $ownerKey);
 
-        return $query->whereIn($model->getQualifiedKeyName(), $ids);
+            if ($field !== null) {
+                $sub->where('translation_reviews.field', $field);
+            }
+
+            if ($locale !== null) {
+                $sub->where('translation_reviews.locale', $locale);
+            }
+        });
     }
 }
