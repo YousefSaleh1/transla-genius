@@ -98,6 +98,9 @@ A breaking architectural release: the translation backend is now swappable behin
 
 ### Changed
 
+- The HTTP timeout default is now 60 seconds (was 10): replies of a few KB routinely take longer than 10. A request that timed out is logged as `failed` with null tokens, since the provider may have processed and billed it.
+- Translation jobs have a timeout, `TRANSLATION_JOB_TIMEOUT`, or by default their own worst case (HTTP timeout x HTTP attempts per pair x pairs, 120 to 900 seconds). The queue connection's `retry_after` must be longer.
+- Only one translation job runs per record at a time. Another job for that record is re-queued as a fresh copy after 10 seconds (it never uses up an attempt and is never dropped), so a create followed by a quick edit, or a redelivery, no longer pays for the same pairs twice. It needs a cache store with locks.
 - Each provider keeps one HTTP connection open across its requests, within a job and across jobs with the same config. Every request used to open its own connection: a job of 2 fields x 8 languages made 16 TLS handshakes against a local server, now 1. `Http::fake()` works as before.
 - Retry defaults: 1 quick HTTP retry (`TRANSLATION_HTTP_RETRIES`) for connection errors, 429 and 5xx, then the queue's 3 attempts (`TRANSLATION_JOB_TRIES`, backoff `TRANSLATION_JOB_BACKOFF`). A 429's `Retry-After` is honored: waited out in-request up to `TRANSLATION_HTTP_RETRY_AFTER_MAX` seconds (default 10), otherwise used as the queue release delay. Fallback chain members make no HTTP retries by default (`TRANSLATION_FALLBACK_HTTP_RETRIES=0`), so failover is immediate. Worst case per field/locale is 6 requests.
 - `TRANSLATION_MAX_TOKENS` is unset by default (was 200), so no limit is sent and each provider's own default applies. Set it to cap output.

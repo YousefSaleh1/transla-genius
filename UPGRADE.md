@@ -66,7 +66,7 @@ No 3.x variable is renamed or removed. All six are still read:
 | `TRANSLATION_API_KEY` | Key for the default `openrouter` preset when `OPENROUTER_API_KEY` is unset, and for the `custom` preset. |
 | `TRANSLATION_API_URL` | URL for `openrouter` when `OPENROUTER_API_URL` is unset, and for `custom`. |
 | `TRANSLATION_MODEL` | Model for `openrouter` when `OPENROUTER_MODEL` is unset, and for `custom`. |
-| `TRANSLATION_API_TIMEOUT` | Shared by every preset. Default still 10 seconds. |
+| `TRANSLATION_API_TIMEOUT` | Shared by every preset. **The default is now 60 seconds** (was 10). |
 | `TRANSLATION_TEMPERATURE` | Shared by every preset. Only `openrouter` still defaults it to 0.3 (see step 9). |
 | `TRANSLATION_MAX_TOKENS` | Shared by every preset. **No longer defaults to 200** (see step 9). |
 
@@ -82,6 +82,7 @@ A 3.x `.env` therefore keeps working on the default `openrouter` preset. All oth
 - **Cache:** `TRANSLATION_CACHE`, `TRANSLATION_CACHE_STORE`, `TRANSLATION_CACHE_TTL`.
 - **Review workflow:** `TRANSLATION_REVIEW`, `TRANSLATION_REVIEW_LOCALES`, `TRANSLATION_REVIEW_WHILE_PENDING`, `TRANSLATION_REVIEW_ON_REJECT`.
 - **Queue:** `TRANSLATION_QUEUE_CONNECTION`, `TRANSLATION_QUEUE`, `TRANSLATION_DISPATCH_AFTER_COMMIT`.
+- **Job runtime:** `TRANSLATION_JOB_TIMEOUT`.
 - **Retries:** `TRANSLATION_HTTP_RETRIES`, `TRANSLATION_HTTP_RETRY_AFTER_MAX`, `TRANSLATION_JOB_TRIES`, `TRANSLATION_JOB_BACKOFF`.
 - **Usage tracking:** `TRANSLATION_USAGE_TRACKING_ENABLED`.
 
@@ -131,6 +132,8 @@ Nothing to edit here, but each of these changes what your app does after the upg
 
 - [ ] **Source locale is captured when the job is dispatched.** 3.x read the locale inside the queue worker, so on a real (non-`sync`) queue it usually translated from the worker's `app.locale`, not from the language the record was saved in. 4.0 records the request's locale at dispatch. Set `TRANSLATION_SOURCE_LOCALE` if your content is always authored in one language; it takes precedence over the request locale. `translagenius:backfill` takes `--source=`, then `TRANSLATION_SOURCE_LOCALE`, then `app.locale`.
 - [ ] **Editing the source text re-translates.** A change to a field's source-locale text re-translates that field's other locales and overwrites them. A target locale set in the same save is kept. A target edited by hand after the source edit is not overwritten. Creating records and `translagenius:backfill` still only fill missing locales.
+- [ ] **Jobs have a timeout, and the queue's `retry_after` must exceed it.** A translation job may now run up to its own worst case (120 to 900 seconds by default; `TRANSLATION_JOB_TIMEOUT` sets it). Raise `retry_after` on the queue connection in `config/queue.php` above that (Laravel's default is 90), or the queue hands a running job to a second worker. The HTTP timeout default is now 60 seconds.
+- [ ] **One job per record at a time.** A second job for a record that is being translated waits, re-queued with a short delay, using a lock in the default cache store. Use a store that shares locks between workers (Redis, database, Memcached, DynamoDB).
 - [ ] **Jobs dispatch after the database transaction commits**, and not at all on rollback. To use the queue connection's own `after_commit` setting instead, set `TRANSLATION_DISPATCH_AFTER_COMMIT=false`. Jobs go to `TRANSLATION_QUEUE_CONNECTION` / `TRANSLATION_QUEUE` when set.
 - [ ] **Retries changed.** 3.x retried every failed HTTP call up to 3 times, including 4xx responses, then caught and logged the failure, so the queue never retried the job. 4.0 makes 1 quick HTTP retry for connection errors, 429 and 5xx (never for other 4xx), honors `Retry-After` up to 10 seconds, and lets the job fail to the queue: 3 attempts with backoff `10,30`. A field/locale pair can take at most 6 requests. Failed jobs now land in `failed_jobs` and fire `Events\TranslationFailed`.
 - [ ] **No fixed `max_tokens`.** 3.x always sent `max_tokens: 200`, which could cut long texts. 4.0 sends no limit unless `TRANSLATION_MAX_TOKENS` is set. A reply cut off at the limit now fails the pair instead of being saved incomplete.

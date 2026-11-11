@@ -45,17 +45,17 @@ class NumericSettingsTest extends TestCase
         $_ENV[self::ENV] = $_SERVER[self::ENV] = '';
 
         $shipped = require __DIR__.'/../../src/config/translagenius.php';
-        $this->assertSame(10, $this->property($this->provider($shipped['providers']['openrouter']), 'timeout'));
+        $this->assertSame(60, $this->property($this->provider($shipped['providers']['openrouter']), 'timeout'));
     }
 
     /** @return array<string, array{mixed, int}> */
     public static function timeouts(): array
     {
         return [
-            'empty' => ['', 10],
-            'spaces' => ['  ', 10],
-            'not a number' => ['ten', 10],
-            'null' => [null, 10],
+            'empty' => ['', 60],
+            'spaces' => ['  ', 60],
+            'not a number' => ['ten', 60],
+            'null' => [null, 60],
             'explicit zero (no timeout)' => ['0', 0],
             'a number' => ['25', 25],
             'an int' => [25, 25],

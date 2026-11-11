@@ -105,7 +105,7 @@ return [
             'key' => env('OPENROUTER_API_KEY', env('TRANSLATION_API_KEY')),
             'url' => env('OPENROUTER_API_URL', env('TRANSLATION_API_URL', 'https://openrouter.ai/api/v1/chat/completions')),
             'model' => env('OPENROUTER_MODEL', env('TRANSLATION_MODEL', 'openai/gpt-4o')),
-            'timeout' => env('TRANSLATION_API_TIMEOUT', 10),
+            'timeout' => env('TRANSLATION_API_TIMEOUT', 60),
             'temperature' => env('TRANSLATION_TEMPERATURE', 0.3),
             'reasoning_effort' => env('OPENROUTER_REASONING_EFFORT'),
             'batch' => env('OPENROUTER_BATCH'),
@@ -125,7 +125,7 @@ return [
             'key' => env('OPENAI_API_KEY'),
             'url' => env('OPENAI_API_URL', 'https://api.openai.com/v1/chat/completions'),
             'model' => env('OPENAI_MODEL', 'gpt-6-luna'),
-            'timeout' => env('TRANSLATION_API_TIMEOUT', 10),
+            'timeout' => env('TRANSLATION_API_TIMEOUT', 60),
             'temperature' => env('TRANSLATION_TEMPERATURE'),
             'reasoning_effort' => env('OPENAI_REASONING_EFFORT', 'none'),
             'batch' => env('OPENAI_BATCH'),
@@ -144,7 +144,7 @@ return [
             'key' => env('GEMINI_API_KEY'),
             'url' => env('GEMINI_API_URL', 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'),
             'model' => env('GEMINI_MODEL', 'gemini-3.5-flash-lite'),
-            'timeout' => env('TRANSLATION_API_TIMEOUT', 10),
+            'timeout' => env('TRANSLATION_API_TIMEOUT', 60),
             'temperature' => env('TRANSLATION_TEMPERATURE'),
             'reasoning_effort' => env('GEMINI_REASONING_EFFORT'),
             'batch' => env('GEMINI_BATCH'),
@@ -159,7 +159,7 @@ return [
             'key' => env('DEEPSEEK_API_KEY'),
             'url' => env('DEEPSEEK_API_URL', 'https://api.deepseek.com/chat/completions'),
             'model' => env('DEEPSEEK_MODEL', 'deepseek-flash'),
-            'timeout' => env('TRANSLATION_API_TIMEOUT', 10),
+            'timeout' => env('TRANSLATION_API_TIMEOUT', 60),
             'temperature' => env('TRANSLATION_TEMPERATURE'),
             'reasoning_effort' => env('DEEPSEEK_REASONING_EFFORT', 'none'),
             'batch' => env('DEEPSEEK_BATCH'),
@@ -176,7 +176,7 @@ return [
             'key' => env('MISTRAL_API_KEY'),
             'url' => env('MISTRAL_API_URL', 'https://api.mistral.ai/v1/chat/completions'),
             'model' => env('MISTRAL_MODEL', 'mistral-small-latest'),
-            'timeout' => env('TRANSLATION_API_TIMEOUT', 10),
+            'timeout' => env('TRANSLATION_API_TIMEOUT', 60),
             'temperature' => env('TRANSLATION_TEMPERATURE'),
             'reasoning_effort' => env('MISTRAL_REASONING_EFFORT'),
             'batch' => env('MISTRAL_BATCH'),
@@ -193,7 +193,7 @@ return [
             'key' => env('TRANSLATION_API_KEY'),
             'url' => env('TRANSLATION_API_URL'),
             'model' => env('TRANSLATION_MODEL'),
-            'timeout' => env('TRANSLATION_API_TIMEOUT', 10),
+            'timeout' => env('TRANSLATION_API_TIMEOUT', 60),
             'temperature' => env('TRANSLATION_TEMPERATURE'),
             'reasoning_effort' => env('TRANSLATION_REASONING_EFFORT'),
             'batch' => env('TRANSLATION_CUSTOM_BATCH'),
@@ -333,6 +333,11 @@ return [
     |
     |   connection    Queue connection; empty = the app's default.
     |   queue         Queue name; empty = the connection's default.
+    |   timeout       Seconds a translation job may run (TRANSLATION_JOB_TIMEOUT).
+    |                 Empty: derived per job from its worst case (HTTP timeout x
+    |                 HTTP attempts per pair x pairs), between 120 and 900. The
+    |                 queue connection's `retry_after` must be longer, or the
+    |                 queue hands a still-running job to another worker.
     |   after_commit  Dispatch only after the surrounding DB transaction
     |                 commits (nothing at all on rollback). Default true. When
     |                 false, the connection's own `after_commit` setting applies.
@@ -342,6 +347,7 @@ return [
         'connection' => env('TRANSLATION_QUEUE_CONNECTION'),
         'queue' => env('TRANSLATION_QUEUE'),
         'after_commit' => env('TRANSLATION_DISPATCH_AFTER_COMMIT', true),
+        'timeout' => env('TRANSLATION_JOB_TIMEOUT'),
     ],
 
     /*

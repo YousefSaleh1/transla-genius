@@ -14,10 +14,12 @@ use CodingPartners\TranslaGenius\Events\TranslationFailed as TranslationFailedEv
 use CodingPartners\TranslaGenius\Events\TranslationRequestBilled;
 use CodingPartners\TranslaGenius\Events\TranslationStarted;
 use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
+use CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider;
 use CodingPartners\TranslaGenius\Review\ReviewManager;
 use CodingPartners\TranslaGenius\Review\ReviewSettings;
 use CodingPartners\TranslaGenius\Services\TranslationWriter;
 use CodingPartners\TranslaGenius\Support\Locales;
+use CodingPartners\TranslaGenius\Support\OneJobPerRecord;
 use CodingPartners\TranslaGenius\Support\Setting;
 use CodingPartners\TranslaGenius\Support\Text;
 use CodingPartners\TranslaGenius\Support\TranslationJobDispatcher;
@@ -133,6 +135,62 @@ class TranslateFields implements ShouldQueue, TranslationJob
     }
 
     /**
+     * Seconds the job may run before the worker stops it
+     * (translagenius.queue.timeout / TRANSLATION_JOB_TIMEOUT). When that's
+     * unset, derived at dispatch from this job's own worst case - see
+     * defaultTimeout(). Set at construction, so it's in the queued payload.
+     * The queue connection's `retry_after` must be longer than this.
+     *
+     * @var int
+     */
+    public $timeout = 120;
+
+    /** The shortest and longest derived job timeout, in seconds. */
+    public const MIN_TIMEOUT = 120;
+
+    public const MAX_TIMEOUT = 900;
+
+    /** Seconds before a job that found its record busy runs again. */
+    public const BUSY_RETRY_SECONDS = 10;
+
+    /**
+     * One job per record at a time (Support\OneJobPerRecord). The lock lasts
+     * a little longer than the job may run, so it never expires under a
+     * running job; with no job timeout, an hour.
+     *
+     * @return array<int, object>
+     */
+    public function middleware(): array
+    {
+        $lockSeconds = $this->timeout > 0 ? $this->timeout + 30 : 3600;
+
+        return [new OneJobPerRecord(self::overlapKey($this->model), $lockSeconds, self::BUSY_RETRY_SECONDS)];
+    }
+
+    /** The lock name for one record's translation jobs. */
+    public static function overlapKey(Model $model): string
+    {
+        return 'translagenius:translating:'.$model->getMorphClass().':'.$model->getKey();
+    }
+
+    /**
+     * Put a fresh copy of this job on the queue, $seconds from now, and
+     * remove this one: the record is busy with another translation job.
+     * Not a release, which would count as one of $tries. The copy goes to
+     * the same connection and queue.
+     *
+     * @internal Called by Support\OneJobPerRecord.
+     */
+    public function requeueAfter(int $seconds): void
+    {
+        $copy = new static(new TranslationJobPayload($this->model, $this->fields, $this->sourceLocale, $this->retranslate, $this->options));
+        $copy->onConnection($this->connection)->onQueue($this->queue)->delay($seconds);
+
+        dispatch($copy);
+        $this->delete();
+    }
+
+    /**
      * Create a new job instance from its dispatch payload (the TranslationJob
      * contract). The payload is unpacked into this job's own properties, so
      * SerializesModels handles the model exactly as before - and a job queued
@@ -146,6 +204,44 @@ class TranslateFields implements ShouldQueue, TranslationJob
         $this->sourceLocale = $payload->sourceLocale;
         $this->options = $payload->options;
         $this->tries = Setting::int(config('translagenius.retries.job_tries'), 3, 1);
+        $this->timeout = $this->configuredTimeout();
+    }
+
+    /**
+     * TRANSLATION_JOB_TIMEOUT when set (0: no limit); otherwise the worst
+     * case for this job's own pairs: the HTTP timeout, times the HTTP
+     * attempts per pair (one, plus TRANSLATION_HTTP_RETRIES; per member of a
+     * fallback chain), times the field/locale pairs. At least 120 s, at most
+     * 900 s: past that, a job is better stopped and retried (its finished
+     * pairs are saved) than left holding a worker.
+     */
+    protected function configuredTimeout(): int
+    {
+        $configured = config('translagenius.queue.timeout');
+        if (Setting::nullableInt($configured) !== null) {
+            return Setting::int($configured, 0);
+        }
+
+        $source = $this->sourceLocale ?? TranslationJobDispatcher::defaultSourceLocale();
+        $pairs = max(1, count($this->fields) * count(Locales::targets($source)));
+
+        $default = (string) config('translagenius.default');
+        $entry = (array) config("translagenius.providers.{$default}", []);
+        $members = [$entry];
+        if (isset($entry['chain'])) {
+            $chain = is_array($entry['chain']) ? $entry['chain'] : array_filter(array_map('trim', explode(',', (string) $entry['chain'])));
+            $members = array_map(fn ($name) => (array) config("translagenius.providers.{$name}", []), $chain ?: [$default]);
+        }
+
+        $perPair = 0;
+        foreach ($members as $member) {
+            $retries = isset($entry['chain'])
+                ? Setting::int(config('translagenius.retries.fallback_http'), 0)
+                : Setting::int(config('translagenius.retries.http'), 1);
+            $perPair += ($retries + 1) * Setting::int($member['timeout'] ?? null, OpenAiCompatibleProvider::DEFAULT_TIMEOUT);
+        }
+
+        return min(self::MAX_TIMEOUT, max(self::MIN_TIMEOUT, $pairs * $perPair));
     }
 
     /**

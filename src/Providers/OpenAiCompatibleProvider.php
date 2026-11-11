@@ -43,6 +43,9 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
      * The built-in system prompt, used when no `prompt` is configured.
      * Placeholders are filled by renderPrompt().
      */
+    /** Seconds to wait for a reply when no timeout is configured: long replies routinely take over 10 s. */
+    public const DEFAULT_TIMEOUT = 60;
+
     public const DEFAULT_PROMPT = "You are a translation engine. Translate the user's message from {source_locale} to {target_locale}. "
         .'Respond with only the translated text - no explanation, commentary, or additional formatting.';
 
@@ -173,7 +176,7 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
         $this->temperature = Setting::nullableFloat($config['temperature'] ?? null);
         $this->maxTokens = Setting::nullableInt($config['max_tokens'] ?? null, 1);
         // 0 is allowed and means no timeout; empty or non-numeric is the default.
-        $this->timeout = Setting::int($config['timeout'] ?? null, 10);
+        $this->timeout = Setting::int($config['timeout'] ?? null, self::DEFAULT_TIMEOUT);
         $this->name = isset($config['name']) ? (string) $config['name'] : null;
         $this->prompt = trim((string) ($config['prompt'] ?? '')) === '' ? null : (string) $config['prompt'];
         $this->batch = (bool) (filter_var($config['batch'] ?? false, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? false);
@@ -401,6 +404,12 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
         }
     }
 
+    /** Whether a connection failure was a timeout (cURL error 28), not a refusal or DNS error. */
+    protected static function isTimeout(ConnectionException $e): bool
+    {
+        return str_contains($e->getMessage(), 'cURL error 28') || stripos($e->getMessage(), 'timed out') !== false;
+    }
+
     /**
      * This instance's Guzzle handler, made on first use and kept: every
      * request goes through the same one, so its open connection (and TLS
@@ -443,6 +452,12 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
                     ->timeout($this->timeout)
                     ->post($this->apiUrl, $body);
             } catch (ConnectionException $e) {
+                // A request that timed out may have reached the provider and
+                // been processed, and billed: report it, with unknown tokens.
+                if (self::isTimeout($e)) {
+                    TranslationRequestBilled::dispatch(TranslationRequestBilled::FAILED, $this->name, $billing[0], null, null, $billing[1], $billing[2], $billing[3]);
+                }
+
                 if ($attempt < $attempts) {
                     $this->pause($attempt);
 

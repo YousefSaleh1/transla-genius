@@ -239,7 +239,7 @@ Each preset reads its own variables and defaults to the service's official endpo
 | `mistral` | `MISTRAL_API_KEY` | `MISTRAL_MODEL`, `MISTRAL_API_URL` | `mistral-small-latest` |
 | `custom` | `TRANSLATION_API_URL`, `TRANSLATION_MODEL` | `TRANSLATION_API_KEY`, `TRANSLATION_AUTH_HEADER`, `TRANSLATION_TOKEN_LIMIT_PARAM` | none |
 
-Every preset also reads `TRANSLATION_API_TIMEOUT` (seconds, default 10), `TRANSLATION_TEMPERATURE` and `TRANSLATION_MAX_TOKENS`; see [Output limit and temperature](#output-limit-and-temperature).
+Every preset also reads `TRANSLATION_API_TIMEOUT` (seconds, default 60: long replies routinely take more than 10), `TRANSLATION_TEMPERATURE` and `TRANSLATION_MAX_TOKENS`; see [Output limit and temperature](#output-limit-and-temperature).
 
 In every numeric setting, an empty or non-numeric value (`TRANSLATION_API_TIMEOUT=`) means the default. `TRANSLATION_API_TIMEOUT=0` is allowed and means no timeout, but avoid it: a provider that never answers then holds the queue worker until the queue's own timeout kills the job.
 
@@ -304,7 +304,7 @@ The key is sent as `Authorization: Bearer <key>`. For a service that expects the
     'key' => env('GEMINI_API_KEY'),
     'url' => env('GEMINI_API_URL', 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'),
     'model' => env('GEMINI_MODEL', 'gemini-3.5-flash-lite'),
-    'timeout' => env('TRANSLATION_API_TIMEOUT', 10),
+    'timeout' => env('TRANSLATION_API_TIMEOUT', 60),
     'temperature' => env('TRANSLATION_TEMPERATURE'),    // empty: not sent
     'max_tokens' => env('TRANSLATION_MAX_TOKENS'),      // empty: provider default
     'token_limit_param' => 'max_tokens',                // or 'max_completion_tokens'
@@ -359,6 +359,12 @@ TRANSLATION_DISPATCH_AFTER_COMMIT=true
 These apply to every dispatch: model create and update, `translagenius:backfill` and the review workflow. A [custom job](#custom-jobs) gets them only if it uses Laravel's `Queueable` trait. Otherwise it is dispatched on the app's defaults, and a warning naming the class is logged once per process.
 
 `TRANSLATION_DISPATCH_AFTER_COMMIT` (default `true`) holds the job until the surrounding database transaction commits, and drops it on rollback. Without it, a worker can pick up a job for a row that is not committed yet, or translate a record that was rolled back. Set it to `false` to use your queue connection's own `after_commit` setting.
+
+**Job timeout.** A translation job may run for `TRANSLATION_JOB_TIMEOUT` seconds (`0`: no limit). Unset, each job gets its own worst case at dispatch: the HTTP timeout, times the HTTP attempts per pair (`TRANSLATION_HTTP_RETRIES` + 1, for each member of a fallback chain), times its field/language pairs, kept between 120 and 900 seconds. With the defaults, one pair is 120 s, four pairs 480 s, and eight or more 900 s. A job stopped at its timeout keeps the pairs it already saved, and its retry requests only the rest.
+
+> **Set the queue connection's `retry_after` higher than the job timeout** (in `config/queue.php`; 900 is enough for the default). Laravel's database and Redis connections default to 90 seconds. When a job runs longer than `retry_after`, the queue hands it to another worker while the first is still running it.
+
+**One job per record.** Two jobs never translate the same record at the same time, so a create followed by a quick edit, or a redelivered job, doesn't pay for the same pairs twice. While one job holds a record, another job for that record is put back on the queue with a 10-second delay, as a fresh copy: waiting never uses up one of its attempts, and it is never dropped. The lock lives in your default cache store and lasts the job timeout plus 30 seconds. Use a store that shares locks between your workers: Redis, database, Memcached or DynamoDB. The `file` store only locks within one machine, `array` within one process, and `null` never blocks. With a custom store that doesn't support locks, a warning is logged and jobs may overlap: the row lock and snapshots still keep the data right, but overlapping pairs are paid for twice.
 
 ### System prompt
 
@@ -574,7 +580,7 @@ A request that was billed but produced no saved translation still gets a row, ma
 | `translated` | A saved translation, one row per field and language, cache hits included. |
 | `truncated` | The reply stopped at the output limit. A cut-off batch is then retried one language at a time, and those requests get their own rows. |
 | `unusable` | Nothing could be taken from the reply: a batch that wasn't valid JSON or had no valid language, or an empty single reply. |
-| `failed` | An error response that still reported usage. |
+| `failed` | An error response that still reported usage, or a request that timed out. A timed-out request may have been processed and billed by the provider, so it gets a row, with null tokens and cost: the amount is unknown. |
 | `discarded` | A valid translation that wasn't saved: the source changed while it was being made, the language was filled or edited by someone else meanwhile, or the record was deleted. No `TranslationCompleted` fires for it. |
 | `unsaved` | A valid translation whose save failed, for example a database error. The error still fails the job. |
 
@@ -1006,7 +1012,7 @@ Every variable the shipped config reads. All are optional except the key of the 
 |---|---|---|
 | `TRANSLATION_PROVIDER` | `openrouter` | `default` |
 | `TRANSLATION_SOURCE_LOCALE` | none: the request locale | `source_locale` |
-| `TRANSLATION_API_TIMEOUT` | `10` | `providers.*.timeout` |
+| `TRANSLATION_API_TIMEOUT` | `60` | `providers.*.timeout` |
 | `TRANSLATION_TEMPERATURE` | `0.3` on `openrouter`, otherwise not sent | `providers.*.temperature` |
 | `TRANSLATION_MAX_TOKENS` | not sent | `providers.*.max_tokens` |
 | `TRANSLATION_SYSTEM_PROMPT` | built-in prompt | `prompt` |
@@ -1110,6 +1116,7 @@ Every variable the shipped config reads. All are optional except the key of the 
 | `TRANSLATION_QUEUE_CONNECTION` | the app's default connection | `queue.connection` |
 | `TRANSLATION_QUEUE` | the connection's default queue | `queue.queue` |
 | `TRANSLATION_DISPATCH_AFTER_COMMIT` | `true` | `queue.after_commit` |
+| `TRANSLATION_JOB_TIMEOUT` | derived per job, 120 to 900 | `queue.timeout` |
 | `TRANSLATION_HTTP_RETRIES` | `1` | `retries.http` |
 | `TRANSLATION_HTTP_RETRY_AFTER_MAX` | `10` | `retries.http_retry_after_max` |
 | `TRANSLATION_FALLBACK_HTTP_RETRIES` | `0` | `retries.fallback_http` |

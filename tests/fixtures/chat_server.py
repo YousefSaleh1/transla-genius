@@ -1,13 +1,15 @@
 """A chat-completions endpoint that counts TCP (or TLS) connections.
 
-Usage: python3 connection_counting_server.py [certfile keyfile]
+A request with an X-Delay header (seconds) is answered that much later.
+
+Usage: python3 chat_server.py [certfile keyfile]
 Prints the port it listens on, then serves until killed. GET /__connections
 returns how many connections it has accepted.
 """
 import json
-import socket
 import ssl
 import sys
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 connections = 0
@@ -37,6 +39,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        time.sleep(float(self.headers.get("X-Delay", "0")))
         text = request["messages"][-1]["content"]
         self._send({"choices": [{"message": {"content": text + "!"}, "finish_reason": "stop"}]})
 
