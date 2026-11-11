@@ -97,7 +97,7 @@ class BackfillCommand extends Command
         $translatableFields = $modelInstance->getTranslatableAttributes();
 
         if (empty($translatableFields)) {
-            $this->warn("[{$modelClass}] has no translatable fields configured (empty \$translatable) - nothing to backfill.");
+            $this->warn("[{$modelClass}] has no translatable fields configured (no \$translatable property or #[Translatable] attribute) - nothing to backfill.");
 
             return self::SUCCESS;
         }

@@ -36,7 +36,11 @@ trait Translatable
     protected static function bootTranslatable()
     {
         static::created(function ($model) {
-            TranslationJobDispatcher::dispatch(static::translationJobClass(), $model, $model->translatable);
+            $fields = $model->getTranslatableAttributes();
+
+            if ($fields !== []) {
+                TranslationJobDispatcher::dispatch(static::translationJobClass(), $model, $fields);
+            }
         });
 
         static::updated(function ($model) {
@@ -178,19 +182,6 @@ trait Translatable
     }
 
     /**
-     * Get the names of the attributes that are translatable.
-     * Helper method to ensure consistency.
-     *
-     * @return array<int, string>
-     */
-    public function getTranslatableAttributes(): array
-    {
-        return is_array($this->translatable ?? null)
-            ? $this->translatable
-            : [];
-    }
-
-    /**
      * Scope to filter models that are fully translated in all target languages.
      *
      * Uses the query builder's `column->path` JSON syntax rather than raw SQL,
@@ -206,13 +197,15 @@ trait Translatable
      */
     public function scopeFullyTranslated(Builder $query, ?string $sourceLocale = null)
     {
-        if (empty($this->translatable) || ! is_array($this->translatable)) {
+        $translatableFields = $this->getTranslatableAttributes();
+
+        if ($translatableFields === []) {
             return $query;
         }
 
         $targetLanguages = get_supported_languages($sourceLocale);
 
-        foreach ($this->translatable as $field) {
+        foreach ($translatableFields as $field) {
             $query->where(function ($q) use ($field, $targetLanguages) {
                 foreach ($targetLanguages as $language) {
                     $q->whereNotNull("{$field}->{$language}");
@@ -247,12 +240,13 @@ trait Translatable
      */
     public function scopeNotFullyTranslated(Builder $query, ?string $sourceLocale = null)
     {
-        if (empty($this->translatable) || ! is_array($this->translatable)) {
+        $translatableFields = $this->getTranslatableAttributes();
+
+        if ($translatableFields === []) {
             return $query;
         }
 
         $targetLanguages = get_supported_languages($sourceLocale);
-        $translatableFields = $this->translatable;
 
         return $query->where(function ($outer) use ($translatableFields, $targetLanguages) {
             foreach ($translatableFields as $field) {

@@ -72,7 +72,8 @@ interface HasTranslatableAttributes
     public function forgetTranslation(string $key, string $locale);
 
     /**
-     * The translatable attribute names (the model's $translatable).
+     * The translatable attribute names: the model's $translatable property
+     * and spatie's #[Translatable] attribute, merged by spatie.
      *
      * @return array<int, string>
      *

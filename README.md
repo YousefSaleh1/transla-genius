@@ -132,6 +132,20 @@ class Product extends Model
 }
 ```
 
+You can declare the columns with spatie's attribute instead, or as well; the package reads them the way spatie does (the property first, then the attribute, without duplicates). The attribute and this package's trait are both named `Translatable`, so alias one of them:
+
+```php
+use CodingPartners\TranslaGenius\Traits\Translatable;
+use Illuminate\Database\Eloquent\Model;
+use Spatie\Translatable\Attributes\Translatable as TranslatableColumns;
+
+#[TranslatableColumns('name', 'description')]
+class Product extends Model
+{
+    use Translatable;
+}
+```
+
 Translatable columns are `json` columns:
 
 ```php
