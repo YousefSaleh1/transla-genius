@@ -53,6 +53,7 @@ It works with any API that speaks the OpenAI chat-completions format. Presets fo
 - [Environment variable reference](#environment-variable-reference)
 - [Testing](#testing)
 - [Troubleshooting and FAQ](#troubleshooting-and-faq)
+- [Backward compatibility promise](#backward-compatibility-promise)
 - [Upgrading](#upgrading)
 - [Changelog](#changelog)
 - [Contributing](#contributing)
@@ -1121,6 +1122,26 @@ $post->setTranslation('title', 'en', 'Hello again')->save();
 **Can I translate into a language I add later?** Add it to `supported_languages` and run `translagenius:backfill` for each model.
 
 **Does it work without OpenAI-compatible APIs?** Yes, with a [custom provider](#a-custom-provider-deepl).
+
+## Backward compatibility promise
+
+The package follows [semantic versioning](https://semver.org). Within a major version, these don't change in a breaking way:
+
+- **Models:** the `Translatable` trait's public methods and scopes, and its `translationJobClass()` override point; `Models\TranslationReview` and `Models\TranslationUsageLog` and their columns.
+- **DTOs:** everything in `DTOs\`, including `TranslationJobPayload`.
+- **Events, contracts and exceptions:** everything in `Events\`, `Contracts\` and `Exceptions\`.
+- **The facade:** `TranslaGenius::translate()` and `TranslaGenius::reviews()`, and `ReviewManager`'s public methods that aren't marked `@internal`.
+- **Configuration:** config keys and environment variables, with their meaning.
+- **Commands:** Artisan command names, arguments and options.
+- **Classes you name in config or extend:** the provider drivers, `SetLocale`, `DefaultLocaleResolver`, and `TranslateFields`' constructor, `handle()`, `failed()` and `backoff()`.
+
+Not covered, and may change in any release:
+
+- anything marked `@internal`: the whole `Support\` namespace, `Console\Concerns\`, the protected helpers of `TranslateFields`, and the methods marked so on `ReviewManager`, `CachingProvider` and the service provider;
+- the wording of the built-in prompts, log messages and command output, and the exact SQL the scopes generate;
+- a preset's default model, which follows what the provider offers. Set the `*_MODEL` variable to pin one.
+
+To customize the job with a stable contract, implement `Contracts\TranslationJob` rather than extending `TranslateFields`.
 
 ## Upgrading
 

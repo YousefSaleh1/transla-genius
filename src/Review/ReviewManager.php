@@ -51,6 +51,8 @@ class ReviewManager
      *
      * @param  Model&HasTranslatableAttributes  $model
      * @return string A TranslationWriter outcome constant.
+     *
+     * @internal Called by TranslateFields; not covered by the backward compatibility promise.
      */
     public function propose(
         Model $model,
@@ -127,6 +129,8 @@ class ReviewManager
      * Supersede the pending rows of $field whose source differs from
      * $currentSourceText - called when a field's source changes, before the
      * re-translation produces new rows.
+     *
+     * @internal Called by TranslateFields; not covered by the backward compatibility promise.
      */
     public function supersedeForSourceChange(Model $model, string $field, string $currentSourceText): void
     {
@@ -148,6 +152,8 @@ class ReviewManager
      *
      * @param  Model&HasTranslatableAttributes  $model
      * @return array<string, array<int, string>>
+     *
+     * @internal Called by TranslateFields; not covered by the backward compatibility promise.
      */
     public function pairsToSkip(Model $model, string $sourceLocale, bool $includeRejected): array
     {

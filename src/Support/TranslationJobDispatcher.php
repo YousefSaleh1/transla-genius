@@ -20,6 +20,8 @@ use Illuminate\Support\Facades\Log;
  * translationJobClass() should use Illuminate\Bus\Queueable to honor them;
  * one that doesn't is still dispatched, on the app's defaults, and a
  * warning naming the class is logged once per class per process.
+ *
+ * @internal Support\ is package wiring; not covered by the backward compatibility promise.
  */
 final class TranslationJobDispatcher
 {

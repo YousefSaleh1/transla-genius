@@ -50,6 +50,12 @@ use Throwable;
  * once, from failed(), if the job gives up permanently. See each event's
  * own docblock for exactly when/why it fires.
  *
+ * Extending this class is at your own risk: its protected helpers are
+ *
+ * @internal and may change in any release. handle(), failed(), backoff()
+ * and the constructor are stable. For a stable contract, implement
+ * Contracts\TranslationJob instead.
+ *
  * @see Translatable
  * @see TranslationWriter
  * @see TranslationStarted
@@ -279,6 +285,8 @@ class TranslateFields implements ShouldQueue, TranslationJob
      * @param  string  $currentLocale  The locale field values are read/translated from.
      * @param  array<int, string>  $targetLanguages  Locales to translate into.
      * @return int Number of pairs translated and saved by this call.
+     *
+     * @internal May change in any release; see the class docblock.
      */
     protected function translateMissingPairs(
         TranslatorInterface $translator,
@@ -352,6 +360,8 @@ class TranslateFields implements ShouldQueue, TranslationJob
      *
      * @param  array{locale: string, text: string, keep: array<int, string>, targets?: array<string, string>}  $plan
      * @return int Pairs saved.
+     *
+     * @internal May change in any release; see the class docblock.
      */
     protected function retranslateField(TranslatorInterface $translator, TranslationWriter $writer, string $field, array $plan): int
     {
@@ -421,6 +431,8 @@ class TranslateFields implements ShouldQueue, TranslationJob
      *                                                              what's stored, unless the source changed again, in which case the
      *                                                              rest of the field is abandoned (a newer job owns it).
      * @return int Pairs saved.
+     *
+     * @internal May change in any release; see the class docblock.
      */
     protected function translateField(
         TranslatorInterface $translator,
@@ -500,6 +512,8 @@ class TranslateFields implements ShouldQueue, TranslationJob
      * is one whose save throws - the exception then propagates as before.
      *
      * @param  array{locale: string, text: string, targets?: array<string, string>|null}|null  $snapshot
+     *
+     * @internal May change in any release; see the class docblock.
      */
     protected function savePair(
         TranslationWriter $writer,
@@ -596,6 +610,8 @@ class TranslateFields implements ShouldQueue, TranslationJob
      * Report a billed result that wasn't saved (discarded, or its save threw),
      * so usage tracking still logs its tokens. Only the result that carries a
      * request's tokens reports.
+     *
+     * @internal May change in any release; see the class docblock.
      */
     protected function reportUnused(TranslationResult $result, string $outcome, string $field, string $sourceLocale, string $targetLocale): void
     {
@@ -617,6 +633,9 @@ class TranslateFields implements ShouldQueue, TranslationJob
         );
     }
 
+    /**
+     * @internal May change in any release; see the class docblock.
+     */
     protected function dispatchStarted(string $field, string $sourceLocale, string $targetLocale, string $sourceText): void
     {
         TranslationStarted::dispatch(
@@ -635,6 +654,8 @@ class TranslateFields implements ShouldQueue, TranslationJob
      * consulted before that field's content is sent to the external API.
      * Absent a definition, every field is sent (current/default behavior) -
      * this is an opt-in hook, not a behavior change for existing consumers.
+     *
+     * @internal May change in any release; see the class docblock.
      */
     protected function shouldTranslateField(string $field, string $value): bool
     {
@@ -650,6 +671,8 @@ class TranslateFields implements ShouldQueue, TranslationJob
      * A job serialized before that was carried (queued before an upgrade) has
      * none, and uses TRANSLATION_SOURCE_LOCALE, then config('app.locale') -
      * deterministically, never the worker's current locale.
+     *
+     * @internal May change in any release; see the class docblock.
      */
     protected function resolvedSourceLocale(): string
     {
@@ -672,6 +695,8 @@ class TranslateFields implements ShouldQueue, TranslationJob
      * The model's class basename, passed as prompt context (e.g. "Product").
      * An anonymous class has no meaningful name of its own, so its nearest
      * named parent is used instead.
+     *
+     * @internal May change in any release; see the class docblock.
      */
     protected function modelContextName(): string
     {
@@ -692,6 +717,8 @@ class TranslateFields implements ShouldQueue, TranslationJob
      * @param  mixed  $value  The field's current value (array or scalar).
      * @param  string  $currentLocale  Locale to key a scalar $value under.
      * @return array<string, mixed>
+     *
+     * @internal May change in any release; see the class docblock.
      */
     protected function normalizeFieldTranslations($value, string $currentLocale): array
     {

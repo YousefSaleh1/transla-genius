@@ -16,6 +16,8 @@ use Illuminate\Database\Query\Expression;
  * key type (a string key casts to itself), and it leaves translatable_id
  * uncast, so the review table's owner index still serves the lookup. There's
  * no CAST target all five drivers share, hence one per driver.
+ *
+ * @internal Support\ is package wiring; not covered by the backward compatibility promise.
  */
 final class KeyCast
 {

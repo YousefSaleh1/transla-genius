@@ -8,6 +8,8 @@ namespace CodingPartners\TranslaGenius\Support;
  * `TRANSLATION_JOB_TRIES=three`) means "not set", so the default applies.
  * Casting it instead would turn it into 0, which for a timeout means no
  * timeout at all and for a cache TTL means forever.
+ *
+ * @internal Support\ is package wiring; not covered by the backward compatibility promise.
  */
 final class Setting
 {

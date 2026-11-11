@@ -321,6 +321,8 @@ class TranslaGeniusServiceProvider extends ServiceProvider
      * An integer setting read from env-backed config: null, '' (an empty
      * `VAR=` in .env) or a non-numeric value means "use the default". See
      * Support\Setting.
+     *
+     * @internal Package wiring; not covered by the backward compatibility promise.
      */
     public static function intSetting(mixed $value, int $default): int
     {

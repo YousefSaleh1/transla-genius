@@ -64,6 +64,7 @@ A breaking architectural release: the translation backend is now swappable behin
 - Ready-made provider presets in the shipped config: `openrouter` (still the default), `openai`, `gemini`, `deepseek`, `mistral`, and `custom` for any other OpenAI-compatible endpoint (Ollama, vLLM, LiteLLM, ...). Each reads its own environment variables, so switching providers is a `.env` change (`TRANSLATION_PROVIDER=gemini` plus `GEMINI_API_KEY=...`). The legacy `TRANSLATION_API_KEY`/`TRANSLATION_API_URL`/`TRANSLATION_MODEL` variables keep working for the `openrouter` default and drive the `custom` entry.
 - Failover through `.env` alone: `TRANSLATION_PROVIDER=fallback` with `TRANSLATION_FALLBACK_CHAIN=openai,gemini` (comma-separated, whitespace trimmed, empty items ignored) uses the shipped `fallback` entry. A `chain` may now be an array or a comma-separated string.
 - Provider resolution now fails fast with a clear `RuntimeException`, naming the provider key and class, when a `driver` class doesn't exist or doesn't implement `TranslationProviderInterface`.
+- The public surface is now marked: classes and methods that are public only for package wiring are `@internal` (the `Support\` namespace, `Console\Concerns\`, `ReviewManager::propose()`, `pairsToSkip()` and `supersedeForSourceChange()`, `CachingProvider`'s key methods, `TranslaGeniusServiceProvider::intSetting()`, and the protected helpers of `TranslateFields`). The README's new "Backward compatibility promise" section says what semver covers.
 
 ### Deprecated
 

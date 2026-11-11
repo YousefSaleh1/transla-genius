@@ -51,6 +51,9 @@ class CachingProvider implements BatchTranslationProviderInterface
         protected ?string $cacheableProvider = null,
     ) {}
 
+    /**
+     * @internal Used by the review workflow and the service provider; not covered by the backward compatibility promise.
+     */
     public function inner(): TranslationProviderInterface
     {
         return $this->inner;
@@ -149,6 +152,8 @@ class CachingProvider implements BatchTranslationProviderInterface
      * when the active prompt templates use {field}/{model} (or the provider
      * isn't one whose prompts we can inspect), so records across models
      * share hits under the default prompts.
+     *
+     * @internal Used by the review workflow and the service provider; not covered by the backward compatibility promise.
      */
     public function cacheKey(string $text, string $sourceLocale, string $targetLocale, ?string $field = null, ?string $model = null): string
     {
@@ -178,6 +183,8 @@ class CachingProvider implements BatchTranslationProviderInterface
      * never meet.
      *
      * @param  array<string, mixed>  $parts
+     *
+     * @internal Used by the review workflow and the service provider; not covered by the backward compatibility promise.
      */
     public static function encode(array $parts): string
     {
@@ -228,6 +235,8 @@ class CachingProvider implements BatchTranslationProviderInterface
     /**
      * Remove the entry for one text/locale pair (the review workflow does this
      * when a translation is rejected).
+     *
+     * @internal Used by the review workflow and the service provider; not covered by the backward compatibility promise.
      */
     public function forgetTranslation(string $text, string $sourceLocale, string $targetLocale, ?string $field = null, ?string $model = null): void
     {
@@ -238,6 +247,8 @@ class CachingProvider implements BatchTranslationProviderInterface
      * Store a reviewer-approved edit as the entry for one text/locale pair, so
      * the next identical source text gets the corrected version. It's human
      * approved, so it is stored whichever provider produced the original.
+     *
+     * @internal Used by the review workflow and the service provider; not covered by the backward compatibility promise.
      */
     public function storeReviewed(string $text, string $sourceLocale, string $targetLocale, ?string $field, ?string $model, string $translation, ?string $provider): void
     {

@@ -7,6 +7,8 @@ namespace CodingPartners\TranslaGenius\Support;
  * there: blank means null, or a string that is empty after trim(). "0" is a
  * value. Anything else that isn't a string is not blank; callers that need
  * a string check that separately.
+ *
+ * @internal Support\ is package wiring; not covered by the backward compatibility promise.
  */
 final class Text
 {
