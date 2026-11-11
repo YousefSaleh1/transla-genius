@@ -8,6 +8,7 @@ use CodingPartners\TranslaGenius\DTOs\TranslationResult;
 use CodingPartners\TranslaGenius\Events\TranslationCompleted;
 use CodingPartners\TranslaGenius\Events\TranslationFailed;
 use CodingPartners\TranslaGenius\Events\TranslationStarted;
+use CodingPartners\TranslaGenius\Exceptions\PairsFailedException;
 use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
 use CodingPartners\TranslaGenius\Tests\Support\FakeTranslationProvider;
 use CodingPartners\TranslaGenius\Tests\TestModels\TestTranslatableModel;
@@ -160,8 +161,11 @@ class LifecycleEventsTest extends Orchestra
 
         $this->assertSame(TestTranslatableModel::class, $event->modelClass);
         $this->assertSame($model->id, $event->modelId);
-        $this->assertInstanceOf(TranslationFailedException::class, $event->exception);
-        $this->assertSame('Invalid API key', $event->exception->getMessage());
+        // The job's failure lists its failed pairs; a rejected key stops it
+        // after the first.
+        $this->assertInstanceOf(PairsFailedException::class, $event->exception);
+        $this->assertCount(1, $event->exception->getFailures());
+        $this->assertSame('Invalid API key', $event->exception->getFailures()[0]['exception']->getMessage());
         $this->assertSame(401, $event->exception->getStatusCode());
         $this->assertFalse($event->exception->isRetryable());
     }

@@ -67,9 +67,10 @@ class IncrementalPersistenceTest extends TestCase
             'description' => ['en' => 'Source description'],
         ]);
 
-        // Attempt 1: name:ar and name:es succeed; description:ar keeps
-        // returning 503 (sent twice: first try + 1 HTTP retry), so the job
-        // throws a retryable failure before reaching description:es.
+        // Attempt 1: name:ar, name:es and description:es succeed;
+        // description:ar keeps returning 503 (sent twice: first try + 1 HTTP
+        // retry). The job goes on with the other pairs, then throws one
+        // retryable failure.
         try {
             $this->runJobOn($model);
             $this->fail('Expected the first attempt to fail.');
@@ -77,9 +78,9 @@ class IncrementalPersistenceTest extends TestCase
             $this->assertTrue($e->isRetryable());
         }
 
-        $this->assertSame(['name:ar' => 1, 'name:es' => 1, 'description:ar' => 2], $this->requests);
+        $this->assertSame(['name:ar' => 1, 'name:es' => 1, 'description:ar' => 2, 'description:es' => 1], $this->requests);
 
-        // The two successful pairs are already in the database.
+        // The three successful pairs are already in the database.
         $stored = TestTranslatableModel::find($model->id);
         $this->assertSame('name:ar text', $stored->getTranslation('name', 'ar', false));
         $this->assertSame('name:es text', $stored->getTranslation('name', 'es', false));
@@ -95,7 +96,7 @@ class IncrementalPersistenceTest extends TestCase
         $this->runJobOn(TestTranslatableModel::find($model->id));
 
         // 0 requests for the pairs saved in attempt 1.
-        $this->assertSame(['description:ar' => 1, 'description:es' => 1], $this->requests);
+        $this->assertSame(['description:ar' => 1], $this->requests);
 
         $this->assertTrue(TestTranslatableModel::fullyTranslated()->whereKey($model->id)->exists());
         $this->assertFalse(TestTranslatableModel::notFullyTranslated()->whereKey($model->id)->exists());
@@ -129,7 +130,8 @@ class IncrementalPersistenceTest extends TestCase
         $job->handle($this->app->make(TranslatorInterface::class), $this->app->make(TranslationWriter::class));
 
         $job->assertFailed();
-        $this->assertSame(['name:ar' => 1, 'name:es' => 1, 'description:ar' => 1], $this->requests);
+        // The failed pair doesn't stop the job: description:es is requested too.
+        $this->assertSame(['name:ar' => 1, 'name:es' => 1, 'description:ar' => 1, 'description:es' => 1], $this->requests);
 
         $stored = TestTranslatableModel::find($model->id);
         // Key order isn't part of the contract (MySQL's JSON type normalizes it).

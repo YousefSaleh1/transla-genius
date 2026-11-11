@@ -201,7 +201,7 @@ class BilledUsageTest extends Orchestra
 
         $this->runJob()->assertFailed();
 
-        $this->assertCount(2, $this->billed); // ar, then the truncated es (fr never sent)
+        $this->assertCount(3, $this->billed); // ar, the truncated es, and fr (the job goes on)
         $this->assertLogMatchesBilling();
         $this->assertSame(['truncated primary es'], $this->unusedRows());
     }
@@ -265,9 +265,10 @@ class BilledUsageTest extends Orchestra
 
         $this->runJob()->assertFailed();
 
-        $this->assertCount(1, $this->billed);
+        // A 400 on one pair doesn't stop the others: each is tried, and billed.
+        $this->assertCount(3, $this->billed);
         $this->assertLogMatchesBilling();
-        $this->assertSame(['failed primary ar'], $this->unusedRows());
+        $this->assertSame(['failed primary ar', 'failed primary es', 'failed primary fr'], $this->unusedRows());
     }
 
     public function test_responses_without_usage_are_not_logged_as_billed()

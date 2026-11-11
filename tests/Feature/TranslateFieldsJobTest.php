@@ -214,8 +214,9 @@ class TranslateFieldsJobTest extends TestCase
 
         $job->assertFailedWith(TranslationFailedException::class);
         $job->assertNotReleased();
-        Http::assertSentCount(1);
+        Http::assertSentCount(2); // ar and es, each once; neither is saved
         $this->assertArrayNotHasKey('ar', $model->fresh()->getTranslations('name'));
+        $this->assertArrayNotHasKey('es', $model->fresh()->getTranslations('name'));
     }
 
     /**

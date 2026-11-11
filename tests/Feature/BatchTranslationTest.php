@@ -301,7 +301,9 @@ class BatchTranslationTest extends TestCase
         $job = $this->runJob($this->createModel());
 
         $job->assertFailedWith(TranslationFailedException::class);
-        Http::assertSentCount(1);
+        // Each pair is tried once (a truncation isn't retried); one failed
+        // pair doesn't stop the others: 2 fields x 3 locales.
+        Http::assertSentCount(6);
     }
 
     // --- fallback chains -------------------------------------------------

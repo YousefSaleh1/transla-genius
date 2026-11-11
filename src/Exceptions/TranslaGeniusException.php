@@ -11,6 +11,7 @@ use RuntimeException;
  * TranslaGeniusException
  * ├── TranslationFailedException          a translation couldn't be made (isRetryable() says whether to try again)
  * │   ├── AllProvidersFailedException     every member of a fallback chain failed
+ * │   ├── PairsFailedException            some pairs of a job failed; the others were saved
  * │   └── TranslationConfigurationException  the config is wrong; never retryable
  * ├── InvalidTranslationJobException      a job class doesn't implement Contracts\TranslationJob
  * ├── StaleReviewException                approving a review whose source changed

@@ -440,7 +440,9 @@ Failed calls are retried at two levels:
 
 When every member of a fallback chain is rate limited, the job is released for the shortest `Retry-After` among them, the earliest any member is likely to answer again.
 
-4xx responses other than 429 (a bad key, a bad request, an unknown model) are never retried: the job fails on the first response. So does a reply cut off at the output limit: the same request with the same limit would be cut off again. In a fallback chain, it moves on to the next member.
+4xx responses other than 429 (a bad request, an unknown model) are never retried. So is a reply cut off at the output limit: the same request with the same limit would be cut off again. In a fallback chain, both move on to the next member.
+
+**One failed pair doesn't stop the job.** The job goes on with its other fields and languages, saving each success, and then fails once with `Exceptions\PairsFailedException`, whose `getFailures()` lists every failed pair (`field`, `locale`, `exception`). It is retryable if any of them was, and the retry requests only what is still missing. Two failures stop the job at once: a configuration error, and a rejected key (401 or 403), since every further request would fail the same way.
 
 A blank reply (empty or whitespace only) is billed as `unusable` and is not retried within the request, since the provider did answer. It is usually a passing hiccup, so the job attempt fails and the queue tries again. In a fallback chain, it moves on to the next member first.
 
@@ -792,6 +794,7 @@ Every exception the package defines extends `Exceptions\TranslaGeniusException`:
 TranslaGeniusException
 ├── TranslationFailedException              a translation couldn't be made; isRetryable() says whether to try again
 │   ├── AllProvidersFailedException         every member of a fallback chain failed
+│   ├── PairsFailedException                some pairs of a job failed; the others were saved
 │   └── TranslationConfigurationException   the configuration is wrong; never retryable
 ├── InvalidTranslationJobException          a job class doesn't implement Contracts\TranslationJob
 ├── StaleReviewException                    approving a review whose source text changed

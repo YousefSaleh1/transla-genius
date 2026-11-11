@@ -13,6 +13,8 @@ use CodingPartners\TranslaGenius\Events\TranslationFailed;
 use CodingPartners\TranslaGenius\Events\TranslationFailed as TranslationFailedEvent;
 use CodingPartners\TranslaGenius\Events\TranslationRequestBilled;
 use CodingPartners\TranslaGenius\Events\TranslationStarted;
+use CodingPartners\TranslaGenius\Exceptions\PairsFailedException;
+use CodingPartners\TranslaGenius\Exceptions\TranslationConfigurationException;
 use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
 use CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider;
 use CodingPartners\TranslaGenius\Review\ReviewManager;
@@ -107,6 +109,16 @@ class TranslateFields implements ShouldQueue, TranslationJob
 
     /** Set per run when the review workflow is on; null when it's off. */
     protected ?ReviewManager $reviews = null;
+
+    /**
+     * Pairs that failed in this run; the job goes on with the others.
+     *
+     * @var array<int, array{field: string, locale: string, exception: TranslationFailedException}>
+     */
+    protected array $failedPairs = [];
+
+    /** Set when a failure means every further request would fail too (a bad key). */
+    protected bool $stopRequesting = false;
 
     /**
      * Number of attempts before the job is considered permanently failed
@@ -391,6 +403,8 @@ class TranslateFields implements ShouldQueue, TranslationJob
         array $targetLanguages
     ): int {
         $saved = 0;
+        $this->failedPairs = [];
+        $this->stopRequesting = false;
         $skip = $this->reviews?->pairsToSkip($this->model, $currentLocale, (bool) ($this->options['include_rejected'] ?? false)) ?? [];
 
         foreach ($this->fields as $field) {
@@ -439,6 +453,13 @@ class TranslateFields implements ShouldQueue, TranslationJob
             ));
 
             $saved += $this->translateField($translator, $writer, $field, $sourceText, $currentLocale, $missing);
+        }
+
+        // Every pair was tried; report the ones that failed, together. The
+        // successful ones are saved already.
+        $failures = $this->failedPairs();
+        if ($failures !== []) {
+            throw new PairsFailedException($failures);
         }
 
         return $saved;
@@ -573,13 +594,24 @@ class TranslateFields implements ShouldQueue, TranslationJob
         $saved = 0;
         $started = [];
 
+        if ($this->stopRequesting) {
+            return 0;
+        }
+
         if (count($missing) > 1 && $translator instanceof BatchTranslatorInterface && $translator->canBatch()) {
             foreach ($missing as $locale) {
                 $this->dispatchStarted($field, $currentLocale, $locale, $sourceText);
                 $started[$locale] = true;
             }
 
-            $batch = $translator->translateBatch($sourceText, $currentLocale, $missing, $field, $this->modelContextName());
+            try {
+                $batch = $translator->translateBatch($sourceText, $currentLocale, $missing, $field, $this->modelContextName());
+            } catch (TranslationFailedException $e) {
+                // The whole field failed; go on with the next one.
+                $this->recordFailure($e, $field, $missing);
+
+                return $saved;
+            }
             $tokensAttributed = false;
 
             foreach ($missing as $locale) {
@@ -608,7 +640,18 @@ class TranslateFields implements ShouldQueue, TranslationJob
                 $this->dispatchStarted($field, $currentLocale, $locale, $sourceText);
             }
 
-            $result = $translator->translate($sourceText, $currentLocale, $locale, $field, $this->modelContextName());
+            if ($this->stopRequesting) {
+                return $saved;
+            }
+
+            try {
+                $result = $translator->translate($sourceText, $currentLocale, $locale, $field, $this->modelContextName());
+            } catch (TranslationFailedException $e) {
+                // This pair failed; go on with the rest.
+                $this->recordFailure($e, $field, [$locale]);
+
+                continue;
+            }
 
             $outcome = $this->savePair($writer, $field, $currentLocale, $locale, $result, $snapshot, $sourceText);
             if ($outcome === false) {
@@ -618,6 +661,54 @@ class TranslateFields implements ShouldQueue, TranslationJob
         }
 
         return $saved;
+    }
+
+    /**
+     * The pairs that failed so far in this run.
+     *
+     * @return array<int, array{field: string, locale: string, exception: TranslationFailedException}>
+     *
+     * @internal May change in any release; see the class docblock.
+     */
+    protected function failedPairs(): array
+    {
+        return $this->failedPairs;
+    }
+
+    /**
+     * Remember a failed request, for the PairsFailedException handle()
+     * throws once every pair was tried. A configuration error is thrown at
+     * once: every pair would fail the same way. So is a rejected key (401,
+     * 403): the rest of the job is then not requested.
+     *
+     * @param  array<int, string>  $locales  The pairs the request covered.
+     *
+     * @throws TranslationConfigurationException
+     *
+     * @internal May change in any release; see the class docblock.
+     */
+    protected function recordFailure(TranslationFailedException $e, string $field, array $locales): void
+    {
+        if ($e instanceof TranslationConfigurationException) {
+            throw $e;
+        }
+
+        foreach ($locales as $locale) {
+            $this->failedPairs[] = ['field' => $field, 'locale' => $locale, 'exception' => $e];
+        }
+
+        if (in_array($e->getStatusCode(), [401, 403], true)) {
+            $this->stopRequesting = true;
+        }
+
+        Log::warning('TranslateFields: a translation failed; going on with the other pairs', [
+            'model_class' => get_class($this->model),
+            'model_id' => $this->model->getKey(),
+            'field' => $field,
+            'locales' => $locales,
+            'status_code' => $e->getStatusCode(),
+            'message' => $e->getMessage(),
+        ]);
     }
 
     /**
