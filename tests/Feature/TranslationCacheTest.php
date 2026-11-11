@@ -506,6 +506,22 @@ class TranslationCacheTest extends TestCase
         $this->assertTrue($this->translate('Free shipping')->cached);
     }
 
+    /**
+     * Text that isn't valid UTF-8 can't be JSON-encoded; two such texts must
+     * still get keys of their own, never one shared key.
+     */
+    public function test_text_that_is_not_valid_utf8_gets_a_key_of_its_own()
+    {
+        $provider = $this->provider();
+
+        $first = $provider->cacheKey("caf\xe9", 'en', 'ar');
+        $second = $provider->cacheKey("na\xefve", 'en', 'ar');
+
+        $this->assertNotSame($first, $second);
+        $this->assertSame($first, $provider->cacheKey("caf\xe9", 'en', 'ar'));
+        $this->assertMatchesRegularExpression('/^translagenius:v1:[0-9a-f]{64}$/', $first);
+    }
+
     public function test_entries_expire_after_the_ttl()
     {
         $this->translate('Free shipping');

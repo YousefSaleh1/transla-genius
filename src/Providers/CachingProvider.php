@@ -167,7 +167,23 @@ class CachingProvider implements BatchTranslationProviderInterface
             $parts['model'] = (string) $model;
         }
 
-        return self::KEY_PREFIX.':'.self::KEY_VERSION.':'.hash('sha256', json_encode($parts, JSON_UNESCAPED_UNICODE));
+        return self::KEY_PREFIX.':'.self::KEY_VERSION.':'.hash('sha256', self::encode($parts));
+    }
+
+    /**
+     * The exact bytes a cache key hashes. JSON, as always; text that isn't
+     * valid UTF-8 can't be JSON-encoded (json_encode() returns false, which
+     * would give every such text the same key), so it is serialized instead,
+     * keeping its bytes. JSON output always starts with `{`, so the two forms
+     * never meet.
+     *
+     * @param  array<string, mixed>  $parts
+     */
+    public static function encode(array $parts): string
+    {
+        $json = json_encode($parts, JSON_UNESCAPED_UNICODE);
+
+        return $json !== false ? $json : 'php:'.serialize($parts);
     }
 
     /**

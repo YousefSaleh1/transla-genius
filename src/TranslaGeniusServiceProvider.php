@@ -299,7 +299,7 @@ class TranslaGeniusServiceProvider extends ServiceProvider
             inner: $provider,
             cache: $app->make('cache')->store($store === '' ? null : $store),
             ttl: $ttl === 0 ? null : $ttl,
-            fingerprint: hash('sha256', json_encode($profile['fingerprint'], JSON_UNESCAPED_UNICODE)),
+            fingerprint: hash('sha256', CachingProvider::encode($profile['fingerprint'])),
             keyByField: $profile['uses_field'],
             keyByModel: $profile['uses_model'],
             cacheableProvider: $profile['is_chain'] ? $profile['primary'] : null,
