@@ -12,6 +12,7 @@ use CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface;
 use CodingPartners\TranslaGenius\Contracts\TranslatorInterface;
 use CodingPartners\TranslaGenius\Events\TranslationCompleted;
 use CodingPartners\TranslaGenius\Events\TranslationRequestBilled;
+use CodingPartners\TranslaGenius\Exceptions\TranslationConfigurationException;
 use CodingPartners\TranslaGenius\Listeners\LogTranslationUsage;
 use CodingPartners\TranslaGenius\LocaleResolvers\DefaultLocaleResolver;
 use CodingPartners\TranslaGenius\Providers\CachingProvider;
@@ -22,7 +23,6 @@ use CodingPartners\TranslaGenius\Services\Translator;
 use CodingPartners\TranslaGenius\Support\Setting;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
-use RuntimeException;
 
 /**
  * Class TranslaGeniusServiceProvider
@@ -39,10 +39,10 @@ class TranslaGeniusServiceProvider extends ServiceProvider
      *
      * @return void
      *
-     * @throws RuntimeException When TranslationProviderInterface is
-     *                          resolved and no provider is configured for
-     *                          translagenius.default (raised lazily, inside the singleton
-     *                          factory - not at register() call time).
+     * @throws TranslationConfigurationException When TranslationProviderInterface is
+     *                                           resolved and no provider is configured for
+     *                                           translagenius.default (raised lazily, inside the singleton
+     *                                           factory - not at register() call time).
      */
     public function register()
     {
@@ -66,7 +66,8 @@ class TranslaGeniusServiceProvider extends ServiceProvider
             return $this->wrapWithCache($app, $provider, $this->cacheProfileFor($name));
         });
 
-        $this->app->singleton(Translator::class);
+        // Resolves its provider when first used; see Translator::__construct().
+        $this->app->singleton(Translator::class, fn () => new Translator);
         $this->app->singleton(TranslatorInterface::class, fn ($app) => $app->make(Translator::class));
 
         $this->app->singleton(LocaleResolverInterface::class, DefaultLocaleResolver::class);
@@ -96,15 +97,15 @@ class TranslaGeniusServiceProvider extends ServiceProvider
      *                         fallback chain. Chain members get translagenius.retries.fallback_http
      *                         HTTP retries and never sleep on Retry-After, so failover is fast.
      *
-     * @throws RuntimeException If $name has no config, no `driver`, a
-     *                          `driver` class that doesn't exist or doesn't implement
-     *                          TranslationProviderInterface, an empty `chain` (for a
-     *                          FallbackProvider driver), or `chain` forms a cycle.
+     * @throws TranslationConfigurationException If $name has no config, no `driver`, a
+     *                                           `driver` class that doesn't exist or doesn't implement
+     *                                           TranslationProviderInterface, an empty `chain` (for a
+     *                                           FallbackProvider driver), or `chain` forms a cycle.
      */
     protected function resolveProvider(Application $app, string $name, array $seen = [], bool $inChain = false): TranslationProviderInterface
     {
         if (in_array($name, $seen, true)) {
-            throw new RuntimeException(
+            throw new TranslationConfigurationException(
                 'TranslaGenius: provider chain forms a cycle: '
                 .implode(' -> ', [...$seen, $name])
             );
@@ -114,7 +115,7 @@ class TranslaGeniusServiceProvider extends ServiceProvider
         $providerConfig = $config->get("translagenius.providers.{$name}");
 
         if (empty($providerConfig) || empty($providerConfig['driver'])) {
-            throw new RuntimeException(
+            throw new TranslationConfigurationException(
                 "TranslaGenius: no provider configured for [{$name}]. "
                 .'Check the `default` and `providers` keys in config/translagenius.php.'
             );
@@ -124,17 +125,18 @@ class TranslaGeniusServiceProvider extends ServiceProvider
             $chain = $this->normalizeChain($providerConfig['chain'] ?? []);
 
             if (empty($chain)) {
-                throw new RuntimeException(
+                throw new TranslationConfigurationException(
                     "TranslaGenius: fallback provider [{$name}] has no `chain` configured. "
                     .'Set `chain` (or TRANSLATION_FALLBACK_CHAIN for the shipped `fallback` entry) '
                     .'to at least 2 other provider names from `providers`, e.g. "openai,gemini".'
                 );
             }
 
-            $resolvedChain = array_map(
-                fn (string $chainedName) => $this->resolveProvider($app, $chainedName, [...$seen, $name], true),
-                $chain
-            );
+            // Keyed by config name, so a failed chain names its members.
+            $resolvedChain = [];
+            foreach ($chain as $chainedName) {
+                $resolvedChain[$chainedName] = $this->resolveProvider($app, $chainedName, [...$seen, $name], true);
+            }
 
             $memberProfiles = array_map(fn (string $member) => $this->cacheProfiles[$member], $chain);
             $this->cacheProfiles[$name] = [
@@ -151,7 +153,7 @@ class TranslaGeniusServiceProvider extends ServiceProvider
         $driver = $providerConfig['driver'];
 
         if (! is_string($driver) || ! class_exists($driver)) {
-            throw new RuntimeException(sprintf(
+            throw new TranslationConfigurationException(sprintf(
                 'TranslaGenius: provider [%s] has driver class [%s], which does not exist. '
                 .'Check the class name and that it is autoloadable.',
                 $name,
@@ -160,7 +162,7 @@ class TranslaGeniusServiceProvider extends ServiceProvider
         }
 
         if (! is_subclass_of($driver, TranslationProviderInterface::class)) {
-            throw new RuntimeException(sprintf(
+            throw new TranslationConfigurationException(sprintf(
                 'TranslaGenius: provider [%s] has driver class [%s], which does not implement %s.',
                 $name,
                 $driver,

@@ -25,9 +25,12 @@ class AllProvidersFailedException extends TranslationFailedException
 {
     /**
      * $failures has one entry per provider in the chain, in the order they
-     * were tried.
+     * were tried. `provider` is the member's config name (`openai`,
+     * `gemini`), `class` its PHP class: every preset is the same
+     * OpenAiCompatibleProvider class, so the class alone doesn't say which
+     * member failed.
      *
-     * @param  array<int, array{provider: class-string, message: string, status_code: int|null, retryable: bool, retry_after?: int|null}>  $failures
+     * @param  array<int, array{provider: string, class: class-string, message: string, status_code: int|null, retryable: bool, retry_after?: int|null}>  $failures
      */
     public function __construct(protected readonly array $failures)
     {
@@ -42,7 +45,7 @@ class AllProvidersFailedException extends TranslationFailedException
      * Every provider's individual failure, in try order - for logging or
      * building a more detailed error report than getMessage() alone gives.
      *
-     * @return array<int, array{provider: class-string, message: string, status_code: int|null, retryable: bool, retry_after?: int|null}>
+     * @return array<int, array{provider: string, class: class-string, message: string, status_code: int|null, retryable: bool, retry_after?: int|null}>
      */
     public function getFailures(): array
     {
@@ -50,7 +53,7 @@ class AllProvidersFailedException extends TranslationFailedException
     }
 
     /**
-     * @param  array<int, array{provider: class-string, message: string, status_code: int|null, retryable: bool, retry_after?: int|null}>  $failures
+     * @param  array<int, array{provider: string, class: class-string, message: string, status_code: int|null, retryable: bool, retry_after?: int|null}>  $failures
      */
     private static function buildMessage(array $failures): string
     {
@@ -71,7 +74,7 @@ class AllProvidersFailedException extends TranslationFailedException
      * any moment, so there is no wait to use (null): the job's own backoff
      * applies.
      *
-     * @param  array<int, array{provider: class-string, message: string, status_code: int|null, retryable: bool, retry_after?: int|null}>  $failures
+     * @param  array<int, array{provider: string, class: class-string, message: string, status_code: int|null, retryable: bool, retry_after?: int|null}>  $failures
      */
     private static function shortestRetryAfter(array $failures): ?int
     {
@@ -101,7 +104,7 @@ class AllProvidersFailedException extends TranslationFailedException
      * Only when every provider failed non-retryably is retrying the whole
      * chain again guaranteed to be futile.
      *
-     * @param  array<int, array{provider: class-string, message: string, status_code: int|null, retryable: bool, retry_after?: int|null}>  $failures
+     * @param  array<int, array{provider: string, class: class-string, message: string, status_code: int|null, retryable: bool, retry_after?: int|null}>  $failures
      */
     private static function anyRetryable(array $failures): bool
     {

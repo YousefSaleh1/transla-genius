@@ -45,6 +45,7 @@ It works with any API that speaks the OpenAI chat-completions format. Presets fo
   - [Events](#events)
   - [Query scopes](#query-scopes)
   - [Translating arbitrary text](#translating-arbitrary-text)
+  - [Exceptions](#exceptions)
 - [Artisan commands](#artisan-commands)
 - [Extending](#extending)
   - [A custom provider (DeepL)](#a-custom-provider-deepl)
@@ -269,7 +270,7 @@ OPENAI_API_KEY=your-openai-key
 GEMINI_API_KEY=your-gemini-key
 ```
 
-The first provider to succeed wins, and later ones are not called. The chain moves on after any failure, including non-retryable ones such as a bad key or an exhausted quota, because that is the case a fallback exists for. If every member fails, `Exceptions\AllProvidersFailedException` is thrown; it extends `TranslationFailedException`, and `getFailures()` returns each member's failure.
+The first provider to succeed wins, and later ones are not called. The chain moves on after any failure, including non-retryable ones such as a bad key or an exhausted quota, because that is the case a fallback exists for. If every member fails, `Exceptions\AllProvidersFailedException` is thrown; it extends `TranslationFailedException`, and `getFailures()` returns each member's failure, naming the member by its config name (`openai`, `gemini`) with its PHP class alongside.
 
 The chain needs at least 2 names. A missing chain, a chain that includes itself, or an unknown name fails when the provider is resolved, with an error naming the problem. In a published config you can define more chains, with `chain` as an array:
 
@@ -747,6 +748,23 @@ $result->text;   // the translation
 ```
 
 The facade resolves `Contracts\TranslatorInterface`, so it uses the configured provider, cache and fallback chain. It throws `Exceptions\TranslationFailedException` on failure.
+
+### Exceptions
+
+Every exception the package defines extends `Exceptions\TranslaGeniusException`:
+
+```
+TranslaGeniusException
+├── TranslationFailedException              a translation couldn't be made; isRetryable() says whether to try again
+│   ├── AllProvidersFailedException         every member of a fallback chain failed
+│   └── TranslationConfigurationException   the configuration is wrong; never retryable
+├── InvalidTranslationJobException          a job class doesn't implement Contracts\TranslationJob
+├── StaleReviewException                    approving a review whose source text changed
+├── ReviewConflictException                 approving over a hand-edited translation
+└── InvalidReviewStateException             deciding a review that isn't pending
+```
+
+`TranslationConfigurationException` covers an unknown provider name (a `TRANSLATION_PROVIDER` typo), a missing API key or URL, a fallback chain that is missing, has fewer than two members or loops, and a driver class that doesn't exist or isn't a provider. A translation job that hits one fails on its first attempt and fires `TranslationFailed` once, instead of retrying a config error that can't fix itself.
 
 ## Artisan commands
 

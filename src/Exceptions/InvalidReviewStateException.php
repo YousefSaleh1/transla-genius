@@ -3,10 +3,9 @@
 namespace CodingPartners\TranslaGenius\Exceptions;
 
 use CodingPartners\TranslaGenius\Models\TranslationReview;
-use RuntimeException;
 
 /** A decision was requested for a review that is no longer pending. */
-class InvalidReviewStateException extends RuntimeException
+class InvalidReviewStateException extends TranslaGeniusException
 {
     public function __construct(public readonly TranslationReview $review)
     {

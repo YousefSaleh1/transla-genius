@@ -8,6 +8,7 @@ use CodingPartners\TranslaGenius\DTOs\TranslationBatchResult;
 use CodingPartners\TranslaGenius\DTOs\TranslationRequest;
 use CodingPartners\TranslaGenius\DTOs\TranslationResult;
 use CodingPartners\TranslaGenius\Events\TranslationRequestBilled;
+use CodingPartners\TranslaGenius\Exceptions\TranslationConfigurationException;
 use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
 use CodingPartners\TranslaGenius\Support\Setting;
 use CodingPartners\TranslaGenius\Support\Text;
@@ -384,16 +385,15 @@ class OpenAiCompatibleProvider implements BatchTranslationProviderInterface
     }
 
     /**
-     * @throws TranslationFailedException If the key or URL is missing.
+     * @throws TranslationConfigurationException If the key or URL is missing.
      */
     protected function assertConfigured(): void
     {
         if (empty($this->apiKey) || empty($this->apiUrl)) {
             Log::error('OpenAiCompatibleProvider: missing API key or URL configuration.');
 
-            throw new TranslationFailedException(
-                'Translation provider configuration missing: API key or API URL.',
-                retryable: false
+            throw new TranslationConfigurationException(
+                'Translation provider '.($this->name !== null ? "[{$this->name}] " : '').'configuration missing: API key or API URL.'
             );
         }
     }

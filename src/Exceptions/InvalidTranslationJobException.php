@@ -4,10 +4,9 @@ namespace CodingPartners\TranslaGenius\Exceptions;
 
 use CodingPartners\TranslaGenius\Contracts\TranslationJob;
 use CodingPartners\TranslaGenius\Jobs\TranslateFields;
-use InvalidArgumentException;
 
 /** A translationJobClass() that doesn't implement the TranslationJob contract. */
-class InvalidTranslationJobException extends InvalidArgumentException
+class InvalidTranslationJobException extends TranslaGeniusException
 {
     public function __construct(public readonly string $jobClass)
     {

@@ -7,6 +7,7 @@ use CodingPartners\TranslaGenius\DTOs\TranslationBatchRequest;
 use CodingPartners\TranslaGenius\DTOs\TranslationBatchResult;
 use CodingPartners\TranslaGenius\DTOs\TranslationRequest;
 use CodingPartners\TranslaGenius\DTOs\TranslationResult;
+use CodingPartners\TranslaGenius\Exceptions\TranslationConfigurationException;
 use CodingPartners\TranslaGenius\Providers\CachingProvider;
 use CodingPartners\TranslaGenius\Providers\FallbackProvider;
 use CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider;
@@ -247,7 +248,7 @@ class ShippedPresetsTest extends Orchestra
     {
         $this->withEnv(['TRANSLATION_PROVIDER' => 'fallback']);
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(TranslationConfigurationException::class);
         $this->expectExceptionMessage('fallback provider [fallback] has no `chain` configured');
 
         $this->app->make(TranslationProviderInterface::class);
@@ -257,7 +258,7 @@ class ShippedPresetsTest extends Orchestra
     {
         $this->withEnv(['TRANSLATION_PROVIDER' => 'fallback', 'TRANSLATION_FALLBACK_CHAIN' => 'openai, ']);
 
-        $this->expectException(\InvalidArgumentException::class);
+        $this->expectException(TranslationConfigurationException::class);
         $this->expectExceptionMessage('requires at least 2 providers');
 
         $this->app->make(TranslationProviderInterface::class);
@@ -267,7 +268,7 @@ class ShippedPresetsTest extends Orchestra
     {
         $this->withEnv(['TRANSLATION_PROVIDER' => 'fallback', 'TRANSLATION_FALLBACK_CHAIN' => 'openai,fallback']);
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(TranslationConfigurationException::class);
         $this->expectExceptionMessage('provider chain forms a cycle: fallback -> fallback');
 
         $this->app->make(TranslationProviderInterface::class);

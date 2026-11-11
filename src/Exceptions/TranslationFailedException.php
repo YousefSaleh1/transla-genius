@@ -2,7 +2,6 @@
 
 namespace CodingPartners\TranslaGenius\Exceptions;
 
-use RuntimeException;
 use Throwable;
 
 /**
@@ -14,7 +13,7 @@ use Throwable;
  * Never construct this with the API key, full request/response bodies, or
  * anything else that could belong in a stack trace destined for logs.
  */
-class TranslationFailedException extends RuntimeException
+class TranslationFailedException extends TranslaGeniusException
 {
     /**
      * @param  string  $message  Human-readable failure description (safe to log).

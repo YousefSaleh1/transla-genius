@@ -3,14 +3,13 @@
 namespace CodingPartners\TranslaGenius\Exceptions;
 
 use CodingPartners\TranslaGenius\Models\TranslationReview;
-use RuntimeException;
 
 /**
  * The source text changed since this translation was produced, so publishing
  * it would publish stale text. The review has been marked superseded; a newer
  * translation of the current source replaces it.
  */
-class StaleReviewException extends RuntimeException
+class StaleReviewException extends TranslaGeniusException
 {
     public function __construct(public readonly TranslationReview $review)
     {

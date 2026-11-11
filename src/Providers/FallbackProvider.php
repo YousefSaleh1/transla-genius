@@ -9,9 +9,9 @@ use CodingPartners\TranslaGenius\DTOs\TranslationBatchResult;
 use CodingPartners\TranslaGenius\DTOs\TranslationRequest;
 use CodingPartners\TranslaGenius\DTOs\TranslationResult;
 use CodingPartners\TranslaGenius\Exceptions\AllProvidersFailedException;
+use CodingPartners\TranslaGenius\Exceptions\TranslationConfigurationException;
 use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
 use Illuminate\Support\Facades\Log;
-use InvalidArgumentException;
 
 /**
  * A pure TranslationProviderInterface decorator over an ordered chain of
@@ -43,27 +43,32 @@ final class FallbackProvider implements BatchTranslationProviderInterface
     /** @var array<int, TranslationProviderInterface> */
     protected array $providers;
 
+    /** @var array<int, string> Each member's config name (its class when built without names). */
+    protected array $names;
+
     /**
-     * $providers is the ordered chain, tried first-to-last. At least 2 are
-     * required - a single provider needs no fallback wrapper. Typed as mixed
-     * because each element is checked here, at runtime.
+     * $providers is the ordered chain, tried first-to-last, keyed by each
+     * member's config name (the service provider builds it that way; a plain
+     * list falls back to class names). At least 2 are required - a single
+     * provider needs no fallback wrapper. Typed as mixed because each element
+     * is checked here, at runtime.
      *
-     * @param  array<int, mixed>  $providers
+     * @param  array<int|string, mixed>  $providers
      *
-     * @throws InvalidArgumentException If fewer than 2 providers are given,
-     *                                  or any element doesn't implement TranslationProviderInterface.
+     * @throws TranslationConfigurationException If fewer than 2 providers are
+     *                                           given, or any element doesn't implement TranslationProviderInterface.
      */
     public function __construct(array $providers)
     {
         if (count($providers) < 2) {
-            throw new InvalidArgumentException(
+            throw new TranslationConfigurationException(
                 'FallbackProvider requires at least 2 providers in its chain, got '.count($providers).'.'
             );
         }
 
         foreach ($providers as $provider) {
             if (! $provider instanceof TranslationProviderInterface) {
-                throw new InvalidArgumentException(
+                throw new TranslationConfigurationException(
                     'Every entry in a FallbackProvider chain must implement TranslationProviderInterface, got '
                     .get_debug_type($provider).'.'
                 );
@@ -71,6 +76,11 @@ final class FallbackProvider implements BatchTranslationProviderInterface
         }
 
         $this->providers = array_values($providers);
+        $this->names = array_map(
+            fn (int|string $key, TranslationProviderInterface $provider) => is_string($key) ? $key : get_class($provider),
+            array_keys($providers),
+            $this->providers,
+        );
     }
 
     /**
@@ -92,7 +102,7 @@ final class FallbackProvider implements BatchTranslationProviderInterface
 
                 if ($position > 0) {
                     Log::info('FallbackProvider: request served by a non-primary provider', [
-                        'provider' => get_class($provider),
+                        'provider' => $this->names[$position],
                         'position' => $position,
                         'prior_failures' => count($failures),
                     ]);
@@ -101,7 +111,7 @@ final class FallbackProvider implements BatchTranslationProviderInterface
                 return $result;
             } catch (TranslationFailedException $e) {
                 Log::warning('FallbackProvider: provider failed, trying next in chain', [
-                    'provider' => get_class($provider),
+                    'provider' => $this->names[$position],
                     'position' => $position,
                     'status_code' => $e->getStatusCode(),
                     'retryable' => $e->isRetryable(),
@@ -109,7 +119,8 @@ final class FallbackProvider implements BatchTranslationProviderInterface
                 ]);
 
                 $failures[] = [
-                    'provider' => get_class($provider),
+                    'provider' => $this->names[$position],
+                    'class' => get_class($provider),
                     'message' => $e->getMessage(),
                     'status_code' => $e->getStatusCode(),
                     'retryable' => $e->isRetryable(),
@@ -178,12 +189,12 @@ final class FallbackProvider implements BatchTranslationProviderInterface
 
                 $anyTruncated = true;
                 Log::warning('FallbackProvider: provider returned a truncated batch, trying next in chain', [
-                    'provider' => get_class($provider),
+                    'provider' => $this->names[$position],
                     'position' => $position,
                 ]);
             } catch (TranslationFailedException $e) {
                 Log::warning('FallbackProvider: provider failed a batch, trying next in chain', [
-                    'provider' => get_class($provider),
+                    'provider' => $this->names[$position],
                     'position' => $position,
                     'status_code' => $e->getStatusCode(),
                     'retryable' => $e->isRetryable(),
@@ -191,7 +202,8 @@ final class FallbackProvider implements BatchTranslationProviderInterface
                 ]);
 
                 $failures[] = [
-                    'provider' => get_class($provider),
+                    'provider' => $this->names[$position],
+                    'class' => get_class($provider),
                     'message' => $e->getMessage(),
                     'status_code' => $e->getStatusCode(),
                     'retryable' => $e->isRetryable(),

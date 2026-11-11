@@ -30,11 +30,20 @@ use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
 class Translator implements BatchTranslatorInterface
 {
     /**
-     * @param  TranslationProviderInterface  $provider  The backend to delegate
-     *                                                  translate() calls to - whichever implementation is bound (see
-     *                                                  translagenius.default / translagenius.providers.*).
+     * $provider is the backend to delegate to. Without one, the bound
+     * TranslationProviderInterface is resolved when a translation is first
+     * requested, not when this object is built: a configuration error then
+     * surfaces as a TranslationConfigurationException inside the job's
+     * handle(), where it fails the job once, instead of while the queue is
+     * resolving the job's dependencies.
      */
-    public function __construct(protected TranslationProviderInterface $provider) {}
+    public function __construct(protected ?TranslationProviderInterface $provider = null) {}
+
+    /** The provider to delegate to. */
+    protected function provider(): TranslationProviderInterface
+    {
+        return $this->provider ?? app(TranslationProviderInterface::class);
+    }
 
     /**
      * Translate a piece of text by delegating to the bound
@@ -56,7 +65,7 @@ class Translator implements BatchTranslatorInterface
         ?string $field = null,
         ?string $model = null,
     ): TranslationResult {
-        return $this->provider->translate(new TranslationRequest($text, $sourceLocale, $targetLocale, $field, $model));
+        return $this->provider()->translate(new TranslationRequest($text, $sourceLocale, $targetLocale, $field, $model));
     }
 
     /**
@@ -66,8 +75,9 @@ class Translator implements BatchTranslatorInterface
      */
     public function canBatch(): bool
     {
-        return $this->provider instanceof BatchTranslationProviderInterface
-            && $this->provider->supportsBatching();
+        $provider = $this->provider();
+
+        return $provider instanceof BatchTranslationProviderInterface && $provider->supportsBatching();
     }
 
     /**
@@ -86,11 +96,13 @@ class Translator implements BatchTranslatorInterface
         ?string $field = null,
         ?string $model = null,
     ): TranslationBatchResult {
-        if (! $this->provider instanceof BatchTranslationProviderInterface || ! $this->provider->supportsBatching()) {
+        $provider = $this->provider();
+
+        if (! $provider instanceof BatchTranslationProviderInterface || ! $provider->supportsBatching()) {
             return TranslationBatchResult::empty();
         }
 
-        return $this->provider->translateBatch(
+        return $provider->translateBatch(
             new TranslationBatchRequest($text, $sourceLocale, array_values($targetLocales), $field, $model)
         );
     }

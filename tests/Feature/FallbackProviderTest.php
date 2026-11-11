@@ -5,6 +5,7 @@ namespace CodingPartners\TranslaGenius\Tests\Feature;
 use CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface;
 use CodingPartners\TranslaGenius\DTOs\TranslationRequest;
 use CodingPartners\TranslaGenius\Exceptions\AllProvidersFailedException;
+use CodingPartners\TranslaGenius\Exceptions\TranslationConfigurationException;
 use CodingPartners\TranslaGenius\Providers\FallbackProvider;
 use CodingPartners\TranslaGenius\Tests\Support\FakeConfigurableProvider;
 use CodingPartners\TranslaGenius\Tests\TestModels\TestTranslatableModel;
@@ -12,7 +13,6 @@ use CodingPartners\TranslaGenius\TranslaGeniusServiceProvider;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Schema;
 use Orchestra\Testbench\TestCase as Orchestra;
-use RuntimeException;
 
 /**
  * Phase 4c: proves FallbackProvider's chain-of-providers behavior directly
@@ -146,7 +146,7 @@ class FallbackProviderTest extends Orchestra
 
     public function test_constructing_with_fewer_than_two_providers_is_rejected()
     {
-        $this->expectException(\InvalidArgumentException::class);
+        $this->expectException(TranslationConfigurationException::class);
 
         new FallbackProvider([new FakeConfigurableProvider(['id' => 'only'])]);
     }
@@ -206,7 +206,7 @@ class FallbackProviderTest extends Orchestra
 
         $this->app->forgetInstance(TranslationProviderInterface::class);
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(TranslationConfigurationException::class);
         $this->expectExceptionMessage('no `chain` configured');
 
         $this->app->make(TranslationProviderInterface::class);
@@ -222,7 +222,7 @@ class FallbackProviderTest extends Orchestra
 
         $this->app->forgetInstance(TranslationProviderInterface::class);
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(TranslationConfigurationException::class);
         $this->expectExceptionMessage('forms a cycle');
 
         $this->app->make(TranslationProviderInterface::class);

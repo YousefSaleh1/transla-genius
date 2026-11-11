@@ -3,7 +3,6 @@
 namespace CodingPartners\TranslaGenius\Exceptions;
 
 use CodingPartners\TranslaGenius\Models\TranslationReview;
-use RuntimeException;
 
 /**
  * The published value of this field/locale was changed (by hand) after the
@@ -11,7 +10,7 @@ use RuntimeException;
  * was published and the review stays pending; approve with force: true to
  * publish anyway, or reject it.
  */
-class ReviewConflictException extends RuntimeException
+class ReviewConflictException extends TranslaGeniusException
 {
     public function __construct(public readonly TranslationReview $review, public readonly string $currentValue)
     {

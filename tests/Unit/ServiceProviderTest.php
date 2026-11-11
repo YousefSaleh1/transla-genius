@@ -4,12 +4,12 @@ namespace CodingPartners\TranslaGenius\Tests\Unit;
 
 use CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface;
 use CodingPartners\TranslaGenius\DTOs\TranslationRequest;
+use CodingPartners\TranslaGenius\Exceptions\TranslationConfigurationException;
 use CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider;
 use CodingPartners\TranslaGenius\Services\Translator;
 use CodingPartners\TranslaGenius\Tests\TestCase;
 use CodingPartners\TranslaGenius\TranslaGeniusServiceProvider;
 use Illuminate\Support\Facades\Http;
-use RuntimeException;
 
 /**
  * Unit tests for TranslaGeniusServiceProvider
@@ -101,7 +101,7 @@ class ServiceProviderTest extends TestCase
             'translagenius.providers.deepl' => ['driver' => 'App\\Translation\\DeeplProvider'],
         ]);
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(TranslationConfigurationException::class);
         $this->expectExceptionMessage('provider [deepl] has driver class [App\\Translation\\DeeplProvider], which does not exist');
 
         $this->app->make(TranslationProviderInterface::class);
@@ -114,7 +114,7 @@ class ServiceProviderTest extends TestCase
             'translagenius.providers.broken' => ['driver' => \stdClass::class],
         ]);
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(TranslationConfigurationException::class);
         $this->expectExceptionMessage('provider [broken] has driver class [stdClass], which does not implement '.TranslationProviderInterface::class);
 
         $this->app->make(TranslationProviderInterface::class);
@@ -140,7 +140,7 @@ class ServiceProviderTest extends TestCase
     {
         config(['translagenius.default' => 'does-not-exist']);
 
-        $this->expectException(RuntimeException::class);
+        $this->expectException(TranslationConfigurationException::class);
 
         $this->app->make(TranslationProviderInterface::class);
     }
