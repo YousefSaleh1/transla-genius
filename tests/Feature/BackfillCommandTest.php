@@ -271,7 +271,8 @@ class BackfillCommandTest extends Orchestra
 
         $this->artisan('translagenius:backfill', ['model' => TestTranslatableModel::class, '--source' => 'en'])
             ->expectsOutputToContain('Found 2 [')
-            ->expectsOutputToContain('Skipped 3 record(s) with no [en] text to translate from.')
+            ->expectsOutputToContain('Skipped 2 record(s) with no text to translate.')
+            ->expectsOutputToContain('1 record(s) have no [en] text but do have text in another language (ar). Is --source right?')
             ->expectsConfirmation('Dispatch TranslateFields for these 2 record(s), translating from [en]?', 'yes')
             ->expectsOutputToContain('Dispatched TranslateFields for 2 record(s).')
             ->assertSuccessful();

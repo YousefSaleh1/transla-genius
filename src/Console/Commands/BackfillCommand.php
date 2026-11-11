@@ -127,18 +127,41 @@ class BackfillCommand extends Command
         // the count shown is what gets dispatched.
         $hasSourceText = fn ($record): bool => $this->hasSourceText($record, $translatableFields, $sourceLocale);
 
+        // Records with no source text: either empty everywhere (nothing to
+        // do), or with text in another language, which usually means the
+        // content was written in another locale than --source.
         $matchingCount = 0;
-        $skippedCount = 0;
-        $buildQuery()->chunkById($chunkSize, function ($records) use (&$matchingCount, &$skippedCount, $hasSourceText) {
+        $emptyCount = 0;
+        $otherLanguageCount = 0;
+        $otherLanguages = [];
+        $buildQuery()->chunkById($chunkSize, function ($records) use (&$matchingCount, &$emptyCount, &$otherLanguageCount, &$otherLanguages, $hasSourceText, $translatableFields, $sourceLocale) {
             foreach ($records as $record) {
-                $hasSourceText($record) ? $matchingCount++ : $skippedCount++;
+                if ($hasSourceText($record)) {
+                    $matchingCount++;
+
+                    continue;
+                }
+
+                $locales = $this->localesWithText($record, $translatableFields, $sourceLocale);
+                if ($locales === []) {
+                    $emptyCount++;
+                } else {
+                    $otherLanguageCount++;
+                    $otherLanguages += array_fill_keys($locales, true);
+                }
             }
         });
 
         $this->info("Found {$matchingCount} [{$modelClass}] record(s) not fully translated.");
 
-        if ($skippedCount > 0) {
-            $this->line("Skipped {$skippedCount} record(s) with no [{$sourceLocale}] text to translate from.");
+        if ($emptyCount > 0) {
+            $this->line("Skipped {$emptyCount} record(s) with no text to translate.");
+        }
+
+        if ($otherLanguageCount > 0) {
+            $languages = array_keys($otherLanguages);
+            sort($languages);
+            $this->warn("{$otherLanguageCount} record(s) have no [{$sourceLocale}] text but do have text in another language (".implode(', ', $languages).'). Is --source right? They are skipped.');
         }
 
         if ($matchingCount === 0) {
@@ -190,6 +213,29 @@ class BackfillCommand extends Command
         $this->info("Dispatched {$jobClassLabel} for {$dispatched} record(s).");
 
         return self::SUCCESS;
+    }
+
+    /**
+     * The locales other than $sourceLocale in which any translatable field of
+     * $record has text.
+     *
+     * @param  Model&HasTranslatableAttributes  $record
+     * @param  array<int, string>  $translatableFields
+     * @return array<int, string>
+     */
+    protected function localesWithText(Model $record, array $translatableFields, string $sourceLocale): array
+    {
+        $locales = [];
+
+        foreach ($translatableFields as $field) {
+            foreach (StoredTranslations::all($record, $field) as $locale => $value) {
+                if ($locale !== $sourceLocale && is_string($value) && ! Text::isBlank($value)) {
+                    $locales[$locale] = true;
+                }
+            }
+        }
+
+        return array_keys($locales);
     }
 
     /**
