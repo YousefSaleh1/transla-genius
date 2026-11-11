@@ -2,6 +2,7 @@
 
 namespace CodingPartners\TranslaGenius\Tests\Feature;
 
+use CodingPartners\TranslaGenius\DTOs\TranslationJobPayload;
 use CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface;
 use CodingPartners\TranslaGenius\Contracts\TranslatorInterface;
 use CodingPartners\TranslaGenius\DTOs\TranslationRequest;
@@ -118,7 +119,7 @@ class BatchTranslationTest extends TestCase
 
     protected function runJob(TestTranslatableModel $model, ?TranslatorInterface $translator = null): TranslateFields
     {
-        $job = (new TranslateFields($model, ['name', 'description']))->withFakeQueueInteractions();
+        $job = (new TranslateFields(new TranslationJobPayload($model, ['name', 'description'])))->withFakeQueueInteractions();
         $job->handle($translator ?? $this->app->make(TranslatorInterface::class), $this->app->make(TranslationWriter::class));
 
         return $job;
@@ -332,7 +333,7 @@ class BatchTranslationTest extends TestCase
         ]));
         $model = TestTranslatableModel::create(['name' => ['en' => 'Source name'], 'description' => ['en' => '']]);
 
-        (new TranslateFields($model, ['name']))->handle($translator, new TranslationWriter());
+        (new TranslateFields(new TranslationJobPayload($model, ['name'])))->handle($translator, new TranslationWriter());
 
         $this->assertCount(1, Http::recorded(fn ($r) => str_contains($r->url(), 'primary.test')));
         $this->assertCount(1, Http::recorded(fn ($r) => str_contains($r->url(), 'secondary.test')));
@@ -363,7 +364,7 @@ class BatchTranslationTest extends TestCase
         ]));
         $model = TestTranslatableModel::create(['name' => ['en' => 'Source name'], 'description' => ['en' => '']]);
 
-        (new TranslateFields($model, ['name']))->handle($translator, new TranslationWriter());
+        (new TranslateFields(new TranslationJobPayload($model, ['name'])))->handle($translator, new TranslationWriter());
 
         // 1 batch per member (both truncated), then 3 singles via the chain,
         // all served by the primary.
@@ -400,7 +401,7 @@ class BatchTranslationTest extends TestCase
         $translator = new Translator(new FallbackProvider([$singleOnly, $this->chainMember('secondary', 'secondary.test')]));
         $model = TestTranslatableModel::create(['name' => ['en' => 'Source name'], 'description' => ['en' => '']]);
 
-        (new TranslateFields($model, ['name']))->handle($translator, new TranslationWriter());
+        (new TranslateFields(new TranslationJobPayload($model, ['name'])))->handle($translator, new TranslationWriter());
 
         Http::assertSentCount(1);
         $this->assertSame(['es', 'fr'], $calls);
@@ -584,7 +585,7 @@ class BatchTranslationTest extends TestCase
         $model = TestTranslatableModel::create(['name' => ['en' => 'x'], 'description' => ['en' => '']]);
 
         // "ok" isn't a JSON object, so each locale then goes one at a time.
-        (new TranslateFields($model, ['name']))->handle($this->app->make(TranslatorInterface::class), new TranslationWriter());
+        (new TranslateFields(new TranslationJobPayload($model, ['name'])))->handle($this->app->make(TranslatorInterface::class), new TranslationWriter());
 
         $this->assertSame('B TestTranslatableModel.name en -> ar, es, fr; {target_locale} {unknown}', $sent[0]);
     }

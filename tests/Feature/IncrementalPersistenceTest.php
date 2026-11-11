@@ -2,6 +2,7 @@
 
 namespace CodingPartners\TranslaGenius\Tests\Feature;
 
+use CodingPartners\TranslaGenius\DTOs\TranslationJobPayload;
 use CodingPartners\TranslaGenius\Contracts\TranslatorInterface;
 use CodingPartners\TranslaGenius\Events\TranslationCompleted;
 use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
@@ -55,7 +56,7 @@ class IncrementalPersistenceTest extends TestCase
 
     protected function runJobOn(TestTranslatableModel $model): void
     {
-        (new TranslateFields($model, ['name', 'description']))
+        (new TranslateFields(new TranslationJobPayload($model, ['name', 'description'])))
             ->handle($this->app->make(TranslatorInterface::class), $this->app->make(TranslationWriter::class));
     }
 
@@ -124,7 +125,7 @@ class IncrementalPersistenceTest extends TestCase
             'description' => ['en' => 'Source description'],
         ]);
 
-        $job = (new TranslateFields($model, ['name', 'description']))->withFakeQueueInteractions();
+        $job = (new TranslateFields(new TranslationJobPayload($model, ['name', 'description'])))->withFakeQueueInteractions();
         $job->handle($this->app->make(TranslatorInterface::class), $this->app->make(TranslationWriter::class));
 
         $job->assertFailed();

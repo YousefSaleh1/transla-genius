@@ -2,6 +2,7 @@
 
 namespace CodingPartners\TranslaGenius\Tests\Feature;
 
+use CodingPartners\TranslaGenius\DTOs\TranslationJobPayload;
 use CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface;
 use CodingPartners\TranslaGenius\Contracts\TranslatorInterface;
 use CodingPartners\TranslaGenius\Jobs\TranslateFields;
@@ -142,7 +143,7 @@ class BilledUsageTest extends Orchestra
     protected function runJob(array $name = ['en' => 'Hello'], array $fields = ['name']): TranslateFields
     {
         $model = TestTranslatableModel::create(['name' => $name, 'description' => ['en' => '']]);
-        $job = (new TranslateFields($model, $fields))->withFakeQueueInteractions();
+        $job = (new TranslateFields(new TranslationJobPayload($model, $fields)))->withFakeQueueInteractions();
 
         try {
             $job->handle($this->app->make(TranslatorInterface::class), new TranslationWriter());
@@ -301,9 +302,9 @@ class BilledUsageTest extends Orchestra
             return [];
         };
 
-        (new TranslateFields(TestTranslatableModel::find($model->id), ['name'], [
+        (new TranslateFields(new TranslationJobPayload(TestTranslatableModel::find($model->id), ['name'], retranslate: [
             'name' => ['locale' => 'en', 'text' => 'B', 'keep' => []],
-        ]))->handle($this->app->make(TranslatorInterface::class), new TranslationWriter());
+        ])))->handle($this->app->make(TranslatorInterface::class), new TranslationWriter());
 
         $this->assertCount(1, $this->billed);
         $this->assertLogMatchesBilling();
@@ -360,7 +361,7 @@ class BilledUsageTest extends Orchestra
         };
 
         try {
-            (new TranslateFields($model, ['name'], [], 'en'))->handle($this->app->make(TranslatorInterface::class), $failingWriter);
+            (new TranslateFields(new TranslationJobPayload($model, ['name'], sourceLocale: 'en')))->handle($this->app->make(TranslatorInterface::class), $failingWriter);
             $this->fail('The save failure must propagate.');
         } catch (\RuntimeException $e) {
             $this->assertSame('database went away', $e->getMessage());

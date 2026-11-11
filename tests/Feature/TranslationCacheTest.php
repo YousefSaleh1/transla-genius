@@ -2,6 +2,7 @@
 
 namespace CodingPartners\TranslaGenius\Tests\Feature;
 
+use CodingPartners\TranslaGenius\DTOs\TranslationJobPayload;
 use CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface;
 use CodingPartners\TranslaGenius\Contracts\TranslatorInterface;
 use CodingPartners\TranslaGenius\Events\TranslationCompleted;
@@ -121,7 +122,7 @@ class TranslationCacheTest extends TestCase
     protected function runJob(array $attributes, array $fields = ['name', 'description']): TestTranslatableModel
     {
         $model = TestTranslatableModel::create($attributes + ['name' => ['en' => ''], 'description' => ['en' => '']]);
-        (new TranslateFields($model, $fields))->handle($this->app->make(TranslatorInterface::class), new TranslationWriter());
+        (new TranslateFields(new TranslationJobPayload($model, $fields)))->handle($this->app->make(TranslatorInterface::class), new TranslationWriter());
 
         return $model;
     }

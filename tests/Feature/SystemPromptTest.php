@@ -2,6 +2,7 @@
 
 namespace CodingPartners\TranslaGenius\Tests\Feature;
 
+use CodingPartners\TranslaGenius\DTOs\TranslationJobPayload;
 use CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface;
 use CodingPartners\TranslaGenius\Contracts\TranslatorInterface;
 use CodingPartners\TranslaGenius\DTOs\TranslationRequest;
@@ -49,7 +50,7 @@ class SystemPromptTest extends TestCase
         $this->app->forgetInstance(\CodingPartners\TranslaGenius\Services\Translator::class);
 
         $model = TestTranslatableModel::create(['name' => ['en' => $text], 'description' => ['en' => '']]);
-        (new TranslateFields($model, ['name']))
+        (new TranslateFields(new TranslationJobPayload($model, ['name'])))
             ->handle($this->app->make(TranslatorInterface::class), $this->app->make(TranslationWriter::class));
     }
 

@@ -764,7 +764,7 @@ Failures that weren't billed (connection errors, a 5xx without usage) have no ro
 
 Beyond the provider, two more seams are swappable without forking anything:
 
-- **The dispatched job** - override `translationJobClass()` on your model to dispatch a custom job (e.g. one with additional side effects) instead of the default `TranslateFields`:
+- **The dispatched job** - override `translationJobClass()` on your model to dispatch a custom job instead of the default `TranslateFields`:
   ```php
   class Post extends Model
   {
@@ -776,6 +776,39 @@ Beyond the provider, two more seams are swappable without forking anything:
       }
   }
   ```
+  The class must implement `Contracts\TranslationJob`: a constructor that takes one `DTOs\TranslationJobPayload`. Every dispatch point (create, update, `translagenius:backfill`, the review workflow) builds the payload once and passes it. It carries the model, the fields, the source locale captured at dispatch, the re-translation plan for edited fields, and options such as backfill's `include_rejected`. A class that doesn't implement the contract is rejected when it would be dispatched, with an `InvalidTranslationJobException` naming it, rather than silently getting less information.
+
+  The simplest custom job extends `TranslateFields` (which implements the contract) and adds behavior:
+  ```php
+  use CodingPartners\TranslaGenius\Jobs\TranslateFields;
+
+  class CustomTranslateFields extends TranslateFields
+  {
+      public function handle(TranslatorInterface $translator, TranslationWriter $writer)
+      {
+          parent::handle($translator, $writer);
+          // ... your side effects
+      }
+  }
+  ```
+  A job that does something else entirely implements the interface directly:
+  ```php
+  use CodingPartners\TranslaGenius\Contracts\TranslationJob;
+  use CodingPartners\TranslaGenius\DTOs\TranslationJobPayload;
+
+  class SendToTranslationAgency implements ShouldQueue, TranslationJob
+  {
+      use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+
+      public function __construct(public TranslationJobPayload $payload) {}
+
+      public function handle(): void
+      {
+          Agency::submit($this->payload->model, $this->payload->fields, from: $this->payload->sourceLocale);
+      }
+  }
+  ```
+  The payload serializes its model as a model identifier (like `SerializesModels`), so a queued job re-reads the record when it runs. Use `Queueable` so `TRANSLATION_QUEUE_CONNECTION` / `TRANSLATION_QUEUE` / after-commit dispatch apply to your job.
 - **Locale resolution** - `SetLocale`, the `Translatable` trait, and the `get_current_locale()`/`get_supported_languages()` helpers all resolve locale through the bound `Contracts\LocaleResolverInterface` (default: `LocaleResolvers\DefaultLocaleResolver`, which reads the request's `Accept-Language` header via `SetLocale` and `translaGenius.supported_languages`). Rebind it in your own service provider for a different strategy (subdomain-based, per-user preference, ...):
   ```php
   $this->app->singleton(

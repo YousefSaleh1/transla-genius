@@ -2,6 +2,7 @@
 
 namespace CodingPartners\TranslaGenius\Tests\Feature;
 
+use CodingPartners\TranslaGenius\DTOs\TranslationJobPayload;
 use CodingPartners\TranslaGenius\DTOs\TranslationResult;
 use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
 use CodingPartners\TranslaGenius\Jobs\TranslateFields;
@@ -90,7 +91,7 @@ class TranslateFieldsJobTest extends TestCase
             ->andReturn($this->translationResult('Descripción de la prueba'));
 
         // Execute the job
-        $job = new TranslateFields($model, ['name', 'description']);
+        $job = new TranslateFields(new TranslationJobPayload($model, ['name', 'description']));
         $job->handle($mockTranslator, $this->writer());
 
         // Verify translations were saved correctly
@@ -136,7 +137,7 @@ class TranslateFieldsJobTest extends TestCase
             ->andReturn($this->translationResult('Descripción de la prueba'));
 
         // Execute the job
-        $job = new TranslateFields($model, ['name', 'description']);
+        $job = new TranslateFields(new TranslationJobPayload($model, ['name', 'description']));
         $job->handle($mockTranslator, $this->writer());
 
         // Verify translations
@@ -160,7 +161,7 @@ class TranslateFieldsJobTest extends TestCase
             'description' => ['en' => 'Test Description'],
         ]);
 
-        $job = new TranslateFields($model, ['name']);
+        $job = new TranslateFields(new TranslationJobPayload($model, ['name']));
 
         $this->assertSame(3, $job->tries);
         $this->assertSame([10, 30], $job->backoff());
@@ -175,7 +176,7 @@ class TranslateFieldsJobTest extends TestCase
         ]);
 
         $model = TestTranslatableModel::create(['name' => ['en' => 'A'], 'description' => ['en' => 'B']]);
-        $job = new TranslateFields($model, ['name']);
+        $job = new TranslateFields(new TranslationJobPayload($model, ['name']));
 
         $this->assertSame(5, $job->tries);
         $this->assertSame([5, 15, 60], $job->backoff());
@@ -187,7 +188,7 @@ class TranslateFieldsJobTest extends TestCase
         config(['translaGenius.retries.job_tries' => '', 'translaGenius.retries.job_backoff' => '']);
 
         $model = TestTranslatableModel::create(['name' => ['en' => 'A'], 'description' => ['en' => 'B']]);
-        $job = new TranslateFields($model, ['name']);
+        $job = new TranslateFields(new TranslationJobPayload($model, ['name']));
 
         $this->assertSame(3, $job->tries);
         $this->assertSame([10, 30], $job->backoff());
@@ -207,7 +208,7 @@ class TranslateFieldsJobTest extends TestCase
 
         $model = TestTranslatableModel::create(['name' => ['en' => 'A long name'], 'description' => ['en' => 'B']]);
 
-        $job = (new TranslateFields($model, ['name']))->withFakeQueueInteractions();
+        $job = (new TranslateFields(new TranslationJobPayload($model, ['name'])))->withFakeQueueInteractions();
         $job->handle($this->app->make(TranslatorInterface::class), $this->writer());
 
         $job->assertFailedWith(TranslationFailedException::class);
@@ -230,7 +231,7 @@ class TranslateFieldsJobTest extends TestCase
         $mockTranslator->shouldReceive('translate')
             ->andThrow(new TranslationFailedException('Rate limited', statusCode: 429, retryable: true, retryAfter: 120));
 
-        $job = (new TranslateFields($model, ['name']))->withFakeQueueInteractions();
+        $job = (new TranslateFields(new TranslationJobPayload($model, ['name'])))->withFakeQueueInteractions();
         $job->handle($mockTranslator, $this->writer());
 
         $job->assertReleased(120);
@@ -253,7 +254,7 @@ class TranslateFieldsJobTest extends TestCase
         $mockTranslator->shouldReceive('translate')
             ->andThrow(new TranslationFailedException('Rate limited', statusCode: 429, retryable: true, retryAfter: 120));
 
-        $job = (new TranslateFields($model, ['name']))->withFakeQueueInteractions();
+        $job = (new TranslateFields(new TranslationJobPayload($model, ['name'])))->withFakeQueueInteractions();
 
         try {
             $job->handle($mockTranslator, $this->writer());
@@ -284,7 +285,7 @@ class TranslateFieldsJobTest extends TestCase
         $mockTranslator->shouldReceive('translate')
             ->andThrow(new TranslationFailedException('Invalid API key', statusCode: 401, retryable: false));
 
-        $job = (new TranslateFields($model, ['name', 'description']))->withFakeQueueInteractions();
+        $job = (new TranslateFields(new TranslationJobPayload($model, ['name', 'description'])))->withFakeQueueInteractions();
         $job->handle($mockTranslator, $this->writer());
 
         $job->assertFailed();
@@ -310,7 +311,7 @@ class TranslateFieldsJobTest extends TestCase
         $mockTranslator->shouldReceive('translate')
             ->andThrow(new TranslationFailedException('Timed out', retryable: true));
 
-        $job = new TranslateFields($model, ['name', 'description']);
+        $job = new TranslateFields(new TranslationJobPayload($model, ['name', 'description']));
 
         $this->expectException(TranslationFailedException::class);
         $job->handle($mockTranslator, $this->writer());
@@ -347,7 +348,7 @@ class TranslateFieldsJobTest extends TestCase
             ->with('Test Description', 'en', 'es', 'description', 'TestTranslatableModel')
             ->andReturn($this->translationResult('Descripción de la prueba'));
 
-        $job = new TranslateFields($model, ['name', 'description']);
+        $job = new TranslateFields(new TranslationJobPayload($model, ['name', 'description']));
 
         // Simulate a concurrent job completing the 'ar' translation for
         // 'name' after this job read $model but before it saves - via a
@@ -397,7 +398,7 @@ class TranslateFieldsJobTest extends TestCase
             ->with('Test Name', 'en', 'es', 'name', 'TestTranslatableModel')
             ->andReturn($this->translationResult('Nombre de prueba'));
 
-        $job = new TranslateFields($model, ['name', 'description']);
+        $job = new TranslateFields(new TranslationJobPayload($model, ['name', 'description']));
         $job->handle($mockTranslator, $this->writer());
 
         $model->refresh();

@@ -2,6 +2,9 @@
 
 namespace CodingPartners\TranslaGenius\Support;
 
+use CodingPartners\TranslaGenius\Contracts\TranslationJob;
+use CodingPartners\TranslaGenius\DTOs\TranslationJobPayload;
+use CodingPartners\TranslaGenius\Exceptions\InvalidTranslationJobException;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Log;
 
@@ -23,8 +26,8 @@ final class TranslationJobDispatcher
     private static array $warned = [];
 
     /**
-     * @param class-string $jobClass A job constructed as new $jobClass($model, $fields),
-     *        plus $retranslate as a third argument when it isn't empty.
+     * @param class-string<TranslationJob> $jobClass Constructed with one
+     *        TranslationJobPayload built from the arguments below.
      * @param Model $model
      * @param array<int, string> $fields
      * @param array<string, array{locale: string, text: string, keep: array<int, string>}> $retranslate
@@ -38,14 +41,13 @@ final class TranslationJobDispatcher
     {
         $sourceLocale ??= self::sourceLocale();
 
-        // TranslateFields takes (model, fields, retranslate, sourceLocale, options). A
-        // custom job from translationJobClass() gets only as many of those as
-        // its constructor declares, so an existing (model, fields) job keeps
-        // working unchanged.
-        $arguments = [$model, $fields, $retranslate, $sourceLocale, $options];
-        $constructor = (new \ReflectionClass($jobClass))->getConstructor();
-        $accepted = $constructor === null ? 0 : ($constructor->isVariadic() ? count($arguments) : $constructor->getNumberOfParameters());
-        $job = new $jobClass(...array_slice($arguments, 0, max(2, $accepted)));
+        // Every job gets the same single payload; a class that doesn't take it
+        // is rejected here, never silently given less.
+        if (!is_a($jobClass, TranslationJob::class, true)) {
+            throw new InvalidTranslationJobException($jobClass);
+        }
+
+        $job = new $jobClass(new TranslationJobPayload($model, $fields, $sourceLocale, $retranslate, $options));
         $settings = (array) config('translaGenius.queue', []);
 
         $connection = $settings['connection'] ?? null;

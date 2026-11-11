@@ -16,19 +16,29 @@ use Illuminate\Queue\SerializesModels;
  * doesn't need a provider/Translator in the picture, only proof that this
  * class (not TranslateFields) was the one dispatched.
  */
-class MarkerTranslationJob implements ShouldQueue
+class MarkerTranslationJob implements ShouldQueue, \CodingPartners\TranslaGenius\Contracts\TranslationJob
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     /** @var array<int, array{0: string, 1: mixed, 2: array}> */
     public static array $handledWith = [];
 
-    public function __construct(protected Model $model, protected array $fields)
+    /** @var array<int, \CodingPartners\TranslaGenius\DTOs\TranslationJobPayload> Payloads seen by handle(), in order. */
+    public static array $payloads = [];
+
+    protected Model $model;
+
+    protected array $fields;
+
+    public function __construct(protected \CodingPartners\TranslaGenius\DTOs\TranslationJobPayload $payload)
     {
+        $this->model = $payload->model;
+        $this->fields = $payload->fields;
     }
 
     public function handle(): void
     {
         static::$handledWith[] = [get_class($this->model), $this->model->getKey(), $this->fields];
+        static::$payloads[] = $this->payload;
     }
 }

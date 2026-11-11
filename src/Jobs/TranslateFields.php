@@ -3,7 +3,9 @@
 namespace CodingPartners\TranslaGenius\Jobs;
 
 use CodingPartners\TranslaGenius\Contracts\BatchTranslatorInterface;
+use CodingPartners\TranslaGenius\Contracts\TranslationJob;
 use CodingPartners\TranslaGenius\Contracts\TranslatorInterface;
+use CodingPartners\TranslaGenius\DTOs\TranslationJobPayload;
 use CodingPartners\TranslaGenius\DTOs\TranslationResult;
 use CodingPartners\TranslaGenius\Events\TranslationCompleted;
 use CodingPartners\TranslaGenius\Events\TranslationFailed as TranslationFailedEvent;
@@ -46,7 +48,7 @@ use Throwable;
  * @see \CodingPartners\TranslaGenius\Events\TranslationCompleted
  * @see \CodingPartners\TranslaGenius\Events\TranslationFailed
  */
-class TranslateFields implements ShouldQueue
+class TranslateFields implements ShouldQueue, TranslationJob
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
@@ -127,23 +129,20 @@ class TranslateFields implements ShouldQueue
     }
 
     /**
-     * Create a new job instance.
+     * Create a new job instance from its dispatch payload (the TranslationJob
+     * contract). The payload is unpacked into this job's own properties, so
+     * SerializesModels handles the model exactly as before - and a job queued
+     * by an earlier version, which has these same properties, still runs.
      *
-     * @param Model&\CodingPartners\TranslaGenius\Contracts\HasTranslatableAttributes $model
-     * @param array<int, string> $fields
-     * @param array<string, array{locale: string, text: string, keep: array<int, string>}> $retranslate
-     *        Re-translation plan for fields whose source changed (see $retranslate).
-     * @param string|null $sourceLocale Locale the content was authored in, as
-     *        decided at dispatch time.
-     * @param array<string, mixed> $options See $options.
+     * @param TranslationJobPayload $payload
      */
-    public function __construct(Model $model, array $fields, array $retranslate = [], ?string $sourceLocale = null, array $options = [])
+    public function __construct(TranslationJobPayload $payload)
     {
-        $this->options = $options;
-        $this->model = $model;
-        $this->fields = $fields;
-        $this->retranslate = $retranslate;
-        $this->sourceLocale = $sourceLocale;
+        $this->model = $payload->model;
+        $this->fields = $payload->fields;
+        $this->retranslate = $payload->retranslate;
+        $this->sourceLocale = $payload->sourceLocale;
+        $this->options = $payload->options;
         $this->tries = max(1, \CodingPartners\TranslaGenius\TranslaGeniusServiceProvider::intSetting(
             config('translaGenius.retries.job_tries'),
             3

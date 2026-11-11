@@ -100,10 +100,10 @@ class QueueDispatchTest extends TestCase
         Queue::fake();
         config(['translaGenius.queue.connection' => 'redis', 'translaGenius.queue.queue' => 'translations']);
 
-        $plainJob = new class (new TestTranslatableModel(), []) implements ShouldQueue {
+        $plainJob = new class (new \CodingPartners\TranslaGenius\DTOs\TranslationJobPayload(new TestTranslatableModel(), [])) implements ShouldQueue, \CodingPartners\TranslaGenius\Contracts\TranslationJob {
             use Dispatchable;
 
-            public function __construct(public Model $model, public array $fields)
+            public function __construct(public \CodingPartners\TranslaGenius\DTOs\TranslationJobPayload $payload)
             {
             }
 
@@ -131,10 +131,10 @@ class QueueDispatchTest extends TestCase
     {
         Queue::fake();
         \CodingPartners\TranslaGenius\Support\TranslationJobDispatcher::resetWarnings();
-        $plainJobClass = get_class(new class (new TestTranslatableModel(), []) implements ShouldQueue {
+        $plainJobClass = get_class(new class (new \CodingPartners\TranslaGenius\DTOs\TranslationJobPayload(new TestTranslatableModel(), [])) implements ShouldQueue, \CodingPartners\TranslaGenius\Contracts\TranslationJob {
             use Dispatchable;
 
-            public function __construct(public Model $model, public array $fields)
+            public function __construct(public \CodingPartners\TranslaGenius\DTOs\TranslationJobPayload $payload)
             {
             }
 

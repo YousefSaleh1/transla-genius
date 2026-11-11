@@ -2,6 +2,7 @@
 
 namespace CodingPartners\TranslaGenius\Tests\Feature;
 
+use CodingPartners\TranslaGenius\DTOs\TranslationJobPayload;
 use CodingPartners\TranslaGenius\Contracts\TranslatorInterface;
 use CodingPartners\TranslaGenius\Jobs\TranslateFields;
 use CodingPartners\TranslaGenius\Services\TranslationWriter;
@@ -184,7 +185,7 @@ class SourceLocaleTest extends TestCase
             'description' => ['ar' => '   ', 'en' => 'Written in English by mistake'],
         ]));
 
-        (new TranslateFields($model, ['name', 'description'], [], 'ar'))
+        (new TranslateFields(new TranslationJobPayload($model, ['name', 'description'], sourceLocale: 'ar')))
             ->handle($this->app->make(TranslatorInterface::class), new TranslationWriter());
 
         sort($this->requests);
@@ -205,7 +206,7 @@ class SourceLocaleTest extends TestCase
             'description' => ['ar' => ''],
         ]));
 
-        (new TranslateFields($model, ['name', 'description'], [], 'ar'))
+        (new TranslateFields(new TranslationJobPayload($model, ['name', 'description'], sourceLocale: 'ar')))
             ->handle($this->app->make(TranslatorInterface::class), new TranslationWriter());
 
         sort($this->requests);
@@ -224,7 +225,7 @@ class SourceLocaleTest extends TestCase
             'name' => ['en' => 'Hello', 'es' => 'Hola'],
             'description' => ['en' => '', 'es' => ''],
         ]));
-        $legacyJob = new TranslateFields($model, ['name']); // no source locale, like an old payload
+        $legacyJob = new TranslateFields(new TranslationJobPayload($model, ['name'])); // no source locale, like an old payload
 
         app()->setLocale('ar'); // a worker in some unrelated locale
         $legacyJob->handle($this->app->make(TranslatorInterface::class), new TranslationWriter());
@@ -234,7 +235,7 @@ class SourceLocaleTest extends TestCase
         config(['translaGenius.source_locale' => 'es']);
         $model->refresh()->forgetTranslation('name', 'ar');
         TestTranslatableModel::withoutEvents(fn () => $model->save());
-        (new TranslateFields($model->fresh(), ['name']))->handle($this->app->make(TranslatorInterface::class), new TranslationWriter());
+        (new TranslateFields(new TranslationJobPayload($model->fresh(), ['name'])))->handle($this->app->make(TranslatorInterface::class), new TranslationWriter());
         $this->assertSame(['es->ar Hola'], $this->requests);
     }
 }
