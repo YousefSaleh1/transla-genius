@@ -937,6 +937,8 @@ $this->app->singleton(
 );
 ```
 
+The package always reads locales through this interface. The global `get_current_locale()` and `get_supported_languages()` helpers from 3.x still exist for your own code, but are deprecated: they are only defined when your app hasn't defined functions with those names, and the package never calls them.
+
 `tenant()` stands for however your app finds the current tenant. The first supported language is the default `SetLocale` falls back to.
 
 The resolver is also called inside the queue worker, where the job works out its target languages, so `supportedLocales()` must return the right list without a request. If it depends on request state, make sure the worker sets up that context too.

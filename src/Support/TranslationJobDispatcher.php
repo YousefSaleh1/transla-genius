@@ -90,7 +90,7 @@ final class TranslationJobDispatcher
     {
         $fixed = trim((string) config('translagenius.source_locale'));
 
-        return $fixed !== '' ? $fixed : get_current_locale();
+        return $fixed !== '' ? $fixed : Locales::current();
     }
 
     /**

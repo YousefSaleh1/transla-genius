@@ -23,7 +23,7 @@ interface LocaleResolverInterface
      * Every locale the package is configured to support, in the order
      * configured (the first entry is the default). Does not exclude the
      * current locale - callers that want that do the exclusion themselves
-     * (see get_supported_languages()).
+     * (the package's own code does it in Support\Locales).
      *
      * @return array<int, string>
      */

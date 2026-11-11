@@ -15,6 +15,7 @@ use CodingPartners\TranslaGenius\Exceptions\StaleReviewException;
 use CodingPartners\TranslaGenius\Models\TranslationReview;
 use CodingPartners\TranslaGenius\Providers\CachingProvider;
 use CodingPartners\TranslaGenius\Services\TranslationWriter;
+use CodingPartners\TranslaGenius\Support\Locales;
 use CodingPartners\TranslaGenius\Support\Text;
 use CodingPartners\TranslaGenius\Support\TranslationJobDispatcher;
 use Illuminate\Database\Eloquent\Builder;
@@ -312,7 +313,7 @@ class ReviewManager
             return;
         }
 
-        $others = array_values(array_diff(get_supported_languages($review->source_locale), [$review->locale]));
+        $others = array_values(array_diff(Locales::targets($review->source_locale), [$review->locale]));
 
         TranslationJobDispatcher::dispatch(
             $owner::getTranslationJobClass(),

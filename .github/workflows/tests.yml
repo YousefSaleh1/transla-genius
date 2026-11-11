@@ -159,8 +159,10 @@ jobs:
           docker logs "${{ job.services.db.id }}" 2>&1 | tail -n 200 || true
 
       - name: Run test suite
-        # The live group calls real provider APIs; it is opt-in, never run in CI.
-        run: vendor/bin/phpunit --exclude-group live
+        # phpunit.xml excludes the live group (real provider APIs, opt-in,
+        # never run in CI) and app-defined-helpers (run in a child process by
+        # AppDefinedHelpersTest).
+        run: vendor/bin/phpunit
 
   lint:
     name: Pint and Larastan (PHP 8.4 - Laravel 13)

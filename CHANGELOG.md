@@ -64,6 +64,10 @@ A breaking architectural release: the translation backend is now swappable behin
 - Failover through `.env` alone: `TRANSLATION_PROVIDER=fallback` with `TRANSLATION_FALLBACK_CHAIN=openai,gemini` (comma-separated, whitespace trimmed, empty items ignored) uses the shipped `fallback` entry. A `chain` may now be an array or a comma-separated string.
 - Provider resolution now fails fast with a clear `RuntimeException`, naming the provider key and class, when a `driver` class doesn't exist or doesn't implement `TranslationProviderInterface`.
 
+### Deprecated
+
+- The global `get_current_locale()` and `get_supported_languages()` helpers. They remain, as thin wrappers over `Contracts\LocaleResolverInterface`, for code that calls them. The package itself no longer calls them: they are unprefixed and only defined when missing, so an app that defined its own functions with those names silently changed the package's locale handling.
+
 ### Fixed
 
 - `SetLocale` ignored q-values (`fr;q=0.1, ar;q=0.9` picked `fr`), ignored `q=0`, and lowercased tags so a configured `pt-BR` never matched. Since the request locale becomes the source locale of the jobs it dispatches, this decided which text was translated from. It now reads `Accept-Language` per RFC 9110 (q-values, header order for ties, `*`, `q=0` excluded, malformed entries dropped), matches configured locales case-insensitively and sets them exactly as configured, and falls back from a region tag to its primary language when only that is configured (`fr-CA` to `fr`). With no match it still uses the first supported locale.

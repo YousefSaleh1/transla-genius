@@ -5,6 +5,7 @@ namespace CodingPartners\TranslaGenius\Console\Commands;
 use CodingPartners\TranslaGenius\Console\Concerns\ReadsStringInput;
 use CodingPartners\TranslaGenius\Contracts\HasTranslatableAttributes;
 use CodingPartners\TranslaGenius\Jobs\TranslateFields;
+use CodingPartners\TranslaGenius\Support\Locales;
 use CodingPartners\TranslaGenius\Support\TranslationJobDispatcher;
 use CodingPartners\TranslaGenius\Traits\Translatable;
 use Illuminate\Console\Command;
@@ -108,7 +109,7 @@ class BackfillCommand extends Command
         // There's no request here, so the source locale is explicit:
         // --source, then TRANSLATION_SOURCE_LOCALE, then app.locale.
         $sourceLocale = $this->stringOption('source') ?? TranslationJobDispatcher::defaultSourceLocale();
-        $targetLocales = get_supported_languages($sourceLocale);
+        $targetLocales = Locales::targets($sourceLocale);
 
         $this->line("Source locale: {$sourceLocale}; target locale(s): ".implode(', ', $targetLocales));
 

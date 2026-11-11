@@ -1,22 +1,24 @@
 <?php
 
 use CodingPartners\TranslaGenius\Contracts\LocaleResolverInterface;
+use CodingPartners\TranslaGenius\Support\Locales;
 
 if (! function_exists('get_current_locale')) {
     /**
      * Get the current application locale.
      *
-     * Thin wrapper around the bound LocaleResolverInterface - kept for
-     * backward compatibility (every part of this package used these
-     * function names before the interface existed), not the seam itself.
-     * To change locale-resolution behavior, rebind LocaleResolverInterface
-     * rather than redefining this function.
+     * Kept for code that calls it since 3.x. The package itself never calls
+     * it: these names are unprefixed, so an app may define its own function
+     * under the same name, and this one is then never defined.
+     *
+     * @deprecated Resolve LocaleResolverInterface and call currentLocale().
+     * @see LocaleResolverInterface::currentLocale()
      *
      * @return string
      */
     function get_current_locale()
     {
-        return app(LocaleResolverInterface::class)->currentLocale();
+        return Locales::current();
     }
 }
 
@@ -24,18 +26,16 @@ if (! function_exists('get_supported_languages')) {
     /**
      * Get all supported languages except the current locale.
      *
-     * Thin wrapper around the bound LocaleResolverInterface - see
-     * get_current_locale() for why this exists as a function rather than
-     * requiring callers to resolve the interface themselves.
+     * Kept for code that calls it since 3.x; see get_current_locale().
+     *
+     * @deprecated Resolve LocaleResolverInterface and use supportedLocales().
+     * @see LocaleResolverInterface::supportedLocales()
      *
      * @param  string|null  $excludeLang  Language to exclude (default: current locale)
      * @return array<int, string>
      */
     function get_supported_languages(?string $excludeLang = null)
     {
-        $resolver = app(LocaleResolverInterface::class);
-        $excludeLang = $excludeLang ?? $resolver->currentLocale();
-
-        return array_values(array_diff($resolver->supportedLocales(), [$excludeLang]));
+        return Locales::targets($excludeLang);
     }
 }

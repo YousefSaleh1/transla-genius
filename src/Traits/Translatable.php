@@ -7,6 +7,7 @@ use CodingPartners\TranslaGenius\Contracts\TranslationJob;
 use CodingPartners\TranslaGenius\Jobs\TranslateFields;
 use CodingPartners\TranslaGenius\Models\TranslationReview;
 use CodingPartners\TranslaGenius\Support\KeyCast;
+use CodingPartners\TranslaGenius\Support\Locales;
 use CodingPartners\TranslaGenius\Support\Text;
 use CodingPartners\TranslaGenius\Support\TranslationJobDispatcher;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -140,7 +141,7 @@ trait Translatable
             // overwrites a target that still holds exactly this value, so a
             // retry skips what it already replaced and a later hand edit wins.
             $targets = [];
-            foreach (get_supported_languages($sourceLocale) as $locale) {
+            foreach (Locales::targets($sourceLocale) as $locale) {
                 if (! in_array($locale, $keep, true)) {
                     $targets[$locale] = (string) ($current[$locale] ?? '');
                 }
@@ -163,7 +164,7 @@ trait Translatable
      */
     protected static function hasSourceLocaleChanged($model, array $translatableFields): bool
     {
-        $currentLocale = get_current_locale();
+        $currentLocale = Locales::current();
 
         foreach ($translatableFields as $field) {
             if ($model->isDirty($field)) {
@@ -204,7 +205,7 @@ trait Translatable
             return $query;
         }
 
-        $targetLanguages = get_supported_languages($sourceLocale);
+        $targetLanguages = Locales::targets($sourceLocale);
 
         foreach ($translatableFields as $field) {
             $query->where(function ($q) use ($field, $targetLanguages) {
@@ -247,7 +248,7 @@ trait Translatable
             return $query;
         }
 
-        $targetLanguages = get_supported_languages($sourceLocale);
+        $targetLanguages = Locales::targets($sourceLocale);
 
         return $query->where(function ($outer) use ($translatableFields, $targetLanguages) {
             foreach ($translatableFields as $field) {

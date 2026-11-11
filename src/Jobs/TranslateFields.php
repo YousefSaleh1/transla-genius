@@ -17,6 +17,7 @@ use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
 use CodingPartners\TranslaGenius\Review\ReviewManager;
 use CodingPartners\TranslaGenius\Review\ReviewSettings;
 use CodingPartners\TranslaGenius\Services\TranslationWriter;
+use CodingPartners\TranslaGenius\Support\Locales;
 use CodingPartners\TranslaGenius\Support\Setting;
 use CodingPartners\TranslaGenius\Support\Text;
 use CodingPartners\TranslaGenius\Support\TranslationJobDispatcher;
@@ -165,7 +166,7 @@ class TranslateFields implements ShouldQueue, TranslationJob
             // Never the worker's own locale: it has nothing to do with the
             // request that saved the record.
             $currentLocale = $this->resolvedSourceLocale();
-            $targetLanguages = get_supported_languages($currentLocale);
+            $targetLanguages = Locales::targets($currentLocale);
 
             // Review off: no review queries at all.
             $this->reviews = ReviewSettings::enabled() ? app(ReviewManager::class) : null;
@@ -372,7 +373,7 @@ class TranslateFields implements ShouldQueue, TranslationJob
         $this->reviews?->supersedeForSourceChange($this->model, $field, $plan['text']);
 
         $targets = array_values(array_diff(
-            get_supported_languages($plan['locale']),
+            Locales::targets($plan['locale']),
             $plan['keep']
         ));
 
