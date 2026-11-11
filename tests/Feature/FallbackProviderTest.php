@@ -183,7 +183,6 @@ class FallbackProviderTest extends Orchestra
         // Force re-resolution against the config just set, rather than
         // whatever the package's own container binding already resolved
         // during app boot.
-        $this->app->forgetInstance(TranslationProviderInterface::class);
 
         $model = TestTranslatableModel::create([
             'name' => ['en' => 'Hello'],
@@ -204,8 +203,6 @@ class FallbackProviderTest extends Orchestra
             'driver' => FallbackProvider::class,
         ]);
 
-        $this->app->forgetInstance(TranslationProviderInterface::class);
-
         $this->expectException(TranslationConfigurationException::class);
         $this->expectExceptionMessage('no `chain` configured');
 
@@ -219,8 +216,6 @@ class FallbackProviderTest extends Orchestra
             'driver' => FallbackProvider::class,
             'chain' => ['fallback', 'fallback'],
         ]);
-
-        $this->app->forgetInstance(TranslationProviderInterface::class);
 
         $this->expectException(TranslationConfigurationException::class);
         $this->expectExceptionMessage('forms a cycle');

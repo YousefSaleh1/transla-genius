@@ -56,7 +56,6 @@ class ShippedPresetsTest extends Orchestra
         }
 
         $this->app['config']->set('translagenius', require __DIR__.'/../../src/config/translagenius.php');
-        $this->app->forgetInstance(TranslationProviderInterface::class);
     }
 
     protected function fakeEndpoints(): void

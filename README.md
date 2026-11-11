@@ -37,6 +37,7 @@ It works with any API that speaks the OpenAI chat-completions format. Presets fo
   - [Reasoning effort and extra request fields](#reasoning-effort-and-extra-request-fields)
   - [Output limit and temperature](#output-limit-and-temperature)
   - [Retries and rate limits](#retries-and-rate-limits)
+  - [Multi-tenant apps](#multi-tenant-apps)
 - [Features in depth](#features-in-depth)
   - [Batching](#batching)
   - [Translation cache](#translation-cache)
@@ -441,6 +442,34 @@ A blank reply (empty or whitespace only) is billed as `unusable` and is not retr
 
 When the job gives up, it fails to the queue's `failed_jobs` table and fires `Events\TranslationFailed`. A partly translated record shows up in `notFullyTranslated()`, so `translagenius:backfill` can pick it up later.
 
+### Multi-tenant apps
+
+The package reads its config when it's used, not when the process starts. Each translation is sent with the provider, key, URL, model and cache setting in config at that moment, and the default source locale is read from `app.locale` (or `translagenius.source_locale`) the same way. A queue worker serving several tenants only has to put the right tenant's config in place before each job runs. Provider instances are reused while the config is unchanged, so this costs nothing per job.
+
+One way: carry the tenant id in Laravel's [`Context`](https://laravel.com/docs/context), which is restored in the worker before a `Queue::before` hook runs, and apply that tenant's settings there:
+
+```php
+// AppServiceProvider::boot()
+use App\Models\Tenant;
+use Illuminate\Queue\Events\JobProcessing;
+use Illuminate\Support\Facades\Context;
+use Illuminate\Support\Facades\Queue;
+
+Queue::before(function (JobProcessing $event) {
+    $tenant = Tenant::find(Context::get('tenant_id'));
+
+    if ($tenant !== null) {
+        config([
+            'translagenius.providers.openai.key' => $tenant->openai_key,
+            'translagenius.supported_languages' => $tenant->languages,
+            'app.locale' => $tenant->default_locale,
+        ]);
+    }
+});
+```
+
+In the request, `Context::add('tenant_id', $tenant->id)` before the model is saved. Set `app.locale` with `config()`, not `app()->setLocale()`: the package treats a locale set with `setLocale()` as a request's locale, not the configured default.
+
 ## Features in depth
 
 ### Batching
@@ -498,7 +527,7 @@ With the cache on, the same source text translated with the same setup is reques
 
 ### Usage and cost tracking
 
-Off by default. When on, every billed request gets a row in `translation_usage_logs`, with tokens and an estimated cost. When off, no listener is registered and the table is not needed.
+Off by default. When on, every billed request gets a row in `translation_usage_logs`, with tokens and an estimated cost. The setting is read when each event is handled, so it can be switched on at runtime or per tenant. When off, nothing touches the database and the table is not needed.
 
 ```bash
 php artisan vendor:publish --tag=translagenius-migrations

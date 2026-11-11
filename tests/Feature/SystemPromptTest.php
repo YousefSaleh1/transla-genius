@@ -2,14 +2,12 @@
 
 namespace CodingPartners\TranslaGenius\Tests\Feature;
 
-use CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface;
 use CodingPartners\TranslaGenius\Contracts\TranslatorInterface;
 use CodingPartners\TranslaGenius\DTOs\TranslationJobPayload;
 use CodingPartners\TranslaGenius\DTOs\TranslationRequest;
 use CodingPartners\TranslaGenius\Jobs\TranslateFields;
 use CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider;
 use CodingPartners\TranslaGenius\Services\TranslationWriter;
-use CodingPartners\TranslaGenius\Services\Translator;
 use CodingPartners\TranslaGenius\Tests\TestCase;
 use CodingPartners\TranslaGenius\Tests\TestModels\TestTranslatableModel;
 use Illuminate\Http\Client\Request;
@@ -46,9 +44,6 @@ class SystemPromptTest extends TestCase
     protected function translateName(string $text = 'Hello'): void
     {
         config(['translagenius.supported_languages' => ['en', 'ar']]);
-        $this->app->forgetInstance(TranslationProviderInterface::class);
-        $this->app->forgetInstance(TranslatorInterface::class);
-        $this->app->forgetInstance(Translator::class);
 
         $model = TestTranslatableModel::create(['name' => ['en' => $text], 'description' => ['en' => '']]);
         (new TranslateFields(new TranslationJobPayload($model, ['name'])))

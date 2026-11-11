@@ -12,7 +12,6 @@ use CodingPartners\TranslaGenius\Jobs\TranslateFields;
 use CodingPartners\TranslaGenius\Providers\FallbackProvider;
 use CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider;
 use CodingPartners\TranslaGenius\Services\TranslationWriter;
-use CodingPartners\TranslaGenius\Services\Translator;
 use CodingPartners\TranslaGenius\Tests\TestCase;
 use CodingPartners\TranslaGenius\Tests\TestModels\TestTranslatableModel;
 use Illuminate\Support\Facades\Http;
@@ -40,9 +39,6 @@ class ChainRetryAfterTest extends TestCase
             'translagenius.providers.second' => $member('second.test'),
             'translagenius.providers.chain' => ['driver' => FallbackProvider::class, 'chain' => ['first', 'second']],
         ]);
-        $this->app->forgetInstance(TranslationProviderInterface::class);
-        $this->app->forgetInstance(Translator::class);
-        $this->app->forgetInstance(TranslatorInterface::class);
     }
 
     protected function job(): TranslateFields

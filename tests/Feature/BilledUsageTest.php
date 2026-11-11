@@ -2,7 +2,6 @@
 
 namespace CodingPartners\TranslaGenius\Tests\Feature;
 
-use CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface;
 use CodingPartners\TranslaGenius\Contracts\TranslatorInterface;
 use CodingPartners\TranslaGenius\DTOs\TranslationJobPayload;
 use CodingPartners\TranslaGenius\Events\TranslationCompleted;
@@ -12,7 +11,6 @@ use CodingPartners\TranslaGenius\Models\TranslationUsageLog;
 use CodingPartners\TranslaGenius\Providers\FallbackProvider;
 use CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider;
 use CodingPartners\TranslaGenius\Services\TranslationWriter;
-use CodingPartners\TranslaGenius\Services\Translator;
 use CodingPartners\TranslaGenius\Tests\TestModels\TestTranslatableModel;
 use CodingPartners\TranslaGenius\TranslaGeniusServiceProvider;
 use GuzzleHttp\Promise\PromiseInterface;
@@ -96,7 +94,6 @@ class BilledUsageTest extends Orchestra
         ]);
 
         Http::fake(fn (Request $request) => $this->answer($request));
-        $this->reresolve();
     }
 
     protected function tearDown(): void
@@ -136,13 +133,6 @@ class BilledUsageTest extends Orchestra
         }
 
         return Http::response($body, $spec['status']);
-    }
-
-    protected function reresolve(): void
-    {
-        $this->app->forgetInstance(TranslationProviderInterface::class);
-        $this->app->forgetInstance(Translator::class);
-        $this->app->forgetInstance(TranslatorInterface::class);
     }
 
     protected function runJob(array $name = ['en' => 'Hello'], array $fields = ['name']): TranslateFields
@@ -219,7 +209,6 @@ class BilledUsageTest extends Orchestra
     public function test_a_truncated_batch_outside_a_chain()
     {
         config(['translagenius.batch.enabled' => true]);
-        $this->reresolve();
         $this->behaviour['primary.test'] = fn (Request $r, bool $isBatch) => $isBatch
             ? ['content' => '{"ar": "x', 'finish_reason' => 'length']
             : [];
@@ -234,7 +223,6 @@ class BilledUsageTest extends Orchestra
     public function test_a_chain_whose_primary_is_billed_but_truncated_and_whose_secondary_succeeds()
     {
         config(['translagenius.default' => 'chain']);
-        $this->reresolve();
         $this->behaviour['primary.test'] = fn () => ['content' => 'half', 'finish_reason' => 'length'];
 
         $this->runJob()->assertNotFailed();
@@ -248,7 +236,6 @@ class BilledUsageTest extends Orchestra
     public function test_a_chain_whose_primary_batch_is_truncated_and_whose_secondary_batch_succeeds()
     {
         config(['translagenius.default' => 'chain', 'translagenius.batch.enabled' => true]);
-        $this->reresolve();
         $this->behaviour['primary.test'] = fn (Request $r, bool $isBatch) => $isBatch
             ? ['content' => '{"ar": "x', 'finish_reason' => 'length']
             : [];
@@ -263,7 +250,6 @@ class BilledUsageTest extends Orchestra
     public function test_an_unparseable_batch()
     {
         config(['translagenius.batch.enabled' => true]);
-        $this->reresolve();
         $this->behaviour['primary.test'] = fn (Request $r, bool $isBatch) => $isBatch ? ['content' => 'Sure! Here you go.'] : [];
 
         $this->runJob()->assertNotFailed();
@@ -320,7 +306,6 @@ class BilledUsageTest extends Orchestra
     public function test_runs_with_cache_hits()
     {
         config(['translagenius.cache' => ['enabled' => true, 'store' => 'array', 'ttl' => 3600]]);
-        $this->reresolve();
 
         $this->runJob()->assertNotFailed();
         $this->runJob()->assertNotFailed(); // identical text: all hits
@@ -337,7 +322,6 @@ class BilledUsageTest extends Orchestra
             'translagenius.cache' => ['enabled' => true, 'store' => 'array', 'ttl' => 3600],
             'translagenius.batch.enabled' => true,
         ]);
-        $this->reresolve();
         $this->runJob(['en' => 'Hello'])->assertNotFailed(); // batch: caches ar/es/fr
 
         $this->behaviour['primary.test'] = fn (Request $r, bool $isBatch) => $isBatch
@@ -466,7 +450,6 @@ class BilledUsageTest extends Orchestra
     public function test_a_blank_reply_in_a_chain_moves_to_the_secondary()
     {
         config(['translagenius.default' => 'chain', 'translagenius.supported_languages' => ['en', 'es']]);
-        $this->reresolve();
         $this->behaviour['primary.test'] = fn () => ['content' => ' '];
 
         $this->runJob()->assertNotFailed();

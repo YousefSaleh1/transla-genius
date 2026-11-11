@@ -8,11 +8,9 @@ use CodingPartners\TranslaGenius\DTOs\TranslationJobPayload;
 use CodingPartners\TranslaGenius\DTOs\TranslationRequest;
 use CodingPartners\TranslaGenius\DTOs\TranslationResult;
 use CodingPartners\TranslaGenius\Events\TranslationCompleted;
-use CodingPartners\TranslaGenius\Events\TranslationRequestBilled;
 use CodingPartners\TranslaGenius\Events\TranslationStarted;
 use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
 use CodingPartners\TranslaGenius\Jobs\TranslateFields;
-use CodingPartners\TranslaGenius\Listeners\LogTranslationUsage;
 use CodingPartners\TranslaGenius\Models\TranslationUsageLog;
 use CodingPartners\TranslaGenius\Providers\FallbackProvider;
 use CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider;
@@ -108,9 +106,6 @@ class BatchTranslationTest extends TestCase
     protected function batching(bool $on): void
     {
         config(['translagenius.batch.enabled' => $on]);
-        $this->app->forgetInstance(TranslationProviderInterface::class);
-        $this->app->forgetInstance(Translator::class);
-        $this->app->forgetInstance(TranslatorInterface::class);
     }
 
     protected function createModel(): TestTranslatableModel
@@ -473,8 +468,7 @@ class BatchTranslationTest extends TestCase
     protected function runWithUsageLogging(callable $arrange): array
     {
         (include __DIR__.'/../../src/database/migrations/create_translation_usage_logs_table.php.stub')->up();
-        Event::listen(TranslationCompleted::class, LogTranslationUsage::class);
-        Event::listen(TranslationRequestBilled::class, [LogTranslationUsage::class, 'handleBilled']);
+        config(['translagenius.usage_tracking.enabled' => true]);
         config([
             'translagenius.providers.openrouter.cost_per_1k_prompt_tokens' => 1.0,
             'translagenius.providers.openrouter.cost_per_1k_completion_tokens' => 2.0,
@@ -581,9 +575,6 @@ class BatchTranslationTest extends TestCase
 
             return Http::response(['choices' => [['message' => ['content' => 'ok'], 'finish_reason' => 'stop']]]);
         };
-        $this->app->forgetInstance(TranslationProviderInterface::class);
-        $this->app->forgetInstance(Translator::class);
-        $this->app->forgetInstance(TranslatorInterface::class);
         $model = TestTranslatableModel::create(['name' => ['en' => 'x'], 'description' => ['en' => '']]);
 
         // "ok" isn't a JSON object, so each locale then goes one at a time.

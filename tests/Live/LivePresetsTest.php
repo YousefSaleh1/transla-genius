@@ -73,7 +73,6 @@ class LivePresetsTest extends Orchestra
         putenv("TRANSLATION_PROVIDER={$preset}");
         $_ENV['TRANSLATION_PROVIDER'] = $_SERVER['TRANSLATION_PROVIDER'] = $preset;
         $this->app['config']->set('translagenius', require __DIR__.'/../../src/config/translagenius.php');
-        $this->app->forgetInstance(TranslationProviderInterface::class);
 
         Http::record();
 
@@ -126,7 +125,6 @@ class LivePresetsTest extends Orchestra
         $this->app['config']->set('translagenius', require __DIR__.'/../../src/config/translagenius.php');
         $this->app['config']->set("translagenius.providers.{$preset}.batch", true);
         $this->app['config']->set('translagenius.default', $preset);
-        $this->app->forgetInstance(TranslationProviderInterface::class);
 
         Http::record();
 

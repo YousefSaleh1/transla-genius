@@ -12,11 +12,10 @@ use CodingPartners\TranslaGenius\Support\Setting;
  * with an estimated cost computed from the reporting provider's own
  * translagenius.providers.{name} entry, if it configures a rate.
  *
- * Only ever registered by TranslaGeniusServiceProvider when
- * translagenius.usage_tracking.enabled is true - that check happens once,
- * at listener-registration time in the service provider, not on every
- * event here, so this class itself has no "am I enabled?" branch at all;
- * if it's running, it's supposed to be.
+ * Always registered; translagenius.usage_tracking.enabled is checked when
+ * an event is handled, so tracking can be turned on at runtime or per
+ * tenant. When it's off, nothing touches the database and the table isn't
+ * needed.
  *
  * The write is a single synchronous insert, not queued again:
  * TranslationCompleted only ever fires from inside TranslateFields, which
@@ -38,6 +37,10 @@ class LogTranslationUsage
 {
     public function handle(TranslationCompleted $event): void
     {
+        if (! self::enabled()) {
+            return;
+        }
+
         TranslationUsageLog::create([
             'provider' => $event->result->provider,
             'model_class' => $event->modelClass,
@@ -62,6 +65,10 @@ class LogTranslationUsage
      */
     public function handleBilled(TranslationRequestBilled $event): void
     {
+        if (! self::enabled()) {
+            return;
+        }
+
         TranslationUsageLog::create([
             'provider' => $event->provider,
             'model_class' => $event->modelClass,
@@ -76,6 +83,12 @@ class LogTranslationUsage
             'cached' => false,
             'outcome' => $event->outcome,
         ]);
+    }
+
+    /** translagenius.usage_tracking.enabled, read when an event is handled. */
+    protected static function enabled(): bool
+    {
+        return filter_var(config('translagenius.usage_tracking.enabled', false), FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? false;
     }
 
     /**

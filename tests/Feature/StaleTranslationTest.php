@@ -2,7 +2,6 @@
 
 namespace CodingPartners\TranslaGenius\Tests\Feature;
 
-use CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface;
 use CodingPartners\TranslaGenius\Contracts\TranslatorInterface;
 use CodingPartners\TranslaGenius\Events\TranslationCompleted;
 use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
@@ -68,13 +67,6 @@ class StaleTranslationTest extends TestCase
 
             return Http::response(['choices' => [['message' => ['content' => $content], 'finish_reason' => 'stop']]]);
         });
-    }
-
-    protected function reresolve(): void
-    {
-        $this->app->forgetInstance(TranslationProviderInterface::class);
-        $this->app->forgetInstance(Translator::class);
-        $this->app->forgetInstance(TranslatorInterface::class);
     }
 
     protected function takeRequests(): array
@@ -199,7 +191,6 @@ class StaleTranslationTest extends TestCase
     public function test_re_translation_with_batching_on()
     {
         config(['translagenius.batch.enabled' => true]);
-        $this->reresolve();
         $model = $this->createTranslated();
 
         $model->setTranslation('name', 'en', 'B')->save();
@@ -212,7 +203,6 @@ class StaleTranslationTest extends TestCase
     {
         config(['cache.default' => 'array', 'translagenius.cache' => ['enabled' => true, 'store' => 'array', 'ttl' => 3600]]);
         Cache::store('array')->flush();
-        $this->reresolve();
         $model = $this->createTranslated();
 
         // New source text: a cache miss, so it's requested.
@@ -328,7 +318,6 @@ class StaleTranslationTest extends TestCase
     public function test_target_snapshots_with_batching_on()
     {
         config(['translagenius.batch.enabled' => true, 'translagenius.supported_languages' => ['en', 'ar', 'es', 'fr']]);
-        $this->reresolve();
         $model = $this->createTranslated();
         $job = $this->queuedRetranslation($model, 'B');
 
@@ -348,7 +337,6 @@ class StaleTranslationTest extends TestCase
     {
         config(['cache.default' => 'array', 'translagenius.cache' => ['enabled' => true, 'store' => 'array', 'ttl' => 3600]]);
         Cache::store('array')->flush();
-        $this->reresolve();
 
         // Warm the cache for "B" through another record.
         TestTranslatableModel::create(['name' => ['en' => 'B'], 'description' => ['en' => 'D2']]);

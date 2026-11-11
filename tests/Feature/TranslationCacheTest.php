@@ -8,17 +8,14 @@ use CodingPartners\TranslaGenius\DTOs\TranslationBatchRequest;
 use CodingPartners\TranslaGenius\DTOs\TranslationJobPayload;
 use CodingPartners\TranslaGenius\DTOs\TranslationResult;
 use CodingPartners\TranslaGenius\Events\TranslationCompleted;
-use CodingPartners\TranslaGenius\Events\TranslationRequestBilled;
 use CodingPartners\TranslaGenius\Events\TranslationStarted;
 use CodingPartners\TranslaGenius\Exceptions\TranslationFailedException;
 use CodingPartners\TranslaGenius\Jobs\TranslateFields;
-use CodingPartners\TranslaGenius\Listeners\LogTranslationUsage;
 use CodingPartners\TranslaGenius\Models\TranslationUsageLog;
 use CodingPartners\TranslaGenius\Providers\CachingProvider;
 use CodingPartners\TranslaGenius\Providers\FallbackProvider;
 use CodingPartners\TranslaGenius\Providers\OpenAiCompatibleProvider;
 use CodingPartners\TranslaGenius\Services\TranslationWriter;
-use CodingPartners\TranslaGenius\Services\Translator;
 use CodingPartners\TranslaGenius\Tests\TestCase;
 use CodingPartners\TranslaGenius\Tests\TestModels\TestTranslatableModel;
 use GuzzleHttp\Promise\PromiseInterface;
@@ -70,7 +67,6 @@ class TranslationCacheTest extends TestCase
         ]);
 
         Http::fake(fn (Request $request) => $this->answer($request));
-        $this->reresolve();
     }
 
     protected function answer(Request $request): PromiseInterface
@@ -107,13 +103,6 @@ class TranslationCacheTest extends TestCase
         ]);
     }
 
-    protected function reresolve(): void
-    {
-        $this->app->forgetInstance(TranslationProviderInterface::class);
-        $this->app->forgetInstance(Translator::class);
-        $this->app->forgetInstance(TranslatorInterface::class);
-    }
-
     protected function provider(): TranslationProviderInterface
     {
         return $this->app->make(TranslationProviderInterface::class);
@@ -145,15 +134,12 @@ class TranslationCacheTest extends TestCase
     public function test_off_by_default_the_provider_is_not_wrapped()
     {
         config(['translagenius.cache' => null]);
-        $this->reresolve();
         $this->assertSame(OpenAiCompatibleProvider::class, get_class($this->provider()));
 
         config(['translagenius.cache' => ['enabled' => false]]);
-        $this->reresolve();
         $this->assertSame(OpenAiCompatibleProvider::class, get_class($this->provider()));
 
         config(['translagenius.cache' => ['enabled' => true]]);
-        $this->reresolve();
         $this->assertSame(CachingProvider::class, get_class($this->provider()));
         $this->assertInstanceOf(OpenAiCompatibleProvider::class, $this->provider()->inner());
     }
@@ -198,7 +184,6 @@ class TranslationCacheTest extends TestCase
     public function test_batch_with_two_of_three_cached_makes_one_single_request()
     {
         config(['translagenius.batch.enabled' => true]);
-        $this->reresolve();
         $this->translate('Blue T-shirt', 'ar');
         $this->translate('Blue T-shirt', 'es');
         $this->takeRequests();
@@ -215,7 +200,6 @@ class TranslationCacheTest extends TestCase
     public function test_batch_with_all_three_cached_makes_no_request()
     {
         config(['translagenius.batch.enabled' => true]);
-        $this->reresolve();
         $this->runJob(['name' => ['en' => 'Blue T-shirt']], ['name']);
         $this->assertSame(['test-api-url.com batch ar,es,fr'], $this->takeRequests());
 
@@ -227,7 +211,6 @@ class TranslationCacheTest extends TestCase
     public function test_batch_with_one_cached_sends_the_other_two_as_a_batch()
     {
         config(['translagenius.batch.enabled' => true]);
-        $this->reresolve();
         $this->translate('Blue T-shirt', 'es');
         $this->takeRequests();
 
@@ -257,7 +240,6 @@ class TranslationCacheTest extends TestCase
         $this->takeRequests();
 
         config(["translagenius.providers.openrouter.{$setting}" => $value]);
-        $this->reresolve();
         $result = $this->translate('Free shipping');
 
         $this->assertCount(1, $this->takeRequests(), "Changing {$setting} must miss.");
@@ -276,7 +258,6 @@ class TranslationCacheTest extends TestCase
             'translagenius.providers.openrouter.temperature' => '0.3', // same value as a string from .env
             'translagenius.retries.http' => 3,
         ]);
-        $this->reresolve();
 
         $this->assertTrue($this->translate('Free shipping')->cached);
         $this->assertSame([], $this->takeRequests());
@@ -294,7 +275,6 @@ class TranslationCacheTest extends TestCase
     public function test_field_context_splits_the_key_when_the_prompt_uses_field()
     {
         config(['translagenius.providers.openrouter.prompt' => 'Translate this {field} from {source_locale} to {target_locale}.']);
-        $this->reresolve();
 
         $this->translate('Blue', 'ar', 'name', 'Product');
         $this->assertFalse($this->translate('Blue', 'ar', 'description', 'Product')->cached);
@@ -306,7 +286,6 @@ class TranslationCacheTest extends TestCase
     public function test_model_context_splits_the_key_when_a_prompt_uses_model()
     {
         config(['translagenius.batch.prompt' => 'For a {model}: from {source_locale} into {target_locales}, as json.']);
-        $this->reresolve();
 
         $this->translate('Blue', 'ar', 'name', 'Product');
         $this->assertFalse($this->translate('Blue', 'ar', 'name', 'Category')->cached);
@@ -323,7 +302,6 @@ class TranslationCacheTest extends TestCase
             'translagenius.providers.resilient' => ['driver' => FallbackProvider::class, 'chain' => ['primary', 'secondary']],
             'translagenius.default' => 'resilient',
         ]);
-        $this->reresolve();
     }
 
     public function test_a_whole_chain_is_wrapped_and_primary_results_are_cached()
@@ -394,7 +372,6 @@ class TranslationCacheTest extends TestCase
     public function test_a_truncated_batch_and_an_invalid_batch_value_are_not_cached()
     {
         config(['translagenius.batch.enabled' => true]);
-        $this->reresolve();
         $replies = [
             ['content' => '{"ar": "x', 'finish_reason' => 'length'],
             ['content' => json_encode(['ar' => 'valid-ar', 'es' => '   ', 'fr' => 'valid-fr']), 'finish_reason' => 'stop'],
@@ -434,13 +411,11 @@ class TranslationCacheTest extends TestCase
     protected function usageAfterTwoIdenticalRecords(): array
     {
         (include __DIR__.'/../../src/database/migrations/create_translation_usage_logs_table.php.stub')->up();
-        Event::listen(TranslationCompleted::class, LogTranslationUsage::class);
-        Event::listen(TranslationRequestBilled::class, [LogTranslationUsage::class, 'handleBilled']);
+        config(['translagenius.usage_tracking.enabled' => true]);
         config([
             'translagenius.providers.openrouter.cost_per_1k_prompt_tokens' => 1.0,
             'translagenius.providers.openrouter.cost_per_1k_completion_tokens' => 2.0,
         ]);
-        $this->reresolve();
 
         $this->runJob(['name' => ['en' => 'Blue'], 'description' => ['en' => 'Cotton']]);
         $this->runJob(['name' => ['en' => 'Blue'], 'description' => ['en' => 'Cotton']]);
@@ -495,7 +470,6 @@ class TranslationCacheTest extends TestCase
     public function test_a_ttl_of_zero_stores_forever_and_entries_use_the_versioned_prefix()
     {
         config(['translagenius.cache.ttl' => 0]);
-        $this->reresolve();
 
         $key = $this->provider()->cacheKey('Free shipping', 'en', 'ar');
         $this->assertMatchesRegularExpression('/^translagenius:v1:[0-9a-f]{64}$/', $key);

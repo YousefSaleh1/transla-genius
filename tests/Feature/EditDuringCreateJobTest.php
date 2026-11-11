@@ -2,12 +2,9 @@
 
 namespace CodingPartners\TranslaGenius\Tests\Feature;
 
-use CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface;
-use CodingPartners\TranslaGenius\Contracts\TranslatorInterface;
 use CodingPartners\TranslaGenius\Events\TranslationCompleted;
 use CodingPartners\TranslaGenius\Events\TranslationRequestBilled;
 use CodingPartners\TranslaGenius\Models\TranslationReview;
-use CodingPartners\TranslaGenius\Services\Translator;
 use CodingPartners\TranslaGenius\Tests\TestCase;
 use CodingPartners\TranslaGenius\Tests\TestModels\TestTranslatableModel;
 use Illuminate\Database\Schema\Blueprint;
@@ -105,13 +102,6 @@ class EditDuringCreateJobTest extends TestCase
         ]);
     }
 
-    protected function reresolve(): void
-    {
-        $this->app->forgetInstance(TranslationProviderInterface::class);
-        $this->app->forgetInstance(Translator::class);
-        $this->app->forgetInstance(TranslatorInterface::class);
-    }
-
     protected function work(): void
     {
         $this->artisan('queue:work', ['connection' => 'database', '--once' => true, '--tries' => 1])->assertSuccessful();
@@ -193,7 +183,6 @@ class EditDuringCreateJobTest extends TestCase
     public function test_with_batching_on()
     {
         config(['translagenius.batch.enabled' => true]);
-        $this->reresolve();
 
         $model = $this->runEditDuringCreate();
 
@@ -203,7 +192,6 @@ class EditDuringCreateJobTest extends TestCase
     public function test_with_the_cache_on()
     {
         config(['translagenius.cache.enabled' => true]);
-        $this->reresolve();
 
         $model = $this->runEditDuringCreate();
 

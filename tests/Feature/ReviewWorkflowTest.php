@@ -2,19 +2,15 @@
 
 namespace CodingPartners\TranslaGenius\Tests\Feature;
 
-use CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface;
-use CodingPartners\TranslaGenius\Contracts\TranslatorInterface;
 use CodingPartners\TranslaGenius\Events\TranslationApproved;
 use CodingPartners\TranslaGenius\Events\TranslationCompleted;
 use CodingPartners\TranslaGenius\Events\TranslationPendingReview;
 use CodingPartners\TranslaGenius\Events\TranslationRejected;
-use CodingPartners\TranslaGenius\Events\TranslationRequestBilled;
 use CodingPartners\TranslaGenius\Events\TranslationSuperseded;
 use CodingPartners\TranslaGenius\Exceptions\InvalidReviewStateException;
 use CodingPartners\TranslaGenius\Exceptions\ReviewConflictException;
 use CodingPartners\TranslaGenius\Exceptions\StaleReviewException;
 use CodingPartners\TranslaGenius\Facades\TranslaGenius;
-use CodingPartners\TranslaGenius\Listeners\LogTranslationUsage;
 use CodingPartners\TranslaGenius\Models\TranslationReview;
 use CodingPartners\TranslaGenius\Models\TranslationUsageLog;
 use CodingPartners\TranslaGenius\Providers\FallbackProvider;
@@ -102,13 +98,6 @@ class ReviewWorkflowTest extends TestCase
         Schema::dropIfExists('translation_usage_logs');
 
         parent::tearDown();
-    }
-
-    protected function reresolve(): void
-    {
-        $this->app->forgetInstance(TranslationProviderInterface::class);
-        $this->app->forgetInstance(Translator::class);
-        $this->app->forgetInstance(TranslatorInterface::class);
     }
 
     protected function takeRequests(): array
@@ -369,7 +358,6 @@ class ReviewWorkflowTest extends TestCase
     {
         config(['cache.default' => 'array', 'translagenius.cache' => ['enabled' => true, 'store' => 'array', 'ttl' => 3600]]);
         Cache::store('array')->flush();
-        $this->reresolve();
     }
 
     public function test_an_edit_on_approval_updates_the_cache_entry()
@@ -459,7 +447,6 @@ class ReviewWorkflowTest extends TestCase
     {
         config(['translagenius.review.enabled' => $review]);
         $arrange();
-        $this->reresolve();
         $this->requests = [];
 
         $this->createRecord();
@@ -504,8 +491,7 @@ class ReviewWorkflowTest extends TestCase
     public function test_usage_is_logged_at_production_and_unchanged_by_decisions()
     {
         (include __DIR__.'/../../src/database/migrations/create_translation_usage_logs_table.php.stub')->up();
-        Event::listen(TranslationCompleted::class, LogTranslationUsage::class);
-        Event::listen(TranslationRequestBilled::class, [LogTranslationUsage::class, 'handleBilled']);
+        config(['translagenius.usage_tracking.enabled' => true]);
 
         $model = $this->createRecord();
         $rowsAfterProduction = TranslationUsageLog::count();

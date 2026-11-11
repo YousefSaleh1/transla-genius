@@ -3,11 +3,13 @@
 namespace CodingPartners\TranslaGenius\Tests\Feature;
 
 use CodingPartners\TranslaGenius\Contracts\TranslationProviderInterface;
+use CodingPartners\TranslaGenius\DTOs\TranslationResult;
 use CodingPartners\TranslaGenius\Events\TranslationCompleted;
 use CodingPartners\TranslaGenius\Tests\Support\FakeConfigurableProvider;
 use CodingPartners\TranslaGenius\Tests\TestModels\TestTranslatableModel;
 use CodingPartners\TranslaGenius\TranslaGeniusServiceProvider;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Orchestra\Testbench\TestCase as Orchestra;
 
@@ -68,9 +70,17 @@ class UsageTrackingDisabledTest extends Orchestra
         $this->assertFalse(config('translagenius.usage_tracking.enabled'));
     }
 
-    public function test_listener_is_not_registered_when_usage_tracking_is_disabled()
+    /**
+     * The listener is always registered (tracking can be switched on at
+     * runtime), but while tracking is off it never touches the database.
+     */
+    public function test_the_listener_does_no_database_work_when_usage_tracking_is_disabled()
     {
-        $this->assertFalse($this->app['events']->hasListeners(TranslationCompleted::class));
+        DB::enableQueryLog();
+
+        TranslationCompleted::dispatch('App\\Models\\Post', 1, 'name', 'en', 'ar', new TranslationResult('x', 'fake'));
+
+        $this->assertSame([], DB::getQueryLog());
     }
 
     public function test_automatic_translation_flow_completes_normally_without_the_usage_log_table()

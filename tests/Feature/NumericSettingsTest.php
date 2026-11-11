@@ -88,7 +88,6 @@ class NumericSettingsTest extends TestCase
         $this->assertSame(10, $this->property($provider, 'retryAfterMax'));
 
         config(['translagenius.retries.http' => 'abc', 'translagenius.retries.http_retry_after_max' => 'x']);
-        $this->app->forgetInstance(TranslationProviderInterface::class);
         $resolved = $this->app->make(TranslationProviderInterface::class);
         $this->assertSame(1, $this->property($resolved, 'httpRetries'));
         $this->assertSame(10, $this->property($resolved, 'retryAfterMax'));
@@ -111,7 +110,6 @@ class NumericSettingsTest extends TestCase
     public function test_cache_ttl_falls_back_to_its_default()
     {
         config(['translagenius.cache.enabled' => true, 'translagenius.cache.ttl' => 'month']);
-        $this->app->forgetInstance(TranslationProviderInterface::class);
 
         $provider = $this->app->make(TranslationProviderInterface::class);
         $this->assertInstanceOf(CachingProvider::class, $provider);

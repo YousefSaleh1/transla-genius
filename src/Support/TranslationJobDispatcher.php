@@ -110,8 +110,8 @@ final class TranslationJobDispatcher
             return $fixed;
         }
 
-        return app()->bound('translagenius.configured_locale')
-            ? (string) app('translagenius.configured_locale')
+        return app()->bound(ConfiguredLocale::class)
+            ? app(ConfiguredLocale::class)->get()
             : (string) config('app.locale', 'en');
     }
 
