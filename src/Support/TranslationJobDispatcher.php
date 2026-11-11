@@ -3,6 +3,7 @@
 namespace CodingPartners\TranslaGenius\Support;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Dispatches a translation job with the package's queue settings applied
@@ -13,10 +14,14 @@ use Illuminate\Database\Eloquent\Model;
  * The settings are applied through the job's Queueable methods
  * (onConnection(), onQueue(), afterCommit()). A custom job from
  * translationJobClass() should use Illuminate\Bus\Queueable to honor them;
- * one that doesn't is still dispatched, on the app's defaults.
+ * one that doesn't is still dispatched, on the app's defaults, and a
+ * warning naming the class is logged once per class per process.
  */
 final class TranslationJobDispatcher
 {
+    /** @var array<class-string, true> Job classes already warned about in this process. */
+    private static array $warned = [];
+
     /**
      * @param class-string $jobClass A job constructed as new $jobClass($model, $fields).
      * @param Model $model
@@ -29,12 +34,19 @@ final class TranslationJobDispatcher
         $settings = (array) config('translaGenius.queue', []);
 
         $connection = $settings['connection'] ?? null;
-        if ($connection !== null && $connection !== '' && method_exists($job, 'onConnection')) {
+        $queue = $settings['queue'] ?? null;
+        $hasConnection = $connection !== null && $connection !== '';
+        $hasQueue = $queue !== null && $queue !== '';
+
+        if (($hasConnection && !method_exists($job, 'onConnection')) || ($hasQueue && !method_exists($job, 'onQueue'))) {
+            self::warnOnce($jobClass);
+        }
+
+        if ($hasConnection && method_exists($job, 'onConnection')) {
             $job->onConnection($connection);
         }
 
-        $queue = $settings['queue'] ?? null;
-        if ($queue !== null && $queue !== '' && method_exists($job, 'onQueue')) {
+        if ($hasQueue && method_exists($job, 'onQueue')) {
             $job->onQueue($queue);
         }
 
@@ -47,5 +59,34 @@ final class TranslationJobDispatcher
         }
 
         dispatch($job);
+    }
+
+    /**
+     * @param class-string $jobClass
+     * @return void
+     */
+    private static function warnOnce(string $jobClass): void
+    {
+        if (isset(self::$warned[$jobClass])) {
+            return;
+        }
+
+        self::$warned[$jobClass] = true;
+
+        Log::warning(
+            "TranslaGenius: {$jobClass} does not use Illuminate\\Bus\\Queueable, so TRANSLATION_QUEUE_CONNECTION / "
+            . 'TRANSLATION_QUEUE are ignored for it and it is dispatched on the app defaults.',
+            ['job_class' => $jobClass]
+        );
+    }
+
+    /**
+     * Forget which classes were warned about (for tests).
+     *
+     * @return void
+     */
+    public static function resetWarnings(): void
+    {
+        self::$warned = [];
     }
 }

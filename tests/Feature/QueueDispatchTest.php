@@ -127,6 +127,46 @@ class QueueDispatchTest extends TestCase
         Queue::assertPushed($plainJobClass, 1);
     }
 
+    public function test_a_job_without_queueable_logs_one_warning_per_class_while_settings_are_configured()
+    {
+        Queue::fake();
+        \CodingPartners\TranslaGenius\Support\TranslationJobDispatcher::resetWarnings();
+        $plainJobClass = get_class(new class (new TestTranslatableModel(), []) implements ShouldQueue {
+            use Dispatchable;
+
+            public function __construct(public Model $model, public array $fields)
+            {
+            }
+
+            public function handle(): void
+            {
+            }
+        });
+
+        \Illuminate\Support\Facades\Log::spy();
+
+        // Not configured: no warning.
+        config(['translaGenius.queue.connection' => null, 'translaGenius.queue.queue' => null]);
+        \CodingPartners\TranslaGenius\Support\TranslationJobDispatcher::dispatch($plainJobClass, new TestTranslatableModel(), []);
+        \Illuminate\Support\Facades\Log::shouldNotHaveReceived('warning');
+
+        // Configured: three dispatches, one warning naming the class; all three still dispatched.
+        config(['translaGenius.queue.queue' => 'translations']);
+        foreach (range(1, 3) as $i) {
+            \CodingPartners\TranslaGenius\Support\TranslationJobDispatcher::dispatch($plainJobClass, new TestTranslatableModel(), []);
+        }
+
+        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')
+            ->once()
+            ->withArgs(fn (string $message, array $context = []) => str_contains($message, $plainJobClass)
+                && ($context['job_class'] ?? null) === $plainJobClass);
+        Queue::assertPushed($plainJobClass, 4);
+
+        // A Queueable job class never warns.
+        \CodingPartners\TranslaGenius\Support\TranslationJobDispatcher::dispatch(TranslateFields::class, new TestTranslatableModel(), []);
+        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')->once();
+    }
+
     public function test_with_after_commit_a_rolled_back_transaction_dispatches_nothing()
     {
         try {
