@@ -289,4 +289,37 @@ class ShippedPresetsTest extends Orchestra
 
         Http::assertSent(fn (Request $r) => !isset($r['max_tokens']) && !isset($r['max_completion_tokens']));
     }
+
+    public function test_temperature_is_omitted_by_default_except_on_openrouter()
+    {
+        $this->fakeEndpoints();
+
+        $this->withEnv(['TRANSLATION_PROVIDER' => 'openai', 'OPENAI_API_KEY' => 'k']);
+        $this->translate();
+        Http::assertSent(fn (Request $r) => str_contains($r->url(), 'api.openai.com') && !array_key_exists('temperature', $r->data()));
+
+        $this->withEnv(['TRANSLATION_PROVIDER' => 'openrouter', 'OPENROUTER_API_KEY' => 'k']);
+        $this->translate();
+        Http::assertSent(fn (Request $r) => str_contains($r->url(), 'openrouter.ai') && $r['temperature'] === 0.3);
+    }
+
+    public function test_empty_temperature_env_omits_the_field_even_on_openrouter()
+    {
+        $this->fakeEndpoints();
+        $this->withEnv(['OPENROUTER_API_KEY' => 'k', 'TRANSLATION_TEMPERATURE' => '']);
+
+        $this->translate();
+
+        Http::assertSent(fn (Request $r) => str_contains($r->url(), 'openrouter.ai') && !array_key_exists('temperature', $r->data()));
+    }
+
+    public function test_explicit_temperature_env_is_sent_to_any_preset()
+    {
+        $this->fakeEndpoints();
+        $this->withEnv(['TRANSLATION_PROVIDER' => 'gemini', 'GEMINI_API_KEY' => 'k', 'TRANSLATION_TEMPERATURE' => '0.1']);
+
+        $this->translate();
+
+        Http::assertSent(fn (Request $r) => $r['temperature'] === 0.1);
+    }
 }

@@ -39,8 +39,11 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
     /** @var string Model identifier passed through to the API (e.g. "openai/gpt-4o"). */
     protected string $model;
 
-    /** @var float Sampling temperature passed through to the API. */
-    protected float $temperature;
+    /**
+     * @var float|null Sampling temperature, or null to omit the field and use
+     *      the model's default (some reasoning models ignore or reject it).
+     */
+    protected ?float $temperature;
 
     /**
      * @var int|null Output token limit, or null (the default) to send no
@@ -89,7 +92,7 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
     protected int $retryAfterMax;
 
     /**
-     * @param array{name?: string, key?: string, url?: string, model?: string, temperature?: float, max_tokens?: int|null, timeout?: int, auth_header?: string, headers?: array<string, string>, token_limit_param?: string, http_retries?: int, retry_after_max?: int} $config
+     * @param array{name?: string, key?: string, url?: string, model?: string, temperature?: float|null, max_tokens?: int|null, timeout?: int, auth_header?: string, headers?: array<string, string>, token_limit_param?: string, http_retries?: int, retry_after_max?: int} $config
      *        Provider configuration array - one translaGenius.providers.* entry
      *        from config/translaGenius.php. `name` is injected by the service
      *        provider (the entry's config key). Every key is optional; missing
@@ -101,7 +104,7 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
         $this->apiKey = (string) ($config['key'] ?? '');
         $this->apiUrl = (string) ($config['url'] ?? '');
         $this->model = (string) ($config['model'] ?? '');
-        $this->temperature = (float) ($config['temperature'] ?? 0.3);
+        $this->temperature = ($config['temperature'] ?? '') === '' ? null : (float) $config['temperature'];
         $this->maxTokens = ($config['max_tokens'] ?? '') === '' ? null : max(1, (int) $config['max_tokens']);
         $this->timeout = (int) ($config['timeout'] ?? 10);
         $this->name = isset($config['name']) ? (string) $config['name'] : null;
@@ -269,8 +272,11 @@ class OpenAiCompatibleProvider implements TranslationProviderInterface
                 ['role' => 'system', 'content' => $systemPrompt],
                 ['role' => 'user', 'content' => $request->text],
             ],
-            'temperature' => $this->temperature,
         ];
+
+        if ($this->temperature !== null) {
+            $body['temperature'] = $this->temperature;
+        }
 
         if ($this->maxTokens !== null) {
             $body[$this->tokenLimitParam] = $this->maxTokens;

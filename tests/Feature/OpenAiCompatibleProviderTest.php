@@ -208,4 +208,16 @@ class OpenAiCompatibleProviderTest extends TestCase
         Http::assertSent(fn (Request $request) => $request['max_completion_tokens'] === 200
             && !isset($request['max_tokens']));
     }
+
+    public function test_null_or_empty_temperature_is_not_sent()
+    {
+        foreach ([null, ''] as $value) {
+            Http::fake(['test-api-url.com' => Http::response(['choices' => [['message' => ['content' => 'ok']]]], 200)]);
+
+            (new OpenAiCompatibleProvider($this->config(['temperature' => $value])))
+                ->translate(new TranslationRequest('Hi', 'en', 'ar'));
+
+            Http::assertSent(fn (Request $request) => !array_key_exists('temperature', $request->data()));
+        }
+    }
 }

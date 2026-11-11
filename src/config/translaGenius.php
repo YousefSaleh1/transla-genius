@@ -46,6 +46,8 @@ return [
     |   key, url, model          Credentials, full chat-completions URL, model ID.
     |   timeout                  HTTP timeout in seconds.
     |   temperature, max_tokens  Sampling temperature and output token limit.
+    |                            Unset temperature is not sent (model default);
+    |                            only openrouter defaults it, to 0.3.
     |                            max_tokens defaults to unset (no limit sent, so
     |                            the provider's own default applies); a truncated
     |                            response fails instead of being saved.
@@ -94,7 +96,7 @@ return [
             'url' => env('OPENAI_API_URL', 'https://api.openai.com/v1/chat/completions'),
             'model' => env('OPENAI_MODEL', 'gpt-6-luna'),
             'timeout' => env('TRANSLATION_API_TIMEOUT', 10),
-            'temperature' => env('TRANSLATION_TEMPERATURE', 0.3),
+            'temperature' => env('TRANSLATION_TEMPERATURE'),
             'max_tokens' => env('TRANSLATION_MAX_TOKENS'),
             // OpenAI deprecates max_tokens in favor of max_completion_tokens.
             'token_limit_param' => 'max_completion_tokens',
@@ -110,7 +112,7 @@ return [
             'url' => env('GEMINI_API_URL', 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'),
             'model' => env('GEMINI_MODEL', 'gemini-3.5-flash-lite'),
             'timeout' => env('TRANSLATION_API_TIMEOUT', 10),
-            'temperature' => env('TRANSLATION_TEMPERATURE', 0.3),
+            'temperature' => env('TRANSLATION_TEMPERATURE'),
             'max_tokens' => env('TRANSLATION_MAX_TOKENS'),
             'cost_per_1k_prompt_tokens' => env('GEMINI_COST_PER_1K_PROMPT_TOKENS'),
             'cost_per_1k_completion_tokens' => env('GEMINI_COST_PER_1K_COMPLETION_TOKENS'),
@@ -123,7 +125,7 @@ return [
             'url' => env('DEEPSEEK_API_URL', 'https://api.deepseek.com/chat/completions'),
             'model' => env('DEEPSEEK_MODEL', 'deepseek-flash'),
             'timeout' => env('TRANSLATION_API_TIMEOUT', 10),
-            'temperature' => env('TRANSLATION_TEMPERATURE', 0.3),
+            'temperature' => env('TRANSLATION_TEMPERATURE'),
             'max_tokens' => env('TRANSLATION_MAX_TOKENS'),
             'cost_per_1k_prompt_tokens' => env('DEEPSEEK_COST_PER_1K_PROMPT_TOKENS'),
             'cost_per_1k_completion_tokens' => env('DEEPSEEK_COST_PER_1K_COMPLETION_TOKENS'),
@@ -137,7 +139,7 @@ return [
             'url' => env('MISTRAL_API_URL', 'https://api.mistral.ai/v1/chat/completions'),
             'model' => env('MISTRAL_MODEL', 'mistral-small-latest'),
             'timeout' => env('TRANSLATION_API_TIMEOUT', 10),
-            'temperature' => env('TRANSLATION_TEMPERATURE', 0.3),
+            'temperature' => env('TRANSLATION_TEMPERATURE'),
             'max_tokens' => env('TRANSLATION_MAX_TOKENS'),
             'cost_per_1k_prompt_tokens' => env('MISTRAL_COST_PER_1K_PROMPT_TOKENS'),
             'cost_per_1k_completion_tokens' => env('MISTRAL_COST_PER_1K_COMPLETION_TOKENS'),
@@ -152,7 +154,7 @@ return [
             'url' => env('TRANSLATION_API_URL'),
             'model' => env('TRANSLATION_MODEL'),
             'timeout' => env('TRANSLATION_API_TIMEOUT', 10),
-            'temperature' => env('TRANSLATION_TEMPERATURE', 0.3),
+            'temperature' => env('TRANSLATION_TEMPERATURE'),
             'max_tokens' => env('TRANSLATION_MAX_TOKENS'),
             'token_limit_param' => env('TRANSLATION_TOKEN_LIMIT_PARAM', 'max_tokens'),
             'auth_header' => env('TRANSLATION_AUTH_HEADER', 'Authorization'),
