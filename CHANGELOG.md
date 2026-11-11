@@ -8,6 +8,8 @@ A breaking architectural release: the translation backend is now swappable behin
 
 ### Breaking changes
 
+- **`TranslatorInterface::translate()` gained two optional arguments**, `?string $field = null, ?string $model = null` (and `DTOs\TranslationRequest` gained matching optional properties). A custom `TranslatorInterface` implementation must add them to its signature. `TranslateFields` passes the attribute name and the model's class basename.
+- **`TranslateFields::prepareTranslations()` is replaced by `translateMissingPairs()`**, which saves each translation as it completes instead of returning a map for `handle()` to save. Update any subclass that overrode it.
 - **Config shape changed.** The flat `api.*` / `settings.*` keys are gone. Config is now provider-keyed:
   ```php
   // Before (3.x)
@@ -29,6 +31,10 @@ A breaking architectural release: the translation backend is now swappable behin
 
 ### Added
 
+- `TRANSLATION_QUEUE_CONNECTION` / `TRANSLATION_QUEUE` (empty = the app's defaults) and `TRANSLATION_DISPATCH_AFTER_COMMIT` (default `true`), applied wherever a translation job is dispatched: model create/update and `translagenius:backfill`, including a `translationJobClass()` override that uses `Queueable`. `TranslateFields` now uses `Queueable`.
+- A configurable system prompt for OpenAI-compatible providers: `prompt` in the config (or `TRANSLATION_SYSTEM_PROMPT`), overridable per provider entry, with `{source_locale}`, `{target_locale}`, `{field}` and `{model}` placeholders. Unknown placeholders are left as written, an empty value falls back to the built-in prompt (unchanged), and field content is only ever sent as the `user` message.
+- `reasoning_effort` per provider entry, sent only when set, with a variable per preset (`OPENAI_REASONING_EFFORT`, ...). `openai` and `deepseek` default to `none`; the others send nothing unless configured.
+- A config-only `body` array per provider entry for extra request fields. It can't set `model`, `messages` or `stream`.
 - `Contracts\TranslationProviderInterface` - the extension point for swapping translation backends. Implement it and register it under `translaGenius.providers` to use DeepL, Google Translate, another LLM, or an internal service - no changes to the job or trait required. See the README's "Custom Translation Providers" section.
 - `Contracts\TranslatorInterface` - the orchestration layer above the provider is now also behind an interface (`Services\Translator` is the default implementation). Rebind it to replace translation-resolution itself (caching, fallback chaining, ...) without touching the job or trait.
 - `Contracts\LocaleResolverInterface` - locale resolution (previously two bare global functions with no DI seam) is now a bindable interface (`LocaleResolvers\DefaultLocaleResolver` is the default: `Accept-Language` header + `translaGenius.supported_languages`). `get_current_locale()`/`get_supported_languages()` remain as thin backward-compatible wrappers around whatever's bound.
@@ -51,6 +57,8 @@ A breaking architectural release: the translation backend is now swappable behin
 
 ### Fixed
 
+- A retried translation job no longer re-translates (and re-bills) the field/locale pairs that had already succeeded: each pair is now saved as soon as it is translated. A partly translated record is reported by `notFullyTranslated()` while the job is in flight or after it fails.
+- Translation jobs dispatched inside a database transaction no longer run before the commit (where `SerializesModels` couldn't find the row) or after a rollback, by default.
 - Failed provider calls were retried regardless of status: the HTTP client's retry callback was passed in its sleep-duration slot, so a 401 or 404 was sent 3 times per job attempt, and a persistent 5xx up to 9 times across the job's own retries. 4xx responses other than 429 now fail on the first response at every layer.
 - A translation cut off at the provider's output token limit (`finish_reason` `length`) was saved as if complete. It now fails with a non-retryable `TranslationFailedException` that names `TRANSLATION_MAX_TOKENS`; the job isn't retried, the `TranslationFailed` event fires, and a fallback chain moves on to its next provider.
 - `TranslationResult->provider` now reports the `translaGenius.providers` key the provider was resolved under (for example `gemini`). It was hardcoded to `openrouter`, so pointing the OpenAI-compatible provider at any other service logged usage under the wrong provider name and looked up the wrong cost rates.

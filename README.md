@@ -50,7 +50,7 @@ The package ships ready-made presets for common OpenAI-compatible services. Each
 | `openai` | `OPENAI_API_KEY` | `OPENAI_MODEL`, `OPENAI_API_URL` | `gpt-6-luna` |
 | `gemini` | `GEMINI_API_KEY` | `GEMINI_MODEL`, `GEMINI_API_URL` | `gemini-3.5-flash-lite` |
 | `deepseek` | `DEEPSEEK_API_KEY` | `DEEPSEEK_MODEL`, `DEEPSEEK_API_URL` | `deepseek-flash` |
-| `mistral` | `MISTRAL_API_KEY` | `MISTRAL_MODEL`, `MISTRAL_API_URL` | `mistral-small-latest` |
+| `mistral` | `MISTRAL_API_KEY` | `MISTRAL_MODEL`, `MISTRAL_API_URL` | `mistral-small-latest` (an alias; Mistral's docs don't say which model it currently points to) |
 | `custom` | `TRANSLATION_API_URL`, `TRANSLATION_MODEL` | `TRANSLATION_API_KEY`, `TRANSLATION_AUTH_HEADER`, `TRANSLATION_TOKEN_LIMIT_PARAM` | none |
 
 Settings shared by every preset: `TRANSLATION_API_TIMEOUT` (seconds, default 10), `TRANSLATION_TEMPERATURE` (default 0.3 on `openrouter`; unset, and so not sent, on every other preset), `TRANSLATION_MAX_TOKENS` (default unset; see below). Usage-tracking cost rates are per preset: `OPENAI_COST_PER_1K_PROMPT_TOKENS` / `OPENAI_COST_PER_1K_COMPLETION_TOKENS`, and the same pattern for `OPENROUTER_`, `GEMINI_`, `DEEPSEEK_` and `MISTRAL_`; `custom` uses `TRANSLATION_COST_PER_1K_*`.
