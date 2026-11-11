@@ -429,6 +429,8 @@ Failed calls are retried at two levels:
 | `TRANSLATION_JOB_TRIES` | `3` | Queue attempts for the job. |
 | `TRANSLATION_JOB_BACKOFF` | `10,30` | Seconds between queue attempts, comma-separated. |
 
+When every member of a fallback chain is rate limited, the job is released for the shortest `Retry-After` among them, the earliest any member is likely to answer again.
+
 4xx responses other than 429 (a bad key, a bad request, an unknown model) are never retried: the job fails on the first response. So does a reply cut off at the output limit, and a blank reply (empty or whitespace only), which is billed as `unusable`. In a fallback chain, both move on to the next member.
 
 **Worst case.** One field/language pair costs at most `(TRANSLATION_HTTP_RETRIES + 1) × TRANSLATION_JOB_TRIES` requests: 6 with the defaults, against a provider that keeps returning 5xx. In a fallback chain, each attempt sends one request per member, so a two-member chain also costs at most `2 × 3 = 6`. A retried job requests only the pairs that are still missing.

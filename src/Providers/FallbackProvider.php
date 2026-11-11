@@ -113,6 +113,7 @@ final class FallbackProvider implements BatchTranslationProviderInterface
                     'message' => $e->getMessage(),
                     'status_code' => $e->getStatusCode(),
                     'retryable' => $e->isRetryable(),
+                    'retry_after' => $e->getRetryAfter(),
                 ];
             }
         }
@@ -194,6 +195,7 @@ final class FallbackProvider implements BatchTranslationProviderInterface
                     'message' => $e->getMessage(),
                     'status_code' => $e->getStatusCode(),
                     'retryable' => $e->isRetryable(),
+                    'retry_after' => $e->getRetryAfter(),
                 ];
             }
         }

@@ -24,15 +24,16 @@ use CodingPartners\TranslaGenius\Providers\FallbackProvider;
 class AllProvidersFailedException extends TranslationFailedException
 {
     /**
-     * @param  array<int, array{provider: class-string, message: string, status_code: int|null, retryable: bool}>  $failures
-     *                                                                                                                        One entry per provider in the chain, in the order they were
-     *                                                                                                                        tried.
+     * @param  array<int, array{provider: class-string, message: string, status_code: int|null, retryable: bool, retry_after?: int|null}>  $failures
+     *                                                                                                                                                One entry per provider in the chain, in the order they were
+     *                                                                                                                                                tried.
      */
     public function __construct(protected readonly array $failures)
     {
         parent::__construct(
             self::buildMessage($failures),
             retryable: self::anyRetryable($failures),
+            retryAfter: self::shortestRetryAfter($failures),
         );
     }
 
@@ -40,7 +41,7 @@ class AllProvidersFailedException extends TranslationFailedException
      * Every provider's individual failure, in try order - for logging or
      * building a more detailed error report than getMessage() alone gives.
      *
-     * @return array<int, array{provider: class-string, message: string, status_code: int|null, retryable: bool}>
+     * @return array<int, array{provider: class-string, message: string, status_code: int|null, retryable: bool, retry_after?: int|null}>
      */
     public function getFailures(): array
     {
@@ -48,7 +49,7 @@ class AllProvidersFailedException extends TranslationFailedException
     }
 
     /**
-     * @param  array<int, array{provider: class-string, message: string, status_code: int|null, retryable: bool}>  $failures
+     * @param  array<int, array{provider: class-string, message: string, status_code: int|null, retryable: bool, retry_after?: int|null}>  $failures
      */
     private static function buildMessage(array $failures): string
     {
@@ -61,6 +62,37 @@ class AllProvidersFailedException extends TranslationFailedException
     }
 
     /**
+     * The shortest Retry-After among the members that may recover: the
+     * earliest moment any of them is likely to answer again, so the job is
+     * released for that long, like a single provider's 429. Members that
+     * failed for good (not retryable) won't recover, so they don't count.
+     * If a member that may recover gave no wait at all, it could be back at
+     * any moment, so there is no wait to use (null): the job's own backoff
+     * applies.
+     *
+     * @param  array<int, array{provider: class-string, message: string, status_code: int|null, retryable: bool, retry_after?: int|null}>  $failures
+     */
+    private static function shortestRetryAfter(array $failures): ?int
+    {
+        $waits = [];
+
+        foreach ($failures as $failure) {
+            if (! $failure['retryable']) {
+                continue;
+            }
+
+            $wait = $failure['retry_after'] ?? null;
+            if ($wait === null) {
+                return null;
+            }
+
+            $waits[] = $wait;
+        }
+
+        return $waits === [] ? null : min($waits);
+    }
+
+    /**
      * The chain as a whole is worth a queue retry if any individual
      * provider's failure was itself retryable - a transient blip on one
      * provider might clear up by the next attempt, even if another
@@ -68,7 +100,7 @@ class AllProvidersFailedException extends TranslationFailedException
      * Only when every provider failed non-retryably is retrying the whole
      * chain again guaranteed to be futile.
      *
-     * @param  array<int, array{provider: class-string, message: string, status_code: int|null, retryable: bool}>  $failures
+     * @param  array<int, array{provider: class-string, message: string, status_code: int|null, retryable: bool, retry_after?: int|null}>  $failures
      */
     private static function anyRetryable(array $failures): bool
     {
