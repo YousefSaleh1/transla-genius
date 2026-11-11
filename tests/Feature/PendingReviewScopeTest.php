@@ -145,16 +145,20 @@ class PendingReviewScopeTest extends TestCase
         $count = 2500;
         $type = (new TestTranslatableModel())->getMorphClass();
 
-        foreach (array_chunk(range(1, $count), 50) as $ids) {
+        // Let the database assign the owner ids (SQL Server rejects explicit
+        // values for an identity column), then read them back.
+        foreach (array_chunk(range(1, $count), 50) as $chunk) {
             DB::table('test_translatable_models')->insert(array_map(
-                fn ($i) => ['id' => $i, 'name' => json_encode(['en' => "n{$i}"]), 'description' => json_encode(['en' => ''])],
-                $ids
+                fn ($i) => ['name' => json_encode(['en' => "n{$i}"]), 'description' => json_encode(['en' => ''])],
+                $chunk
             ));
-            DB::table('translation_reviews')->insert(array_map(fn ($i) => $this->reviewRow($type, (string) $i), $ids));
         }
 
-        if (DB::connection()->getDriverName() === 'pgsql') {
-            DB::statement("SELECT setval(pg_get_serial_sequence('test_translatable_models', 'id'), {$count})");
+        $ids = DB::table('test_translatable_models')->orderBy('id')->pluck('id')->all();
+        $this->assertCount($count, $ids);
+
+        foreach (array_chunk($ids, 50) as $chunk) {
+            DB::table('translation_reviews')->insert(array_map(fn ($id) => $this->reviewRow($type, (string) $id), $chunk));
         }
 
         DB::enableQueryLog();
